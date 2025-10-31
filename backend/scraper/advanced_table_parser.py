@@ -222,16 +222,12 @@ class AdvancedTableParser:
                 r'((?:EMBA|PMBA|MBA)\s*-\s*\d+(?:\s*/\s*(?:EMBA|PMBA|MBA)(?:\s*\(\d+\))?\s*(?:Day|Eve)?\s*-\s*\d+)*)',
                 # MS patterns with complex aliases like "MS (SS) - 1 / MSS - 1"
                 r'(MS\s*\([A-Z]{2,4}\)\s*-\s*[0-9A-Z]+(?:\s*/\s*[A-Z]{2,4}\s*-\s*[0-9A-Z]+)*)',
-                # BS patterns like "BS (CS) / BSSE Open", "BS(CS) - 8B"
-                r'(BS\s*\(?[A-Z]{2,4}\)?\s*(?:/\s*[A-Z]{2,4})?\s*(?:-\s*[0-9A-Z]+|Open))',
+                # BS patterns with section letters - FIXED to handle "BS (CS) - 2 C" format
+                r'(BS\s*\([A-Z]{2,4}\)\s*-\s*\d+\s*[A-Z]*)',  # "BS (CS) - 2 C", "BS (SE) - 4A"
+                r'(BSAI\s*-\s*\d+\s*[A-Z]*)',               # "BSAI - 1B", "BSAI - 4A"  
+                r'(BS\s*\(?[A-Z]{2,4}\)?\s*(?:/\s*[A-Z]{2,4})?\s*(?:Open))', # "BS (CS) / BSSE Open"
                 # Simple patterns like "BBA - 2", "MMS Zero", "MMS - 1"  
                 r'((?:BBA|MMS|MHRM|MPM)\s*(?:-\s*\d+|Zero))',
-                # AI patterns like "BSAI - 1B", "BSAI - 4A"
-                r'(BSAI\s*-\s*[0-9A-Z]+)',
-                # SE patterns like "BS (SE) - 4A"
-                r'(BS\s*\([A-Z]{2}\)\s*-\s*[0-9A-Z]+)',
-                # SS patterns like "BS (SS) - 5"
-                r'(BS\s*\([A-Z]{2}\)\s*-\s*\d+)',
                 # PM patterns with additional qualifiers like "MS (PM) - 1 A Core", "MS (PM) - 2 A & 3 A Elective"
                 r'(MS\s*\([A-Z]{2}\)\s*-\s*[0-9A-Z]+\s*[A-Z]*(?:\s*(?:Core|Elective|&\s*\d+\s*[A-Z]*\s*Elective))?)',
                 # Generic fallback for any pattern
@@ -548,15 +544,49 @@ class AdvancedTableParser:
         return normalized
     
     def _semester_matches(self, semester_cell: str, target_semester: str) -> bool:
-        """Check if a semester cell matches target semester"""
+        """Check if a semester cell matches target semester with flexible spacing"""
         if not semester_cell or not target_semester:
             return False
         
         cell_normalized = self._normalize_semester(str(semester_cell))
         target_normalized = self._normalize_semester(target_semester)
         
-        # Exact match
-        if cell_normalized == target_normalized:
+        # Create flexible matching function that handles any spacing variation
+        def flexible_match(cell_sem: str, target_sem: str) -> bool:
+            # 1. Exact match first
+            if cell_sem == target_sem:
+                return True
+            
+            # 2. Compact match (remove all spaces) - handles "BS(CS)-2C" vs "BS (CS) - 2 C"
+            cell_compact = re.sub(r'\s+', '', cell_sem)
+            target_compact = re.sub(r'\s+', '', target_sem)
+            if cell_compact == target_compact:
+                return True
+            
+            # 3. Normalized section letter matching - handles "2C" vs "2 C"
+            # Extract pattern: program (specialty) - number + section
+            cell_pattern = re.match(r'^(.*?)\s*-\s*(\d+)\s*([A-Z]*)$', cell_sem)
+            target_pattern = re.match(r'^(.*?)\s*-\s*(\d+)\s*([A-Z]*)$', target_sem)
+            
+            if cell_pattern and target_pattern:
+                cell_program = re.sub(r'\s+', '', cell_pattern.group(1))  # Remove spaces from "BS(CS)"
+                cell_number = cell_pattern.group(2)
+                cell_section = cell_pattern.group(3)
+                
+                target_program = re.sub(r'\s+', '', target_pattern.group(1))
+                target_number = target_pattern.group(2)
+                target_section = target_pattern.group(3)
+                
+                # All components must match (program, number, section)
+                if (cell_program == target_program and 
+                    cell_number == target_number and 
+                    cell_section == target_section):
+                    return True
+            
+            return False
+        
+        # Check direct match
+        if flexible_match(cell_normalized, target_normalized):
             return True
         
         # Handle slash-separated semesters (e.g., "EMBA - 1 / PMBA - 1")
@@ -565,28 +595,9 @@ class AdvancedTableParser:
             semester_parts = [part.strip() for part in cell_normalized.split('/')]
             for part in semester_parts:
                 part_normalized = self._normalize_semester(part)
-                if part_normalized == target_normalized:
-                    return True
-                # Check compact format only for exact semester variations (spacing)
-                part_compact = re.sub(r'\s+', '', part_normalized)
-                target_compact = re.sub(r'\s+', '', target_normalized)
-                if part_compact == target_compact:
+                if flexible_match(part_normalized, target_normalized):
                     return True
         
-        # Handle common variations and data errors
-        # BS(CS) - 5B might appear as BS(AI) - 5B in email (data error)
-        if target_normalized == "BS(CS) - 5B" and cell_normalized == "BS(AI) - 5B":
-            return True
-        if target_normalized == "BS(AI) - 5B" and cell_normalized == "BS(CS) - 5B":
-            return True
-            
-        # Flexible matching for spacing variations ONLY (no similarity matching)
-        cell_compact = re.sub(r'\s+', '', cell_normalized)
-        target_compact = re.sub(r'\s+', '', target_normalized)
-        if cell_compact == target_compact:
-            return True
-        
-        # Remove similarity matching to prevent false matches between EMBA/PMBA
         return False
     
     def _extract_matching_semester(self, semester_cell: str, target_semesters: List[str]) -> str:

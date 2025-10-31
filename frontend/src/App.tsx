@@ -50,37 +50,71 @@ function AppContent() {
         // Direct match
         if (itemSemester === configSemesterTrimmed) return true;
         
-        // Enhanced flexible matching for different formats
-        const normalizeForComparison = (str: string) => {
-          return str
-            .replace(/\s+/g, ' ')  // Multiple spaces to single space
-            .replace(/\s*\(\s*/g, '(')  // Remove spaces around opening parentheses
-            .replace(/\s*\)\s*/g, ')')  // Remove spaces around closing parentheses
-            .replace(/\s*-\s*/g, ' - ')  // Normalize dashes with consistent spacing
-            .trim()
-            .toLowerCase();
+        // Enhanced flexible matching for different formats - handles ANY spacing variation
+        const flexibleMatch = (item: string, config: string) => {
+          // 1. Exact match
+          if (item === config) return true;
+          
+          // 2. Basic normalization (consistent spacing)
+          const normalizeBasic = (str: string) => {
+            return str
+              .replace(/\s+/g, ' ')  // Multiple spaces to single space
+              .replace(/\s*\(\s*/g, '(')  // Remove spaces around opening parentheses
+              .replace(/\s*\)\s*/g, ')')  // Remove spaces around closing parentheses
+              .replace(/\s*-\s*/g, ' - ')  // Normalize dashes with consistent spacing
+              .trim()
+              .toLowerCase();
+          };
+          
+          const itemNormalized = normalizeBasic(item);
+          const configNormalized = normalizeBasic(config);
+          
+          if (itemNormalized === configNormalized) return true;
+          
+          // 3. Compact match (remove all spaces) - handles "BS(CS)-2C" vs "BS (CS) - 2 C"
+          const itemCompact = item.replace(/\s+/g, '').toLowerCase();
+          const configCompact = config.replace(/\s+/g, '').toLowerCase();
+          
+          if (itemCompact === configCompact) return true;
+          
+          // 4. Pattern-based matching for section variations
+          const itemPattern = item.match(/^(.*?)\s*-\s*(\d+)\s*([A-Z]*)$/i);
+          const configPattern = config.match(/^(.*?)\s*-\s*(\d+)\s*([A-Z]*)$/i);
+          
+          if (itemPattern && configPattern) {
+            const itemProgram = itemPattern[1].replace(/\s+/g, '').toLowerCase();
+            const itemNumber = itemPattern[2];
+            const itemSection = itemPattern[3].toLowerCase();
+            
+            const configProgram = configPattern[1].replace(/\s+/g, '').toLowerCase();
+            const configNumber = configPattern[2];
+            const configSection = configPattern[3].toLowerCase();
+            
+            return (itemProgram === configProgram && 
+                    itemNumber === configNumber && 
+                    itemSection === configSection);
+          }
+          
+          return false;
         };
         
-        const normalizedItem = normalizeForComparison(itemSemester);
-        const normalizedConfig = normalizeForComparison(configSemesterTrimmed);
+        console.debug(`🔍 Comparing: "${itemSemester}" vs "${configSemesterTrimmed}"`);
         
-        console.debug(`🔍 Comparing: "${normalizedItem}" vs "${normalizedConfig}"`);
-        
-        return normalizedItem === normalizedConfig;
+        return flexibleMatch(itemSemester, configSemesterTrimmed);
       });
     });
 
-    // Deduplicate items - remove duplicates based on key combination of semester, course_code, course_title, faculty, time, room
-    const deduplicatedItems = filteredItems.filter((item, index, arr) => {
-      const itemKey = `${item.semester}|${item.course_code}|${item.course_title}|${item.faculty}|${item.time}|${item.room}`;
-      const firstIndex = arr.findIndex(otherItem => {
-        const otherKey = `${otherItem.semester}|${otherItem.course_code}|${otherItem.course_title}|${otherItem.faculty}|${otherItem.time}|${otherItem.room}`;
-        return otherKey === itemKey;
-      });
-      return firstIndex === index; // Keep only the first occurrence
+    // Deduplicate items based on course code, semester, time, and room
+    // This prevents duplicate entries for the same class
+    const deduplicatedItems = filteredItems.filter((item, index, array) => {
+      const currentKey = `${item.semester}-${item.course || item.course_code}-${item.time}-${item.room}`;
+      return array.findIndex(otherItem => {
+        const otherKey = `${otherItem.semester}-${otherItem.course || otherItem.course_code}-${otherItem.time}-${otherItem.room}`;
+        return otherKey === currentKey;
+      }) === index;
     });
 
-    console.debug(`🔄 Filtered ${timetableData.items.length} -> ${filteredItems.length} -> ${deduplicatedItems.length} items (after filtering and deduplication)`);
+    console.debug(`🎯 Filtered from ${timetableData.items.length} to ${filteredItems.length} items, deduplicated to ${deduplicatedItems.length} items`);
     
     return deduplicatedItems;
   };

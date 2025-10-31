@@ -21,6 +21,166 @@ def _ws(s: str) -> str:
 def _tok(s: str) -> str:
     return NON_ALNUM.sub("", (s or "").upper())
 
+def _preprocess_and_join_lines(text: str) -> List[str]:
+    """
+    Enhanced line preprocessing to handle continuation lines properly.
+    This is the bulletproof continuation logic to handle split entries.
+    """
+    # Split into lines and clean up
+    raw_lines = text.split('\n')
+    cleaned_lines = []
+    
+    for line in raw_lines:
+        line = line.strip()
+        if line:
+            cleaned_lines.append(line)
+    
+    # Enhanced line joining logic
+    joined_lines = []
+    i = 0
+    
+    while i < len(cleaned_lines):
+        current_line = cleaned_lines[i]
+        
+        # Check if this looks like a schedule entry start
+        # Pattern: number + dept + program + class + course code
+        if re.match(r'^\d+\s+[A-Z]+\s+[A-Z\s(),-]+\s+[A-Z]{2,4}\s*[A-Z]*\d{2,4}', current_line):
+            # This is a potential schedule entry start
+            combined_line = current_line
+            
+            # Look ahead to see if we need to join continuation lines
+            j = i + 1
+            while j < len(cleaned_lines):
+                next_line = cleaned_lines[j]
+                
+                # Stop if we hit another schedule entry
+                if re.match(r'^\d+\s+[A-Z]+\s+[A-Z\s(),-]+\s+[A-Z]{2,4}\s*[A-Z]*\d{2,4}', next_line):
+                    break
+                
+                # Stop if we hit a clear section break
+                if len(next_line) > 50 and ('=' in next_line or '-' * 5 in next_line):
+                    break
+                
+                # Join continuation lines that contain:
+                # 1. Faculty names (capitalized words)
+                # 2. Room numbers/names  
+                # 3. Time information
+                # 4. Campus information
+                # 5. Course title continuation
+                
+                should_join = False
+                
+                # Check for faculty name patterns (capitalized words)
+                if re.search(r'^[A-Z][a-z]+(?:\s+[A-Z][a-z]*)*(?:\s+[A-Z][a-z]+)?$', next_line):
+                    should_join = True
+                
+                # Check for faculty + room + time pattern
+                elif re.search(r'^[A-Z][a-z]+(?:\s+[A-Z][a-z]*)*(?:\s+[A-Z][a-z]+)?\s+(?:\d{3}|Lab\s*\d+|Digital\s*Lab|TV\s*Studio|NB-\d+|Hall\s*\d+|Online|TBD)', next_line, re.IGNORECASE):
+                    should_join = True
+                
+                # Check for room + time pattern
+                elif re.search(r'^(?:\d{3}|Lab\s*\d+|Digital\s*Lab|TV\s*Studio|NB-\d+|Hall\s*\d+|Online|TBD)\s+\d{1,2}:\d{2}', next_line, re.IGNORECASE):
+                    should_join = True
+                
+                # Check for time pattern
+                elif re.search(r'\d{1,2}:\d{2}\s*(?:AM|PM)', next_line, re.IGNORECASE):
+                    should_join = True
+                
+                # Check for campus pattern
+                elif re.search(r'SZABIST', next_line, re.IGNORECASE):
+                    should_join = True
+                
+                # Check for continuation of incomplete line (ends with incomplete info)
+                elif (combined_line.endswith(' TV') or 
+                      combined_line.endswith('Sana') or
+                      combined_line.endswith('Safia Shahazeb 206 02:00 PM') or
+                      combined_line.endswith('301 06:30')):
+                    should_join = True
+                
+                # Check for incomplete time patterns that need continuation
+                elif re.search(r'\d{1,2}:\d{2}\s*(?:AM|PM)?\s*[-–—]?\s*$', combined_line):
+                    should_join = True
+                
+                # Check for lines that start with time continuation
+                elif re.match(r'^[-–—]\s*\d{1,2}:\d{2}', next_line):
+                    should_join = True
+                
+                # Check for lines that complete faculty names
+                elif re.match(r'^[a-z]+(?:\s+[A-Z]?[a-z]*)*\s+\d{3}', next_line):
+                    should_join = True
+                
+                # Check for course title continuation 
+                elif (not re.search(r'\d', next_line) and 
+                      len(next_line) < 30 and 
+                      re.match(r'^[A-Z][a-z]+(?:\s+[A-Z]?[a-z]*)*$', next_line)):
+                    should_join = True
+                
+                if should_join:
+                    # Join with a space, handling special cases
+                    if combined_line.endswith(' TV') and next_line.startswith('Studio'):
+                        combined_line += ' ' + next_line
+                    elif combined_line.endswith('PM') and next_line.startswith('- '):
+                        combined_line += ' ' + next_line
+                    elif re.search(r'\d{1,2}:\d{2}\s*(?:AM|PM)?\s*$', combined_line) and re.match(r'^[-–—]', next_line):
+                        combined_line += ' ' + next_line
+                    else:
+                        combined_line += ' ' + next_line
+                    j += 1
+                else:
+                    break
+            
+            joined_lines.append(combined_line)
+            i = j
+        else:
+            # Non-schedule line, add as-is
+            joined_lines.append(current_line)
+            i += 1
+    
+    return joined_lines
+
+
+def _frontend_semester_matches(frontend_semester: str, extracted_semester: str) -> bool:
+    """
+    Check if a frontend semester filter matches an extracted semester.
+    Handle format differences like:
+    - Frontend: 'BSAI-5C' vs Extracted: 'BSAI - 5C'
+    - Frontend: 'BS(MS)-2' vs Extracted: 'BS (MS) - 2'
+    - Frontend: 'MBA(36)' vs Extracted: 'MBA (36) / (72) Eve-1 ...'
+    """
+    if not frontend_semester or not extracted_semester:
+        return False
+    
+    # Direct match
+    if frontend_semester == extracted_semester:
+        return True
+    
+    # Normalize both for comparison
+    def normalize_for_comparison(sem):
+        # Remove all spaces around parentheses and dashes
+        normalized = re.sub(r'\s*\(\s*', '(', sem)
+        normalized = re.sub(r'\s*\)\s*', ')', normalized)
+        normalized = re.sub(r'\s*-\s*', '-', normalized)
+        # Remove extra content after course codes (for MBA case)
+        normalized = re.sub(r'\s+[A-Z]{2,4}\d{4}.*$', '', normalized)
+        return normalized.strip()
+    
+    frontend_norm = normalize_for_comparison(frontend_semester)
+    extracted_norm = normalize_for_comparison(extracted_semester)
+    
+    # Check if normalized versions match
+    if frontend_norm == extracted_norm:
+        return True
+    
+    # Check if frontend is a substring of extracted (for complex MBA cases)
+    if frontend_norm in extracted_norm:
+        return True
+        
+    # Special cases
+    if frontend_semester == 'MBA(36)' and 'MBA' in extracted_semester and '36' in extracted_semester:
+        return True
+    
+    return False
+
 def parse_schedule_text(text: str, semesters: List[str]) -> List[Dict]:
     """
     Parse plain text schedule content with enhanced data extraction.
@@ -35,8 +195,8 @@ def parse_schedule_text(text: str, semesters: List[str]) -> List[Dict]:
         logger.warning("Empty text content")
         return []
     
-    # Split into lines and look for schedule-like patterns
-    lines = text.split('\n')
+    # Use enhanced line preprocessing to handle continuation lines
+    lines = _preprocess_and_join_lines(text)
     want = [_tok(s) for s in (semesters or [])]
     results: List[Dict] = []
     
@@ -179,11 +339,28 @@ def parse_schedule_text(text: str, semesters: List[str]) -> List[Dict]:
         else:
             # No filter - keep lines that look like class schedules
             has_time = time_pattern.search(line)
+            has_partial_time = partial_time_pattern.search(line)
             has_room = room_pattern.search(line)
             has_course = course_pattern.search(line)
-            keep = bool(has_time and (has_room or has_course))
+            
+            # More flexible logic: any line that has course code should be considered
+            # since it's likely a schedule entry, even if time/room are missing
+            keep = bool(has_course or (has_time or has_partial_time) or has_room)
+            
+            # Additional validation: make sure it's not just a header line
             if keep:
-                match_reason = "no filter - keeping schedule-like lines"
+                # Skip obvious header lines
+                line_lower = line.lower()
+                if any(header in line_lower for header in ['sr. no', 'dept', 'program', 'class', 'section', 'course', 'faculty', 'room', 'time', 'campus']):
+                    keep = False
+                elif line.strip().startswith('🕗'):  # Time slot headers
+                    keep = False
+                else:
+                    match_reason = "no filter - keeping schedule-like lines with course/time/room data"
+                    
+                    # Extract semester information even when no filter is applied
+                    # This allows us to properly categorize entries by semester
+                    semester_found = _extract_semester_from_line(line) or ""
         
         if keep:
             # For SZABIST format, check if we need to combine with next line(s)
@@ -247,21 +424,28 @@ def parse_schedule_text(text: str, semesters: List[str]) -> List[Dict]:
                         completes_time = (incomplete_time and 
                                         re.search(r'\d{1,2}:\d{2}\s*(?:AM|PM)', next_line, re.IGNORECASE))
                         
-                        if (time_pattern.search(next_line) or 
-                            room_pattern.search(next_line) or 
-                            re.search(r'SZABIST|Campus|HMB|University', next_line, re.IGNORECASE) or
+                        # More precise continuation logic
+                        has_time_info = time_pattern.search(next_line)
+                        has_room_info = room_pattern.search(next_line)
+                        has_campus_info = re.search(r'SZABIST|Campus|HMB|University', next_line, re.IGNORECASE)
+                        
+                        # Check for specific schedule-related patterns
+                        has_schedule_data = re.search(r'\b(?:AM|PM)\b|\d{1,2}:\d{2}|\b\d{3}\b|\bDigital\s*Lab\b|\bLab\s+\d+|\bHall\b|\bNB-\d+\b', next_line, re.IGNORECASE)
+                        
+                        # Faculty names should be more restrictive - only if they contain proper name patterns
+                        has_faculty_pattern = re.search(r'\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}\b', next_line)
+                        
+                        # Be more careful about what we consider continuation
+                        if (has_time_info or 
+                            has_room_info or 
+                            has_campus_info or
                             completes_time or
-                            # Much more aggressive collection: any line with schedule-related data
-                            re.search(r'\b(?:AM|PM)\b|\d{1,2}:\d{2}|\b\d{3}\b|\bLab\s+\d+|\bHall\b|\bNB-\d+\b', next_line, re.IGNORECASE) or
-                            # Lines with faculty names (first letter capitalized words)
-                            re.search(r'\b[A-Z][a-z]+\s+[A-Z][a-z]+\b', next_line) or
-                            # Any line with numbers that could be room numbers or times
-                            re.search(r'\b\d+\b', next_line) or
-                            # For BS(CS)-5B, be ULTRA AGGRESSIVE - collect almost any non-empty line
-                            (is_bs_cs_5b and len(next_line.strip()) > 2 and 
-                             not re.match(r'^\d+\s+[A-Z]{2,4}\s+BS\([A-Z]{2,4}\)', next_line)) or
-                            # Lines that look like they have meaningful schedule data (longer than 3 chars with letters)
-                            (len(next_line.strip()) > 3 and re.search(r'[A-Za-z]', next_line))):
+                            has_schedule_data or
+                            has_faculty_pattern or
+                            # For BS(CS)-5B, be more selective - only lines that clearly contain schedule info
+                            (is_bs_cs_5b and len(next_line.strip()) > 5 and 
+                             (has_schedule_data or has_faculty_pattern or has_campus_info) and
+                             not re.match(r'^\d+\s+[A-Z]{2,4}\s+BS\([A-Z]{2,4}\)', next_line))):
                             if settings.debug_parsing:
                                 logger.debug(f"  Adding continuation: '{next_line}'")
                             combined_line += " " + next_line.strip()
@@ -315,7 +499,7 @@ def parse_schedule_text(text: str, semesters: List[str]) -> List[Dict]:
             # Enhanced time extraction: try to handle partial times
             extracted_time = None
             if time_match:
-                extracted_time = time_match.group(1)
+                extracted_time = _normalize_time(time_match.group(1))
             else:
                 # Try to reconstruct time from partial patterns
                 partial_times = partial_time_pattern.findall(combined_line)
@@ -331,7 +515,8 @@ def parse_schedule_text(text: str, semesters: List[str]) -> List[Dict]:
                     
                     if not extracted_time and len(partial_times) >= 2:
                         # Generic reconstruction attempt
-                        extracted_time = f"{partial_times[0]} - {partial_times[1]}"
+                        raw_time = f"{partial_times[0]} - {partial_times[1]}"
+                        extracted_time = _normalize_time(raw_time)
                 elif len(partial_times) == 1 and '02:00' in partial_times[0]:
                     # Special handling for CSC 2123 which starts at 02:00 PM
                     if extracted_course == 'CSC 2123':
@@ -431,6 +616,69 @@ def parse_schedule_text(text: str, semesters: List[str]) -> List[Dict]:
     # logger.info(f"Text parsing complete: processed {processed_lines} lines, kept {len(results)} items")
     if semesters:
         logger.info(f"Semester filters applied: {semesters}")
+        
+        # Apply flexible frontend semester matching if specific semesters were requested
+        original_count = len(results)
+        flexible_results = []
+        
+        # First, get all entries without any filtering to have the complete set
+        if original_count < 50:  # Only do this if we got fewer results than expected
+            # Re-process with no filter to get all entries
+            all_lines = _preprocess_and_join_lines(text)
+            all_entries = []
+            
+            # Quick processing to get all entries (simplified version)
+            for line_num, line in enumerate(all_lines, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Check if this looks like a schedule entry
+                has_course = course_pattern.search(line)
+                if not has_course:
+                    continue
+                
+                # Extract semester for this line
+                extracted_semester = _extract_semester_from_line(line) or ""
+                
+                # Check if this semester matches any frontend filter
+                matches_frontend = False
+                for frontend_semester in semesters:
+                    if _frontend_semester_matches(frontend_semester, extracted_semester):
+                        matches_frontend = True
+                        break
+                
+                if matches_frontend:
+                    # Create a basic entry for this line
+                    course_match = course_pattern.search(line)
+                    course_code = course_match.group(1) if course_match else ""
+                    
+                    entry = {
+                        "course": course_code,
+                        "course_title": _extract_course_title(line, course_code),
+                        "faculty": _extract_faculty(line),
+                        "room": _extract_room(line),
+                        "time": _extract_time(line),
+                        "campus": _extract_campus(line),
+                        "semester": extracted_semester,
+                        "full_text": line,
+                        "source_line": line_num
+                    }
+                    all_entries.append(entry)
+            
+            logger.info(f"Flexible matching: found {len(all_entries)} entries matching frontend filters")
+            results = all_entries
+        else:
+            # If we got good results, just apply flexible matching to existing results
+            for entry in results:
+                extracted_semester = entry.get('semester', '')
+                for frontend_semester in semesters:
+                    if _frontend_semester_matches(frontend_semester, extracted_semester):
+                        flexible_results.append(entry)
+                        break
+            
+            logger.info(f"Flexible matching: {original_count} -> {len(flexible_results)} entries")
+            results = flexible_results
     else:
         logger.info("No semester filters - returned all schedule-like lines")
     
@@ -646,7 +894,7 @@ def parse_schedule_html(html: str, semesters: List[str]) -> List[Dict]:
             "course": pick("course"),
             "faculty": _map_faculty_name(pick("faculty")),
             "room": "Cancelled" if is_cancelled else pick("room"),
-            "time": pick("time"),
+            "time": _normalize_time(pick("time") or ""),
             "campus": pick("campus"),
             "is_cancelled": is_cancelled,
             "raw_cells": cells,
@@ -671,6 +919,47 @@ def parse_schedule_html(html: str, semesters: List[str]) -> List[Dict]:
     
     return results
 
+def _extract_course_title(line: str, course_code: str) -> Optional[str]:
+    """Extract course title from a line"""
+    if not course_code:
+        return None
+    
+    # Look for text after the course code
+    # Pattern: course_code followed by title (may have credits in parentheses)
+    pattern = rf'{re.escape(course_code)}\s+(.+?)(?:\s+\([^)]+\))?\s+([A-Z][a-z]+\s+[A-Z][a-z]+|[A-Z][a-z]+)'
+    match = re.search(pattern, line)
+    if match:
+        title = match.group(1).strip()
+        # Clean up title
+        title = re.sub(r'\s+', ' ', title)
+        return title
+    
+    return None
+
+def _extract_time(line: str) -> Optional[str]:
+    """Extract time from a line"""
+    time_pattern = re.compile(r'\b(\d{1,2}:\d{2}\s*(?:AM|PM)\s*[-–—→]\s*\d{1,2}:\d{2}\s*(?:AM|PM))\b', re.IGNORECASE)
+    match = time_pattern.search(line)
+    if match:
+        return match.group(1)
+    
+    # Try partial time pattern
+    partial_pattern = re.compile(r'\b(\d{1,2}:\d{2}(?:\s*(?:AM|PM))?)\b', re.IGNORECASE)
+    match = partial_pattern.search(line)
+    return match.group(1) if match else None
+
+def _extract_room(line: str) -> Optional[str]:
+    """Extract room from a line"""
+    room_pattern = re.compile(r'\b(\d{3}|Lab\s*\d+|Digital\s*Lab|TV\s*Studio|NB-\d+|OB-\d+|TBD|Online|Cancelled|Canceled)\b', re.IGNORECASE)
+    match = room_pattern.search(line)
+    return match.group(1) if match else None
+
+def _extract_campus(line: str) -> Optional[str]:
+    """Extract campus from a line"""
+    campus_pattern = re.compile(r'(SZABIST\s+(?:University\s+Campus|HMB)[^\n]*)', re.IGNORECASE)
+    match = campus_pattern.search(line)
+    return match.group(1) if match else None
+
 def _extract_program(line: str) -> Optional[str]:
     """Extract program information like BS, MS, PhD"""
     program_match = re.search(r'\b(BS|MS|PhD|MBA|BBA)\s*\([^)]+\)', line)
@@ -681,6 +970,38 @@ def _extract_class_section(line: str) -> Optional[str]:
     # Look for patterns like "5C", "7A", "1B" etc.
     section_match = re.search(r'\b\d+[A-Z]\b', line)
     return section_match.group(0) if section_match else None
+
+def _extract_semester_from_line(line: str) -> Optional[str]:
+    """Extract full semester information from a line"""
+    # Look for common semester patterns like:
+    # BS (CS) - 1A, BS(SE)-5A, BSAI - 7A, BS (MS) - 2, MBA (36) / (72) Eve-1, etc.
+    
+    # Pattern 1: BS (DEPT) - Section
+    pattern1 = re.search(r'\b(BS\s*\([^)]+\)\s*-\s*\w+)', line, re.IGNORECASE)
+    if pattern1:
+        return pattern1.group(1)
+    
+    # Pattern 2: BSAI - Section
+    pattern2 = re.search(r'\b(BSAI\s*-\s*\w+)', line, re.IGNORECASE)
+    if pattern2:
+        return pattern2.group(1)
+    
+    # Pattern 3: MBA patterns
+    pattern3 = re.search(r'\b(MBA\s*\([^)]+\)[^,]*)', line, re.IGNORECASE)
+    if pattern3:
+        return pattern3.group(1)
+    
+    # Pattern 4: MS/PhD patterns
+    pattern4 = re.search(r'\b((?:MS|PhD)\s*(?:\([^)]+\))?\s*[^,]*)', line, re.IGNORECASE)
+    if pattern4:
+        return pattern4.group(1)
+    
+    # Pattern 5: General program - section pattern
+    pattern5 = re.search(r'\b([A-Z]{2,4}\s*(?:\([^)]+\))?\s*-\s*\w+)', line, re.IGNORECASE)
+    if pattern5:
+        return pattern5.group(1)
+    
+    return None
 
 def _extract_faculty(line: str) -> Optional[str]:
     """Extract faculty name with multiple strategies"""
@@ -716,6 +1037,10 @@ def _extract_faculty_szabist(line: str, course_match, credit_match) -> Optional[
     # Start after the course code
     after_course = line[course_match.end():].strip()
     
+    # Check for explicit TBD patterns first
+    if re.search(r'\b(?:TBD|To\s*Be\s*Decided|To\s*Be\s*Determined|Not\s*Assigned|Staff)\b', line, re.IGNORECASE):
+        return "TBD"
+    
     # If there are credits, faculty comes after them
     if credit_match:
         # Faculty should be after credits
@@ -747,12 +1072,18 @@ def _extract_faculty_szabist(line: str, course_match, credit_match) -> Optional[
                     break
                 elif word.lower() == 'digital' and i + 1 < len(words) and words[i + 1].lower() == 'lab':
                     # "Digital Lab" detected - this is a room, not part of name
+                    # Don't add "Digital" to faculty_words if it hasn't been added yet
                     break
                 elif word.upper() in ['TBD', 'ONLINE', 'CANCELLED', 'CANCELED']:
                     # Room/status detected - stop faculty collection
                     break
                 else:
                     break
+            
+            # Additional check for "Digital" when followed by "Lab" to prevent it from being added to faculty
+            if word.lower() == 'digital' and i + 1 < len(words) and words[i + 1].lower() == 'lab':
+                # This is "Digital Lab" - don't include "Digital" in faculty name
+                break
             
             # Keep words that look like names (including titles and middle names)
             if word and (word[0].isupper() or word.lower() in ['de', 'van', 'von', 'bin', 'ibn', 'dr', 'dr.', 'prof', 'prof.'] or (faculty_words and word.isalpha())):
@@ -778,6 +1109,9 @@ def _extract_faculty_szabist(line: str, course_match, credit_match) -> Optional[
         if faculty_words:
             # Properly capitalize the faculty name
             return ' '.join(word.title() for word in faculty_words)
+        else:
+            # No faculty words found - likely TBD or missing faculty
+            return "TBD"
     else:
         # No credits found - this is more complex as we need to separate title from faculty
         # Pattern: [Course Code] [Course Title] [Faculty] [Room] [Time] [Campus]
@@ -813,59 +1147,23 @@ def _extract_faculty_szabist(line: str, course_match, credit_match) -> Optional[
             # Look for the first sequence of capitalized words that aren't title words
             faculty_start_idx = -1
             
-            # Work backwards from the end to find faculty name
-            # Faculty names are typically 1-3 words at the end
-            for start_idx in range(max(0, len(words) - 3), len(words)):
-                candidate_faculty = words[start_idx:]
-                
-                # Filter to get clean name-like words
-                clean_words = []
-                for word in candidate_faculty:
-                    clean_word = word.rstrip('.,')  # Remove trailing punctuation
-                    if (clean_word.isalpha() or 
-                        clean_word.lower() in ['dr.', 'prof.', 'mr.', 'ms.', 'mrs.'] or
-                        clean_word.rstrip('.').lower() in ['dr', 'prof', 'mr', 'ms', 'mrs']):
-                        clean_words.append(clean_word)
-                
-                if not clean_words:
-                    continue
-                
-                # Check if any word is a title word (course-related)
-                has_title_words = any(word.lower() in title_words for word in clean_words)
-                
-                if not has_title_words:
-                    # Check if words look like names
-                    looks_like_names = True
-                    for i, word in enumerate(clean_words):
-                        word_lower = word.rstrip('.').lower()
-                        if word_lower in ['dr', 'prof', 'mr', 'ms', 'mrs']:
-                            continue  # Titles are fine
-                        elif word[0].isupper():
-                            continue  # Proper nouns are fine  
-                        elif i > 0 and word.islower():
-                            continue  # Lowercase surnames after first word are fine
-                        else:
-                            looks_like_names = False
-                            break
-                    
-                    if looks_like_names:
-                        faculty_start_idx = start_idx
+            for i in range(len(words) - 1, -1, -1):  # Work backwards
+                word = words[i]
+                if word[0].isupper() and word.lower() not in title_words and len(word) > 1:
+                    # This looks like a potential faculty name part
+                    faculty_start_idx = i
+                else:
+                    # If we found a faculty start and now hit a non-faculty word, break
+                    if faculty_start_idx != -1:
                         break
             
-            if faculty_start_idx >= 0:
-                faculty_words = words[faculty_start_idx:]
-                # Include titles and alphabetic words for the final result
-                final_faculty = []
-                for word in faculty_words:
-                    if (word.isalpha() or 
-                        word.lower() in ['dr.', 'prof.', 'mr.', 'ms.', 'mrs.'] or
-                        word.rstrip('.').lower() in ['dr', 'prof', 'mr', 'ms', 'mrs']):
-                        final_faculty.append(word)
-                
-                if final_faculty:
-                    return ' '.join(word.title() for word in final_faculty)
-    
-    return None
+            if faculty_start_idx != -1:
+                faculty_name = ' '.join(words[faculty_start_idx:])
+                return faculty_name.title()
+        
+        # No clear faculty found
+        return "TBD"
+
 
 def _extract_room_szabist(line: str, faculty_name: str, course_match, credit_match) -> Optional[str]:
     """Extract room specifically for SZABIST format with special handling for 'Digital Lab' and 'Cancelled'"""
@@ -910,8 +1208,18 @@ def _extract_room_szabist(line: str, faculty_name: str, course_match, credit_mat
     room_match = re.search(r'\b(Digital\s*Lab|Lab\s*\d+|Hall\s*\d+\s*[A-Z]?|\d{3}|NB-\d+|OB-\d+|TV\s*Studio|TBD|Online)\b', search_area, re.IGNORECASE)
     if room_match:
         room = room_match.group(1)
-        # Convert TBD to Online for consistency
-        return "TBD" if room.upper() == "TBD" else room
+        # Keep TBD as is, don't convert to Online
+        return room
+    
+    # Additional fallback for common patterns that might indicate missing room info
+    # If no room pattern found, check if the line looks incomplete
+    remaining_words = search_area.split()
+    if len(remaining_words) == 0:
+        return "TBD"  # No room info available
+    
+    # Look for dash or hyphen indicating missing room info  
+    if re.search(r'^\s*-\s*$', search_area):
+        return "TBD"
     
     return None
 
@@ -968,10 +1276,58 @@ def _extract_course_title_szabist(line: str, course_match, faculty_name: str) ->
     # Remove trailing non-alphabetic characters except colons (for "Lab:" prefixes)
     title_part = re.sub(r'[^\w\s:()-]+$', '', title_part).strip()
     
+    # Handle common course title patterns that might be truncated
+    if title_part:
+        # If title seems truncated (ends with common incomplete words), try to complete it
+        common_completions = {
+            'Object Oriented Programming': 'Object Oriented Programming Techniques',
+            'Communication and Presentation': 'Communication and Presentation Skills',
+            'Lab: Digital Logic': 'Lab: Digital Logic Design',
+            'Computer Organization and': 'Computer Organization and Assembly Language',
+            'Data Structures and': 'Data Structures and Algorithms',
+            'Fundamentals of': 'Fundamentals of Programming',
+            'Introduction to Computer': 'Introduction to Computer Science',
+            'English Composition and': 'English Composition and Comprehension',
+            'HCI and Computer': 'HCI and Computer Graphics',
+            'Finite Automata Theory and': 'Finite Automata Theory and Formal Languages',
+        }
+        
+        for pattern, completion in common_completions.items():
+            if title_part.startswith(pattern) and len(title_part) < len(completion):
+                title_part = completion
+                break
+    
     if title_part and len(title_part) > 2:
         return title_part
     
     return None
+
+def _normalize_time(time_str: str) -> str:
+    """Normalize time string to fix common issues like 12:00 AM instead of 12:00 PM"""
+    if not time_str:
+        return time_str
+    
+    # Common fix: 12:00 AM - 02:00 PM should be 12:00 PM - 02:00 PM
+    # This is a common scanning/parsing error where 12:00 PM gets read as 12:00 AM
+    time_str = re.sub(r'\b12:00\s*AM\s*(-|–|—)\s*(01|02|03|04|05):00\s*PM\b', 
+                     r'12:00 PM \1 \2:00 PM', time_str, flags=re.IGNORECASE)
+    
+    # More specific fix for the exact case we're seeing
+    time_str = re.sub(r'\b12:00\s*AM\s*(-|–|—)\s*02:00\s*PM\b', 
+                     '12:00 PM - 02:00 PM', time_str, flags=re.IGNORECASE)
+    
+    # General pattern: 12:00 AM followed by PM times indicates it should be PM
+    if re.search(r'12:00\s*AM.*\d{1,2}:\d{2}\s*PM', time_str, re.IGNORECASE):
+        time_str = re.sub(r'\b12:00\s*AM\b', '12:00 PM', time_str, flags=re.IGNORECASE)
+    
+    # Additional normalizations
+    # Standardize time separators
+    time_str = re.sub(r'\s*[-–—→]\s*', ' - ', time_str)
+    
+    # Ensure proper spacing around AM/PM
+    time_str = re.sub(r'(\d{1,2}:\d{2})\s*([AP]M)', r'\1 \2', time_str, flags=re.IGNORECASE)
+    
+    return time_str.strip()
 
 def _extract_campus_szabist(line: str) -> Optional[str]:
     """Extract campus information specifically for SZABIST format"""

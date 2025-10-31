@@ -68,6 +68,33 @@ class BulletproofTableParser:
         
         # If no pattern matches, return cleaned version
         return clean.upper()
+    
+    def normalize_time(self, time_str: str) -> str:
+        """Normalize time string to fix common issues like 12:00 AM instead of 12:00 PM"""
+        if not time_str or pd.isna(time_str):
+            return ""
+        
+        time_str = str(time_str).strip()
+        
+        # Common fix: 12:00 AM - 02:00 PM should be 12:00 PM - 02:00 PM
+        time_str = re.sub(r'\b12:00\s*AM\s*(-|–|—)\s*(01|02|03|04|05):00\s*PM\b', 
+                         r'12:00 PM \1 \2:00 PM', time_str, flags=re.IGNORECASE)
+        
+        # More specific fix for the exact case we're seeing
+        time_str = re.sub(r'\b12:00\s*AM\s*(-|–|—)\s*02:00\s*PM\b', 
+                         '12:00 PM - 02:00 PM', time_str, flags=re.IGNORECASE)
+        
+        # General pattern: 12:00 AM followed by PM times indicates it should be PM
+        if re.search(r'12:00\s*AM.*\d{1,2}:\d{2}\s*PM', time_str, re.IGNORECASE):
+            time_str = re.sub(r'\b12:00\s*AM\b', '12:00 PM', time_str, flags=re.IGNORECASE)
+        
+        # Standardize time separators
+        time_str = re.sub(r'\s*[-–—→]\s*', ' - ', time_str)
+        
+        # Ensure proper spacing around AM/PM
+        time_str = re.sub(r'(\d{1,2}:\d{2})\s*([AP]M)', r'\1 \2', time_str, flags=re.IGNORECASE)
+        
+        return time_str.strip()
 
     def extract_all_tables_from_html(self, html: str) -> List[pd.DataFrame]:
         """Extract all tables from HTML using pandas with multiple fallback strategies"""
@@ -351,7 +378,7 @@ class BulletproofTableParser:
                 'course': get_value('course'),
                 'faculty': get_value('faculty'),
                 'room': get_value('room') or 'TBD',
-                'time': get_value('time') or 'TBD',
+                'time': self.normalize_time(get_value('time')) or 'TBD',
                 'campus': get_value('campus') or 'SZABIST University Campus',
                 'semester': get_value('class_section'),  # Use class_section as semester
                 'raw_cells': [str(cell) if pd.notna(cell) else "" for cell in row.values],
@@ -410,7 +437,9 @@ class BulletproofTableParser:
         tables = self.extract_all_tables_from_html(html)
         
         if not tables:
-            self.logger.warning("No tables found in HTML")
+            self.logger.warning("No tables found in HTML - attempting text-based parsing")
+            # Fallback to text-based parsing when no HTML tables are found
+            return self.parse_text_based_schedule(html, target_semesters)
             return []
         
         all_items = []
@@ -431,6 +460,27 @@ class BulletproofTableParser:
         self.logger.info(f"🎯 BULLETPROOF PARSER COMPLETE: {len(all_items)} total items")
         
         return all_items
+
+    def parse_text_based_schedule(self, html: str, target_semesters: List[str]) -> List[Dict]:
+        """
+        Fallback text-based parsing when no HTML tables are found.
+        This integrates with our enhanced parser.py logic.
+        """
+        self.logger.info("🔄 BULLETPROOF PARSER: Falling back to text-based parsing")
+        
+        try:
+            # Import our enhanced parser
+            from .parser import parse_schedule_html
+            
+            # Use our enhanced parser which has bulletproof continuation logic
+            results = parse_schedule_html(html, target_semesters)
+            
+            self.logger.info(f"✅ BULLETPROOF TEXT PARSER SUCCESS: {len(results)} schedule items")
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"❌ BULLETPROOF TEXT PARSER FAILED: {e}")
+            return []
 
 
 def parse_schedule_bulletproof(html: str, semesters: List[str]) -> List[Dict]:

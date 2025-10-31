@@ -1,86 +1,86 @@
 # Timetable Wizard
 
-A smart automation solution that solves the daily struggle of manually searching through emails for university timetables. Built specifically for SZABIST University students who receive daily schedule updates via email.
+A full-stack web application that automates timetable extraction from Gmail for university students. Built specifically for SZABIST University's daily schedule email system.
+![alt text](ss.png)
 
-## The Problem I Solved
+## The Problem
 
-Every day at SZABIST University, students receive their class timetables through email. Finding today's schedule meant digging through countless emails, scrolling through lengthy content, and manually parsing the information. This repetitive task was eating up precious time that could be better spent on actual studies.
+SZABIST University sends class timetables via email every day. Students waste 10-15 minutes daily:
+- Searching through email threads for the latest schedule
+- Manually parsing complex HTML tables with inconsistent formatting  
+- Dealing with different table structures (sometimes 6 columns, sometimes 9)
+- Managing semester-specific course filtering manually
 
-## How It Works
+## The Solution
+``
+Timetable Wizard eliminates the manual work by:
+- **Secure Gmail Integration**: OAuth-based authentication to access your emails safely
+- **Intelligent Parsing**: Robust HTML table extraction that handles format inconsistencies
+- **Clean Interface**: Modern React dashboard displaying schedules in organized tables
+- **Multi-User Architecture**: Isolated user data with proper authentication flow
+- **Smart Filtering**: Automatic semester detection and course relevance filtering
 
-Timetable Wizard automates the entire process by:
+## Tech Stack & Architecture
 
-- **Gmail Integration**: Connects to your Gmail account using Google's OAuth API to securely access your emails
-- **Smart Email Parsing**: Searches for emails containing timetable information using intelligent keyword matching
-- **HTML Content Extraction**: Parses complex email HTML content to extract structured schedule data
-- **Multi-User Support**: Each user gets their own personalized dashboard with isolated data
-- **Semester Filtering**: Configurable filters to show only relevant courses for your specific semester
-- **Real-time Updates**: Automatic scraping with scheduler that checks for new timetables
+**Backend (Python/Flask)**
+- **Flask**: RESTful API with CORS support for cross-origin requests
+- **Gmail API**: Official Google API integration with OAuth 2.0 authentication flow
+- **BeautifulSoup + Pandas**: Robust HTML parsing and table data extraction
+- **Supabase**: PostgreSQL database with real-time capabilities and user management
+- **APScheduler**: Task scheduling system for automated operations
+- **Rich**: Enhanced terminal logging and debugging interface
 
-## Technology Stack
+**Frontend (React/TypeScript)**
+- **React 19**: Latest React with concurrent features and TypeScript integration
+- **Tailwind CSS**: Utility-first styling for responsive design
+- **Framer Motion**: Smooth animations and micro-interactions
+- **Axios**: HTTP client with request/response interceptors
+- **Context API**: Global state management for user authentication
 
-### Backend (Python/Flask)
-- **Flask API**: RESTful endpoints serving the React frontend
-- **Gmail API**: Official Google API integration for secure email access
-- **BeautifulSoup**: HTML parsing and content extraction
-- **APScheduler**: Automated daily scraping functionality
-- **Supabase**: PostgreSQL database for multi-user data management
-- **Rich**: Enhanced terminal UI for debugging and monitoring
+**Infrastructure & Security**
+- **OAuth 2.0**: Secure Gmail authentication without storing passwords
+- **Multi-tenant Database**: User data isolation with encrypted token storage
+- **Environment Configuration**: Flexible deployment with Docker support
+- **Error Handling**: Comprehensive logging and graceful failure recovery
 
-### Frontend (React/TypeScript)
-- **React 19**: Modern UI with TypeScript for type safety
-- **Tailwind CSS**: Responsive and clean interface design
-- **Framer Motion**: Smooth animations and transitions
-- **Axios**: API communication with the Flask backend
-- **Context API**: State management for authentication and data
+## Key Features & Challenges Solved
 
-### Database Design
+**Smart Email Processing**
+- Connects to Gmail using secure OAuth flow (no password storage)
+- Searches through email threads using intelligent keyword matching
+- Extracts HTML content from complex multipart email structures
 
-The system uses Supabase (PostgreSQL) with a clean multi-tenant architecture:
+**Bulletproof Table Parsing**
+- Handles inconsistent timetable formats (6-column vs 9-column layouts)
+- Normalizes semester naming conventions: "BS(CS)-5C", "BS (AI) - 3A", etc.
+- Fixes common data issues like "12:00 AM - 02:00 PM" → "12:00 PM - 02:00 PM"
+- Uses Pandas for robust data processing and validation
 
-- **Users Table**: Stores user authentication and profile information
-- **Tokens Table**: Securely manages Gmail OAuth tokens for each user
-- **Timetable Cache**: Stores parsed schedule data with automatic cleanup
-- **Audit Logs**: Tracks scraping activities and system health
+**User Experience**
+- One-click Gmail authentication with automatic token refresh
+- Real-time status updates during data processing
+- Clean tabular display with sorting and filtering
+- Responsive design that works on mobile and desktop
+- Semester-based filtering to show only relevant courses
 
-Key design decisions:
-- User isolation ensures data privacy between different accounts
-- Token encryption for secure Gmail access
-- Automatic cache expiration to keep data fresh
-- Optimized queries for fast frontend loading
-
-## Features That Make Life Easier
-
-### Smart Parsing Engine
-- Handles multiple email formats and layouts
-- Robust error handling for malformed content
-- Intelligent semester detection and filtering
-- Course title corrections and data validation
-
-### User Experience
-- One-click Gmail authentication
-- Clean tabular display of schedule data
-- Real-time status updates during scraping
-- Responsive design for mobile and desktop
-- Semester management for filtering relevant courses
-
-### Developer Experience
-- Comprehensive logging and error tracking
+**Technical Architecture**
+- Multi-user support with complete data isolation
+- Scalable database design with proper indexing
 - Health check endpoints for monitoring
-- Environment-based configuration
-- Docker support for easy deployment
-- Extensive error handling and recovery
+- Comprehensive error handling and logging
+- Modular codebase for easy maintenance and feature additions
 
 ## Quick Start
 
-### Prerequisites
-- Python 3.8+
-- Node.js 16+
+**Prerequisites**
+- Python 3.8+ and Node.js 16+
 - Gmail account with API access enabled
-- Supabase account for database
+- Supabase account for database hosting
+- Google Cloud Console project for OAuth credentials
 
-### Setup
-1. **Clone the repository**
+**Installation & Setup**
+
+1. **Clone Repository**
    ```bash
    git clone https://github.com/muneeb-anjum0/Timetable-Wizard.git
    cd Timetable-Wizard
@@ -93,61 +93,67 @@ Key design decisions:
    ```
 
 3. **Environment Configuration**
-   Create `.env` file with:
-   ```
-   SUPABASE_URL=your_supabase_url
-   SUPABASE_SERVICE_KEY=your_service_key
+   Create `.env` file in backend directory:
+   ```env
+   SUPABASE_URL=your_supabase_project_url
+   SUPABASE_SERVICE_KEY=your_service_role_key
    ALLOWED_SEMESTERS=BS (SE) - 5C, BS (CS) - 7A
    ```
 
-4. **Frontend Setup**
+4. **Google OAuth Setup**
+   - Create project in Google Cloud Console
+   - Enable Gmail API
+   - Create OAuth 2.0 credentials
+   - Download `client_secret.json` to `backend/credentials/`
+
+5. **Frontend Setup**
    ```bash
    cd frontend
    npm install
    npm start
    ```
 
-5. **Google OAuth Setup**
-   - Create Google Cloud project
-   - Enable Gmail API
-   - Download client credentials to `backend/credentials/client_secret.json`
+6. **Run Backend**
+   ```bash
+   cd backend
+   python app.py
+   ```
 
-## Architecture Highlights
+The application will be available at `http://localhost:3000` with the API running on `http://localhost:5000`.
 
-### Security First
-- OAuth 2.0 authentication flow
-- Encrypted token storage
-- CORS configuration for secure API access
-- Input validation and sanitization
+## Development Insights
 
-### Scalability
-- Multi-user architecture from day one
-- Database optimization for concurrent users
-- Caching layers for improved performance
-- Modular design for easy feature additions
+**Challenges Overcome**
+- **Inconsistent Email Formats**: Built a robust parser that handles multiple table structures
+- **Authentication Flow**: Implemented secure OAuth without exposing sensitive credentials
+- **Multi-User Architecture**: Designed from scratch with proper data isolation
+- **Real-Time Updates**: Created responsive UI that provides feedback during processing
 
-### Reliability
-- Comprehensive error handling and recovery
-- Automatic retry mechanisms for API calls
-- Graceful degradation when services are unavailable
-- Extensive logging for debugging and monitoring
+**Code Quality**
+- TypeScript for type safety and better developer experience
+- Comprehensive error handling and logging throughout the application
+- Modular architecture with clear separation of concerns
+- Environment-based configuration for different deployment scenarios
 
-## Impact
+## Project Status
 
-This project transforms a daily 10-15 minute manual task into a seamless automated experience. Students can now focus on their studies instead of hunting through emails for their class schedules. The clean interface and reliable automation have made schedule management effortless for SZABIST University students.
+**Current State**: MVP complete and functional
+- Core features implemented and tested
+- Multi-user authentication working
+- Gmail integration stable
+- Responsive UI completed
 
-## Going Live Soon
+**In Progress**: Final testing and optimization before public deployment
 
-The application is currently in final testing phase and will be deployed for public use once a few remaining bugs are resolved. Stay tuned for the live deployment announcement!
+## Roadmap
 
-## Future Enhancements
-
-- Mobile app development
-- Calendar integration (Google Calendar, Outlook)
-- WhatsApp/SMS notifications for schedule changes
-- Analytics dashboard for attendance tracking
+**Phase 2 Features**
+- Google Calendar integration for automatic schedule sync
+- Mobile push notifications for schedule changes
+- Advanced analytics dashboard with attendance tracking
+- WhatsApp/SMS notifications
 - Integration with university's official systems
 
 ---
 
-Built with passion to solve real student problems and make university life a little bit easier.
+**Built to solve real student problems** - transforming a daily 15-minute manual task into a seamless automated experience.

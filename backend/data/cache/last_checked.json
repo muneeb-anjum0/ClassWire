@@ -1,8 +1,0 @@
-{
-  "last_message_id": null,
-  "last_run_at": "2025-10-18T13:11:08.429898Z",
-  "query_used": "subject:(\"Class Schedule\" OR schedule) in:inbox \"for Tuesday\" newer_than:2d -in:trash",
-  "for_day": "Tuesday",
-  "for_date": "2025-10-14",
-  "items_found": 0
-}
