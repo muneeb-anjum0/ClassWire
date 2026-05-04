@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { apiService } from './services/api';
 import { TimetableData, ApiResponse, StatusData, ConfigData } from './types/api';
@@ -7,18 +7,93 @@ import SummaryStats from './components/SummaryStats/SummaryStats';
 import StatusIndicator from './components/StatusIndicator/StatusIndicator';
 import SemesterManager from './components/SemesterManager/SemesterManager';
 import LoginScreen from './components/LoginScreen/LoginScreen';
+import ThemeToggle from './components/ThemeToggle/ThemeToggle';
 import { AuthProvider, useAuth } from './context/AuthContext';
+
+const THEME_STORAGE_KEY = 'timetable-theme';
+
+const getOrdinalSuffix = (day: number) => {
+  if (day % 100 >= 11 && day % 100 <= 13) return 'th';
+
+  switch (day % 10) {
+    case 1:
+      return 'st';
+    case 2:
+      return 'nd';
+    case 3:
+      return 'rd';
+    default:
+      return 'th';
+  }
+};
+
+const formatLastUpdate = (timestamp: string | null) => {
+  if (!timestamp) return { date: 'Never', time: 'Awaiting first sync' };
+
+  try {
+    const date = new Date(timestamp);
+
+    if (Number.isNaN(date.getTime())) {
+      return { date: 'Unknown', time: 'Unknown time' };
+    }
+
+    const day = date.getDate();
+    const month = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(date);
+    const year = date.getFullYear();
+    const time = date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+
+    return {
+      date: `${day}${getOrdinalSuffix(day)} of ${month}, ${year}`,
+      time,
+    };
+  } catch {
+    return { date: 'Unknown', time: 'Unknown time' };
+  }
+};
 
 function AppContent() {
   const { user, isAuthenticated, logout, loading: authLoading } = useAuth();
-  // Custom sign out confirmation dialog
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const handleLogoutClick = () => setShowLogoutConfirm(true);
-  const handleLogoutConfirm = () => {
-    setShowLogoutConfirm(false);
-    logout();
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window === 'undefined') return 'dark';
+
+    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (storedTheme === 'light' || storedTheme === 'dark') return storedTheme;
+
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
+  const logoutConfirmTimer = useRef<number | null>(null);
+  const [logoutConfirmArmed, setLogoutConfirmArmed] = useState(false);
+
+  const clearLogoutConfirmTimer = () => {
+    if (logoutConfirmTimer.current !== null) {
+      window.clearTimeout(logoutConfirmTimer.current);
+      logoutConfirmTimer.current = null;
+    }
   };
-  const handleLogoutCancel = () => setShowLogoutConfirm(false);
+
+  const armLogoutConfirm = () => {
+    clearLogoutConfirmTimer();
+    setLogoutConfirmArmed(true);
+    logoutConfirmTimer.current = window.setTimeout(() => {
+      setLogoutConfirmArmed(false);
+      logoutConfirmTimer.current = null;
+    }, 4000);
+  };
+
+  const handleLogoutClick = () => {
+    if (logoutConfirmArmed) {
+      clearLogoutConfirmTimer();
+      setLogoutConfirmArmed(false);
+      logout();
+      return;
+    }
+
+    armLogoutConfirm();
+  };
   const [timetableData, setTimetableData] = useState<TimetableData | null>(null);
   const [config, setConfig] = useState<ConfigData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -29,6 +104,18 @@ function AppContent() {
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const [showSemesterManager, setShowSemesterManager] = useState(false);
   const [operationInProgress, setOperationInProgress] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  useEffect(() => {
+    return () => {
+      clearLogoutConfirmTimer();
+    };
+  }, []);
 
   // Computed state
   const noSemestersConfigured = config && (!config.semester_filter || config.semester_filter.length === 0);
@@ -99,10 +186,10 @@ function AppContent() {
   // Show loading screen while checking auth
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-[color:var(--theme-page-bg)]">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
+          <p className="theme-text-secondary">Loading...</p>
         </div>
       </div>
     );
@@ -299,14 +386,7 @@ function AppContent() {
     }
   };
 
-  const formatLastUpdate = (timestamp: string | null) => {
-    if (!timestamp) return 'Never';
-    try {
-      return new Date(timestamp).toLocaleString();
-    } catch {
-      return 'Unknown';
-    }
-  };
+  const lastUpdateDisplay = formatLastUpdate(lastUpdate);
 
   return (
     <div className="app-shell min-h-screen">
@@ -320,17 +400,20 @@ function AppContent() {
           <section className="surface-card p-4 action-panel">
             <div className="action-panel__header">
               <div>
-                <p className="text-sm uppercase tracking-[0.24em] text-slate-500 font-semibold">Quick Actions</p>
-                <h2 className="text-xl font-semibold text-slate-900">Manage your schedule</h2>
+                <p className="text-sm uppercase tracking-[0.24em] theme-text-muted font-semibold">Quick Actions</p>
+                <h2 className="text-xl font-semibold theme-text-primary">Manage your schedule</h2>
               </div>
               <div className="action-panel__meta">
                 <div className="action-panel__meta-item">
                   <span className="meta-label">Logged in</span>
-                  <span className="meta-value">{user?.email}</span>
+                  <span className="meta-value theme-text-primary">{user?.email}</span>
                 </div>
                 <div className="action-panel__meta-item">
                   <span className="meta-label">Last updated</span>
-                  <span className="meta-value">{formatLastUpdate(lastUpdate)}</span>
+                  <span className="meta-value meta-value--stacked">
+                    <span>{lastUpdateDisplay.date}</span>
+                    <span>{lastUpdateDisplay.time}</span>
+                  </span>
                 </div>
               </div>
             </div>
@@ -338,11 +421,13 @@ function AppContent() {
               <button
                 onClick={runScraper}
                 disabled={isScraperRunning || operationInProgress}
-                className="btn-pill btn-pill--primary"
+                className={`btn-pill btn-pill--primary ${isScraperRunning ? 'btn-pill--running' : ''}`}
               >
-                <img src="/refresh.svg" alt="Refresh" className={`h-4 w-4 mr-2 ${isScraperRunning ? 'animate-spin' : ''}`} />
+                <img src="/refresh.svg" alt="Refresh" className={`btn-pill__icon theme-button-icon ${isScraperRunning ? 'animate-spin' : ''}`} />
                 {isScraperRunning ? 'Scraping...' : isSemesterUpdateRunning ? 'Updating...' : 'Run Scraper'}
               </button>
+
+              <ThemeToggle theme={theme} onToggle={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
 
               <button
                 onClick={() => setShowSemesterManager(true)}
@@ -352,32 +437,31 @@ function AppContent() {
                     : ''
                 }`}
               >
-                <img src="/setting.svg" alt="Settings" className="h-4 w-4 mr-2" />
+                <img src="/setting.svg" alt="Settings" className="theme-button-icon h-4 w-4 mr-2" />
                 Semesters
                 <span className="count-pill">{config?.semester_filter?.length || 0}</span>
               </button>
 
-              <div className="inline-flex items-center gap-2">
-                {!showLogoutConfirm ? (
-                  <button onClick={handleLogoutClick} className="btn-pill btn-pill--ghost">
-                    <img src="/logout.svg" alt="Logout" className="h-4 w-4 mr-2" />
-                    Sign Out
+              <div className="inline-flex items-center">
+                <button
+                  onClick={handleLogoutClick}
+                  className={`signout-chip ${logoutConfirmArmed ? 'signout-chip--armed' : 'signout-chip--idle'}`}
+                >
+                  <img src="/logout.svg" alt="Logout" className="theme-button-icon signout-chip__icon" />
+                  <span className="signout-chip__text">{logoutConfirmArmed ? 'Confirm' : 'Sign Out'}</span>
+                </button>
+                {logoutConfirmArmed && (
+                  <button
+                    onClick={() => {
+                      clearLogoutConfirmTimer();
+                      setLogoutConfirmArmed(false);
+                    }}
+                    className="signout-cancel"
+                    title="Cancel sign out"
+                    aria-label="Cancel sign out"
+                  >
+                    Cancel
                   </button>
-                ) : (
-                  <>
-                    <button
-                      onClick={handleLogoutConfirm}
-                      className="btn-pill border-red-300 bg-red-50 text-red-700 hover:bg-red-100"
-                    >
-                      Confirm Sign Out?
-                    </button>
-                    <button
-                      onClick={handleLogoutCancel}
-                      className="btn-pill border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100"
-                    >
-                      Cancel Sign Out?
-                    </button>
-                  </>
                 )}
               </div>
             </div>
@@ -391,34 +475,36 @@ function AppContent() {
           )}
 
           {config && timetableData && !isScraperRunning && (
-            <SummaryStats
-              data={timetableData}
-              config={config || undefined}
-              filteredItems={getFilteredTimetableItems()}
-            />
+            <section className="animate-timetable-enter">
+              <SummaryStats
+                data={timetableData}
+                config={config || undefined}
+                filteredItems={getFilteredTimetableItems()}
+              />
+            </section>
           )}
 
           {(config && !timetableData) && (
             <section className="surface-card p-7 sm:p-8 text-center">
-              <img src="/pulse.svg" alt="Start" className="mx-auto h-11 w-11 mb-3 opacity-70" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Ready When You Are</h3>
-              <p className="text-gray-600 max-w-xl mx-auto mb-5">
+              <img src="/pulse.svg" alt="Start" className="theme-button-icon mx-auto h-11 w-11 mb-3 opacity-70" />
+              <h3 className="text-lg font-semibold theme-text-primary mb-2">Ready When You Are</h3>
+              <p className="theme-text-secondary max-w-xl mx-auto mb-5">
                 Configure your semesters and run the scraper to populate the timetable.
               </p>
-              <button onClick={runScraper} disabled={isScraperRunning || operationInProgress} className="btn-pill btn-pill--primary">
-                <img src="/refresh.svg" alt="Refresh" className={`h-4 w-4 mr-2 ${isScraperRunning ? 'animate-spin' : ''}`} />
+              <button onClick={runScraper} disabled={isScraperRunning || operationInProgress} className={`btn-pill btn-pill--primary ${isScraperRunning ? 'btn-pill--running' : ''}`}>
+                <img src="/refresh.svg" alt="Refresh" className={`btn-pill__icon theme-button-icon ${isScraperRunning ? 'animate-spin' : ''}`} />
                 {isScraperRunning ? 'Scraping...' : 'Fetch Schedule'}
               </button>
             </section>
           )}
 
           {config && !noSemestersConfigured && !isScraperRunning && timetableData && timetableData.items && timetableData.items.length > 0 && (
-            <section className="surface-card overflow-hidden">
+            <section className="surface-card overflow-hidden animate-timetable-enter">
               <div className="surface-card__header">
-                <h3 className="text-lg font-semibold text-gray-900 tracking-tight">Class Schedule</h3>
-                <div className="flex items-center gap-2 bg-blue-50 rounded-full px-3 py-1 border border-blue-100">
-                  <img src="/pulse.svg" alt="Pulse" className="h-4 w-4" />
-                  <span className="text-sm text-blue-700 font-medium">{getFilteredTimetableItems().length} classes</span>
+                <h3 className="text-lg font-semibold theme-text-primary tracking-tight">Class Schedule</h3>
+                <div className="flex items-center gap-2 timetable-count-pill rounded-full px-3 py-1 border">
+                  <img src="/pulse.svg" alt="Pulse" className="theme-button-icon h-4 w-4" />
+                  <span className="text-sm font-medium">{getFilteredTimetableItems().length} classes</span>
                 </div>
               </div>
               <div className="p-0 timetable-container">
@@ -428,14 +514,14 @@ function AppContent() {
           )}
 
           {(noSemestersConfigured && (timetableData || isScraperRunning)) && (
-            <section className="surface-card p-8 text-center">
-              <img src="/setting.svg" alt="Setting" className="mx-auto mb-4 h-12 w-12 opacity-70" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Configure Semesters to View Schedule</h3>
-              <p className="text-gray-600 mb-6 max-w-xl mx-auto">
+            <section className="surface-card p-8 text-center animate-timetable-enter">
+              <img src="/setting.svg" alt="Setting" className="theme-button-icon mx-auto mb-4 h-12 w-12 opacity-70" />
+              <h3 className="text-lg font-semibold theme-text-primary mb-2">Configure Semesters to View Schedule</h3>
+              <p className="theme-text-secondary mb-6 max-w-xl mx-auto">
                 You have schedule data available, but need semester filters to organize and display your classes cleanly.
               </p>
               <button onClick={() => setShowSemesterManager(true)} className="btn-pill btn-pill--neutral">
-                <img src="/add.svg" alt="Add" className="h-4 w-4 mr-2" />
+                <img src="/add.svg" alt="Add" className="theme-button-icon h-4 w-4 mr-2" />
                 Add Semesters
               </button>
             </section>
@@ -443,7 +529,7 @@ function AppContent() {
         </main>
 
         <footer className="bg-transparent border-0">
-          <div className="w-full py-2 text-center text-xs text-gray-300">&copy; {new Date().getFullYear()} Timetable Wizard v2.0</div>
+          <div className="w-full py-2 text-center text-xs theme-text-muted">&copy; {new Date().getFullYear()} Timetable Wizard v2.0</div>
         </footer>
 
         <SemesterManager

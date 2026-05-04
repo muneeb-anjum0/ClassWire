@@ -207,12 +207,12 @@ const TimetableTable: React.FC<TimetableTableProps> = ({ items }) => {
 
   if (!items || items.length === 0) {
     return (
-      <div className="bg-white shadow-lg rounded-lg p-8 text-center animate-fade-in">
-        <svg className="mx-auto h-16 w-16 text-gray-400 mb-4 animate-gentle-scale" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div className="timetable-empty surface-card p-8 text-center animate-timetable-enter">
+        <svg className="mx-auto h-16 w-16 theme-text-muted mb-4 animate-gentle-scale" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">No timetable data available</h3>
-        <p className="text-gray-500 text-sm">
+        <h3 className="text-lg font-medium theme-text-primary mb-2">No timetable data available</h3>
+        <p className="theme-text-secondary text-sm">
           Configure your semesters and refresh the data to see your schedule.
         </p>
       </div>
@@ -220,16 +220,16 @@ const TimetableTable: React.FC<TimetableTableProps> = ({ items }) => {
   }
 
   return (
-    <div className="bg-white">
+    <div className="timetable-stage animate-timetable-enter">
       {/* Mobile Card View */}
       <div className="block md:hidden">
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-[color:var(--theme-border-soft)]">
           {sortedSemesters.map((semester) => (
-            <section key={semester} className="bg-white">
-              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/80">
+            <section key={semester} className="timetable-semester">
+              <div className="px-4 py-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-muted)]/80">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-gray-800">{semester}</h3>
-                  <span className="text-xs font-medium text-blue-700 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">
+                  <h3 className="text-sm font-semibold theme-text-primary">{semester}</h3>
+                  <span className="text-xs font-medium theme-accent-chip rounded-full px-2 py-0.5 border">
                     {grouped[semester].length} classes
                   </span>
                 </div>
@@ -242,22 +242,23 @@ const TimetableTable: React.FC<TimetableTableProps> = ({ items }) => {
                   return (
                     <article
                       key={`${semester}-${itemIndex}`}
-                      className={`border rounded-xl p-3 bg-white ${shouldHighlightRow(item) ? 'border-red-200 bg-red-50/40' : 'border-gray-200'} animate-fade-in`}
+                      className={`timetable-row border rounded-xl p-3 ${shouldHighlightRow(item) ? 'timetable-row--cancelled' : ''}`}
+                      style={{ animationDelay: `${itemIndex * 55}ms` }}
                     >
                       <div className="flex items-start justify-between gap-3 mb-2">
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 leading-5">{renderText(getDisplayCourseTitle(item))}</p>
-                          <p className="text-xs text-gray-600 mt-1">{renderText(item.course || '-')}</p>
+                          <p className="text-sm font-semibold theme-text-primary leading-5">{renderText(getDisplayCourseTitle(item))}</p>
+                          <p className="text-xs theme-text-secondary mt-1">{renderText(item.course || '-')}</p>
                         </div>
-                        <span className={`text-xs font-semibold rounded-lg px-2 py-1 border ${isOnline ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-700 border-gray-200'}`}>
+                        <span className={`text-xs font-semibold rounded-lg px-2 py-1 border ${isOnline ? 'theme-online-chip' : 'theme-chip'}`}>
                           {renderText(roomDisplay)}
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-1 gap-1.5 text-xs text-gray-600">
-                        <div><span className="font-semibold text-gray-700">Faculty:</span> {renderText(getDisplayFaculty(item))}</div>
-                        <div><span className="font-semibold text-gray-700">Time:</span> {renderText(getDisplayTime(item))}</div>
-                        <div><span className="font-semibold text-gray-700">Campus:</span> {renderText(getDisplayCampus(item))}</div>
+                      <div className="grid grid-cols-1 gap-1.5 text-xs theme-text-secondary">
+                        <div><span className="font-semibold theme-text-primary">Faculty:</span> {renderText(getDisplayFaculty(item))}</div>
+                        <div><span className="font-semibold theme-text-primary">Time:</span> {renderText(getDisplayTime(item))}</div>
+                        <div><span className="font-semibold theme-text-primary">Campus:</span> {renderText(getDisplayCampus(item))}</div>
                       </div>
                     </article>
                   );
@@ -271,24 +272,24 @@ const TimetableTable: React.FC<TimetableTableProps> = ({ items }) => {
       {/* Desktop Table View */}
       <div className="hidden md:block overflow-x-auto">
         <table className="min-w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-[color:var(--theme-surface-muted)] border-b border-[color:var(--theme-border-soft)]">
             <tr>
-              <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Semester</th>
-              <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Course Title</th>
-              <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Faculty</th>
-              <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Room</th>
-              <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Time</th>
-              <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Campus</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold theme-text-muted uppercase tracking-wide">Semester</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold theme-text-muted uppercase tracking-wide">Course Title</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold theme-text-muted uppercase tracking-wide">Faculty</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold theme-text-muted uppercase tracking-wide">Room</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold theme-text-muted uppercase tracking-wide">Time</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold theme-text-muted uppercase tracking-wide">Campus</th>
             </tr>
           </thead>
           <tbody>
             {sortedSemesters.map((semester) => (
               <React.Fragment key={semester}>
-                <tr className="bg-blue-50/60 border-y border-blue-100">
+                <tr className="timetable-semester-row border-y border-[color:var(--theme-border-soft)]">
                   <td colSpan={6} className="px-4 py-2.5">
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-semibold text-blue-900">{semester}</span>
-                      <span className="text-xs font-medium text-blue-700 bg-white border border-blue-200 rounded-full px-2 py-0.5">
+                      <span className="text-sm font-semibold theme-text-primary">{semester}</span>
+                      <span className="text-xs font-medium theme-accent-chip bg-[color:var(--theme-surface-elevated)] rounded-full px-2 py-0.5 border">
                         {grouped[semester].length} classes
                       </span>
                     </div>
@@ -302,29 +303,30 @@ const TimetableTable: React.FC<TimetableTableProps> = ({ items }) => {
                   return (
                     <tr
                       key={`${semester}-${itemIndex}`}
-                      className={`border-b border-gray-100 transition-colors duration-200 hover:bg-gray-50 ${shouldHighlightRow(item) ? 'bg-red-50/60' : itemIndex % 2 ? 'bg-white' : 'bg-slate-50/30'}`}
+                      className={`timetable-row border-b border-[color:var(--theme-border-soft)] transition-colors duration-200 ${shouldHighlightRow(item) ? 'timetable-row--cancelled' : itemIndex % 2 ? 'bg-[color:var(--theme-surface-elevated)]' : 'bg-[color:var(--theme-surface-muted)]/55'}`}
+                      style={{ animationDelay: `${(itemIndex + 1) * 45}ms` }}
                     >
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <span className="inline-flex items-center rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+                        <span className="inline-flex items-center rounded-md border theme-chip px-2 py-0.5 text-[11px] font-semibold">
                           {renderText(getSemesterLabel(item))}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-800 font-medium leading-5 max-w-[460px]">
+                      <td className="px-4 py-3 text-sm theme-text-primary font-medium leading-5 max-w-[460px]">
                         {renderText(getDisplayCourseTitle(item))}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">{renderText(getDisplayFaculty(item))}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm theme-text-secondary">{renderText(getDisplayFaculty(item))}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold ${isOnline ? 'border-green-200 bg-green-50 text-green-700' : 'border-gray-200 bg-gray-50 text-gray-700'}`}>
+                        <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold ${isOnline ? 'theme-online-chip' : 'theme-chip'}`}>
                           {renderText(roomDisplay)}
                         </span>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <span className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                        <span className="inline-flex items-center rounded-md border theme-time-chip px-2 py-0.5 text-xs font-semibold">
                           {renderText(getDisplayTime(item))}
                         </span>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap max-w-[260px]">
-                        <span className="inline-flex items-center rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-600 truncate max-w-[240px]">
+                        <span className="inline-flex items-center rounded-md border theme-chip px-2 py-0.5 text-xs font-medium truncate max-w-[240px]">
                           {renderText(getDisplayCampus(item))}
                         </span>
                       </td>

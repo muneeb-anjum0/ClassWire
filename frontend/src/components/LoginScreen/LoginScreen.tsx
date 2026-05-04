@@ -51,15 +51,15 @@ const LoginScreen: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50 flex items-center justify-center p-4 ${isExiting ? 'animate-login-exit-smooth' : ''}`}>
+    <div className={`login-screen-shell min-h-screen flex items-center justify-center p-4 ${isExiting ? 'animate-login-exit-smooth' : ''}`}>
       <div className="max-w-md w-full relative z-10">
-        <div className={`surface-card p-8 shadow-2xl border border-slate-200 ${isExiting ? '' : ''}`}>
+        <div className={`surface-card p-8 shadow-2xl border ${isExiting ? '' : ''}`}>
           <div className="text-center mb-8">
-            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-sky-100 text-sky-700">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl login-screen-shell__icon text-sky-700">
               <Mail className="h-8 w-8" />
             </div>
-            <h1 className="text-3xl font-semibold text-slate-900 mb-2">Welcome back</h1>
-            <p className="text-sm text-slate-600">Sign in with your Gmail account to access your dashboard.</p>
+            <h1 className="text-3xl font-semibold theme-text-primary mb-2">Welcome back</h1>
+            <p className="text-sm theme-text-secondary">Sign in with your Gmail account to access your dashboard.</p>
           </div>
 
           <button
@@ -70,14 +70,14 @@ const LoginScreen: React.FC = () => {
             {isLoading ? (
               <>
                 <div className="animate-spin rounded-full h-5 w-5 border-2 border-slate-400 border-t-transparent"></div>
-                <span className="text-slate-900">Connecting to Gmail...</span>
+                <span className="theme-text-primary">Connecting to Gmail...</span>
               </>
             ) : (
               <>
-                <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm">
+                <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl login-screen-shell__mini-icon text-blue-600 shadow-sm">
                   <img src="/gmail.svg" alt="Gmail" className="w-5 h-5" />
                 </div>
-                <span className="text-slate-900 font-semibold">Continue with Gmail</span>
+                <span className="theme-text-primary font-semibold">Continue with Gmail</span>
               </>
             )}
           </button>
@@ -98,14 +98,14 @@ const LoginScreen: React.FC = () => {
             </div>
           )}
 
-          <div className="mt-8 space-y-3 text-sm text-slate-600">
-            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3">
+          <div className="mt-8 space-y-3 text-sm theme-text-secondary">
+            <div className="rounded-3xl border theme-border-soft bg-[color:var(--theme-surface-muted)] p-3">
               <div className="flex items-center gap-3">
                 <Calendar className="h-4 w-4 text-slate-500" />
                 <span>Clean schedule view for your classes.</span>
               </div>
             </div>
-            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3">
+            <div className="rounded-3xl border theme-border-soft bg-[color:var(--theme-surface-muted)] p-3">
               <div className="flex items-center gap-3">
                 <Mail className="h-4 w-4 text-slate-500" />
                 <span>Secure Gmail access with your SZABIST account.</span>
