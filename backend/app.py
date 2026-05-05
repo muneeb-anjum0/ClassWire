@@ -55,6 +55,24 @@ logger = logging.getLogger(__name__)
 logging.getLogger('scraper.config').setLevel(logging.WARNING)
 logging.getLogger('database.supabase_client').setLevel(logging.WARNING)
 
+# If a `CLIENT_SECRET_JSON` env var is provided (Render/host secret), write it to the
+# `credentials/client_secret.json` file so the OAuth flow can read it at runtime.
+def _ensure_client_secrets_from_env():
+    client_secrets_env = os.environ.get('CLIENT_SECRET_JSON')
+    client_secrets_file = os.path.join(os.path.dirname(__file__), 'credentials', 'client_secret.json')
+    if client_secrets_env and not os.path.exists(client_secrets_file):
+        try:
+            os.makedirs(os.path.dirname(client_secrets_file), exist_ok=True)
+            # Write raw JSON string into the credentials file
+            with open(client_secrets_file, 'w', encoding='utf-8') as f:
+                f.write(client_secrets_env)
+            logger.info('Wrote client_secret.json from CLIENT_SECRET_JSON env var')
+        except Exception as e:
+            logger.error(f'Failed to write client_secret.json from env: {e}')
+
+
+_ensure_client_secrets_from_env()
+
 # Import after CORS setup
 from scraper.scheduler import run_once
 from scraper.config import settings
@@ -198,8 +216,11 @@ def oauth_config_info():
             with open(client_secrets_file, 'r') as f:
                 import json
                 client_config = json.load(f)
-                oauth_info['configured_redirect_uris'] = client_config.get('installed', {}).get('redirect_uris', [])
-                oauth_info['client_id'] = client_config.get('installed', {}).get('client_id', 'Not found')
+                # Support both 'installed' (desktop) and 'web' (web app) formats
+                client_section = client_config.get('installed') or client_config.get('web') or {}
+                oauth_info['configured_redirect_uris'] = client_section.get('redirect_uris', [])
+                oauth_info['client_id'] = client_section.get('client_id', 'Not found')
+                oauth_info['client_secrets_type'] = 'installed' if 'installed' in client_config else ('web' if 'web' in client_config else 'unknown')
         
         return jsonify(oauth_info)
         
