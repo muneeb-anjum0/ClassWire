@@ -31,6 +31,8 @@ allowed_origin_patterns = [
     r"^https://.*\.ngrok-free\.dev$",
     r"^https://.*\.ngrok-free\.app$",
     r"^https://.*\.ngrok\.io$",
+    r"^https://.*\.vercel\.app$",
+    r"^https://.*\.vercel\.com$",
 ]
 
 CORS(
