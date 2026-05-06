@@ -64,10 +64,17 @@ def _walk_parts_for_html(payload) -> Optional[str]:
             return base64.urlsafe_b64decode(data.encode("utf-8")).decode("utf-8", errors="ignore")
 
     if mime_type in {"multipart/alternative", "multipart/mixed", "multipart/related"}:
+        plain_text_fallback = None
         for part in payload.get("parts", []) or []:
             html = _walk_parts_for_html(part)
             if html:
-                return html
+                if "<" in html and ">" in html:
+                    return html
+                if plain_text_fallback is None:
+                    plain_text_fallback = html
+
+        if plain_text_fallback:
+            return plain_text_fallback
 
     if mime_type == "text/plain":
         data = body.get("data")

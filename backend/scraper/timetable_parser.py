@@ -34,6 +34,18 @@ NON_PERSON_TOKENS = {
     "ORIC",
     "PSY",
 }
+ROOM_PREFIX_STOPWORDS = {
+    "AUDITORIUM",
+    "CANCELLED",
+    "CANCELED",
+    "CONFERENCE",
+    "HALL",
+    "LAB",
+    "MEETING",
+    "ONLINE",
+    "ROOM",
+    "VIRTUAL",
+}
 FACULTY_KEYWORDS = {"INSTRUCTOR", "INSTRUCTORS", "FACULTY", "PROFESSOR", "PROF", "DOCTOR", "LECTURER", "TRAINER", "TUTOR", "FACILITATOR", "EXTERNAL"}
 COURSE_KEYWORDS = {"WORKSHOP", "COURSE", "DEVELOPMENT", "MANAGEMENT", "COMMUNICATION", "TECHNIQUES", "ANALYSIS", "PRACTICE", "RESEARCH", "ELECTIVES", "UNDERSTANDING", "QURAN", "HOLY"}
 COURSE_CREDITS_RE = re.compile(r"\s*\(\d+\s*,\s*\d+\)\s*$")
@@ -101,6 +113,11 @@ FACULTY_SUFFIX_STOPWORDS = {
     "VISUAL",
 }
 
+ROOM_HINT_RE = re.compile(
+    r"\b(?:ONLINE|VIRTUAL|LAB|ROOM|HALL|AUDITORIUM|CONFERENCE|MEETING|ADMIN|BLOCK|LIBRARY|STUDIO|ORIC|TV|NB|OB|HB|CB|AIC)\b|\d",
+    re.IGNORECASE,
+)
+
 
 SECTION_SUFFIX_PATTERNS = [
     re.compile(r"^[A-Z]{1,8}\s*\([A-Z0-9&/]+\)\s*(?:-\s*)?\d+\s*[A-Z]?$", re.IGNORECASE),
@@ -155,7 +172,13 @@ def _parse_html_table_rows(html: str) -> List[Tuple[int, str]]:
             rows: List[Tuple[int, str]] = []
             serial = 1
             for tr in table.find_all("tr"):
-                cells = [ _collapse_whitespace(td.get_text(" ")) for td in tr.find_all(["td", "th"]) ]
+                # Only read the row's direct cells; Gmail exports can contain
+                # nested tables/formatting that would otherwise leak extra text
+                # into the cell list and shift faculty/room boundaries.
+                cells = [
+                    _collapse_whitespace(td.get_text(" "))
+                    for td in tr.find_all(["td", "th"], recursive=False)
+                ]
                 if not cells:
                     continue
                 # If first cell is serial, use it
@@ -432,7 +455,8 @@ def _parse_structured_row(serial_no: int, raw_text: str) -> Optional[Dict[str, o
     semester_display = _normalize_semester_display(section)
     semester_key = _normalize_semester_key(section)
     faculty = _clean_faculty_name(faculty)
-    room = _collapse_whitespace(room)
+    faculty, room = _merge_room_prefix_into_faculty(faculty, room)
+    room = _clean_room_name(room, faculty)
     time_text = _collapse_whitespace(time_text)
     campus = _normalize_campus(campus_text)
 
@@ -797,6 +821,14 @@ def _extract_venue(text: str) -> Tuple[str, str]:
     return _collapse_whitespace(venue), before
 
 
+def _looks_like_room_fragment(text: str) -> bool:
+    cleaned = _collapse_whitespace(text)
+    if not cleaned:
+        return False
+
+    return bool(ROOM_HINT_RE.search(cleaned))
+
+
 def _normalize_campus(text: str) -> str:
     cleaned = _collapse_whitespace(text)
     if not cleaned:
@@ -913,6 +945,90 @@ def _clean_faculty_name(faculty: str) -> str:
     return cleaned
 
 
+def _clean_room_name(room: str, faculty: str = "") -> str:
+    cleaned = _collapse_whitespace(room).strip(" -/")
+    faculty_cleaned = _collapse_whitespace(faculty).strip(" -/")
+    if not cleaned:
+        return ""
+
+    if faculty_cleaned:
+        room_casefold = cleaned.casefold()
+        faculty_casefold = faculty_cleaned.casefold()
+        if room_casefold == faculty_casefold:
+            return ""
+
+        prefix = faculty_cleaned + " "
+        if room_casefold.startswith(prefix.casefold()):
+            candidate = _collapse_whitespace(cleaned[len(faculty_cleaned):])
+            if _looks_like_room_fragment(candidate):
+                return candidate
+
+    tokens = cleaned.split()
+    prefix_count = 0
+    for token in tokens:
+        if token.upper() in NAME_PREFIXES or _is_name_token(token):
+            prefix_count += 1
+            continue
+        break
+
+    if prefix_count >= 2:
+        candidate = _collapse_whitespace(" ".join(tokens[prefix_count:]))
+        if _looks_like_room_fragment(candidate):
+            return candidate
+
+    if prefix_count == 1 and tokens and tokens[0].upper() in NAME_PREFIXES:
+        candidate = _collapse_whitespace(" ".join(tokens[1:]))
+        if _looks_like_room_fragment(candidate):
+            return candidate
+
+    return cleaned
+
+
+def _merge_room_prefix_into_faculty(faculty: str, room: str) -> Tuple[str, str]:
+    cleaned_faculty = _clean_faculty_name(faculty)
+    cleaned_room = _collapse_whitespace(room).strip(" -/")
+    if not cleaned_room:
+        return cleaned_faculty, cleaned_room
+
+    if cleaned_faculty:
+        faculty_casefold = cleaned_faculty.casefold()
+        room_casefold = cleaned_room.casefold()
+        if room_casefold.startswith(faculty_casefold + " "):
+            candidate_room = _collapse_whitespace(cleaned_room[len(cleaned_faculty):])
+            if _looks_like_room_fragment(candidate_room):
+                return cleaned_faculty, candidate_room
+
+    room_tokens = cleaned_room.split()
+    if len(room_tokens) < 2:
+        return cleaned_faculty, cleaned_room
+
+    prefix_tokens: List[str] = []
+    index = 0
+    while index < len(room_tokens):
+        token = room_tokens[index]
+        if token.upper() in ROOM_PREFIX_STOPWORDS:
+            break
+        if token.upper() in NAME_PREFIXES or _is_name_token(token):
+            prefix_tokens.append(token)
+            index += 1
+            continue
+        break
+
+    if not prefix_tokens:
+        return cleaned_faculty, cleaned_room
+
+    candidate_room = _collapse_whitespace(" ".join(room_tokens[index:]))
+    if not _looks_like_room_fragment(candidate_room):
+        return cleaned_faculty, cleaned_room
+
+    if cleaned_faculty:
+        merged_faculty = _collapse_whitespace(f"{cleaned_faculty} {' '.join(prefix_tokens)}")
+    else:
+        merged_faculty = _collapse_whitespace(" ".join(prefix_tokens))
+
+    return merged_faculty, candidate_room
+
+
 def _build_heuristic_item(serial_no: int, raw_text: str) -> Dict[str, object]:
     # Step 1: Skip the Department and Program columns (first 3 columns including Sr.No)
     # The Sr.No is already removed by _iter_row_blocks, so we just need to skip Department and Program
@@ -956,12 +1072,14 @@ def _build_heuristic_item(serial_no: int, raw_text: str) -> Dict[str, object]:
     course_title = _clean_course_title(course_text, course_code)
     if course_code and course_text.upper().startswith(course_code.upper()):
         course_text = _collapse_whitespace(course_text)
+    faculty_text, venue_text = _merge_room_prefix_into_faculty(faculty_text, venue_text)
+    room_text = _clean_room_name(venue_text, faculty_text)
 
     raw_cells = [
         semester_display,
         course_text,
         faculty_text,
-        venue_text,
+        room_text,
         time_text,
         campus,
     ]
@@ -979,7 +1097,7 @@ def _build_heuristic_item(serial_no: int, raw_text: str) -> Dict[str, object]:
         "course_code": course_code,
         "faculty": faculty_text,
         "faculty_name": faculty_text,
-        "room": venue_text,
+        "room": room_text,
         "time": time_text,
         "campus": campus,
         "raw_line": raw_text,
@@ -988,9 +1106,12 @@ def _build_heuristic_item(serial_no: int, raw_text: str) -> Dict[str, object]:
     }
 
 
-def _build_item(serial_no: int, raw_text: str) -> Dict[str, object]:
+def _build_item(serial_no: int, raw_text: str, expand_sections: bool = False) -> Dict[str, object]:
     structured_item = _parse_structured_row(serial_no, raw_text)
     if structured_item is not None:
+        if not expand_sections:
+            return structured_item
+
         # Expand slash-separated section cells into multiple items.
         # Use the original raw section text when available so we don't lose
         # parts during earlier normalization (e.g. the parser may canonicalize
@@ -1038,6 +1159,9 @@ def _build_item(serial_no: int, raw_text: str) -> Dict[str, object]:
 
     # Heuristic path: build item and also expand slash-separated semester labels
     heuristic_item = _build_heuristic_item(serial_no, raw_text)
+    if not expand_sections:
+        return heuristic_item
+
     section_original = str(heuristic_item.get("semester_original") or "")
     if "/" in section_original:
         parts = [p.strip() for p in section_original.split("/") if p.strip()]
@@ -1094,10 +1218,6 @@ def parse_html_with_advanced_pandas(html: str, allowed_semesters: Optional[List[
         row_blocks = table_rows
     else:
         row_blocks = _iter_row_blocks(text)
-    # Use the fallback splitter only when the strict splitter finds nothing,
-    # or when the source looks like HTML with table elements and the fallback
-    # produces more detailed blocks.
-    fallback = None
     if not row_blocks:
         fallback = _iter_row_blocks_fallback(text)
         if not fallback:
@@ -1109,9 +1229,10 @@ def parse_html_with_advanced_pandas(html: str, allowed_semesters: Optional[List[
             if fallback and len(fallback) > len(row_blocks):
                 row_blocks = fallback
 
+    expand_sections = bool(table_rows)
     items: List[Dict] = []
     for serial_no, row_text in row_blocks:
-        item = _build_item(serial_no, row_text)
+        item = _build_item(serial_no, row_text, expand_sections=expand_sections)
         candidates = item if isinstance(item, list) else [item]
         for cand in candidates:
             if _semester_matches_filters(

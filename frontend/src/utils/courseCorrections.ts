@@ -87,43 +87,6 @@ export const DEPARTMENT_NAMES: Record<string, string> = {
 };
 
 /**
- * Extract room information from raw text data
- */
-export const extractRoomFromRawData = (item: TimetableItem): string | null => {
-  // Check if item has raw data fields
-  const rawText = (item as any).full_text || 
-                  (item as any).raw_cells?.join(' ') || 
-                  '';
-  
-  if (!rawText) return null;
-  
-  // Room extraction patterns (ordered by specificity)
-  const roomPatterns = [
-    /\b(Lab\s+\d+)\b/i,                    // Lab 02, Lab 05
-    /\b(Digital\s+Lab)\b/i,                // Digital Lab  
-    /\b(Computer\s+Lab)\b/i,               // Computer Lab
-    /\b(Room\s+\d+)\b/i,                   // Room 302
-    /\b([A-Z]{2}-\d+)\b/i,                 // NB-01, OB-05
-    /\b(\d{3})\b/,                         // 302, 401 (room numbers)
-    /\b(TBD)\b/i,                          // TBD rooms (treat as online)
-    /\b(Online|Virtual)\b/i,               // Online classes
-    /\b(Cancelled|Canceled)\b/i,           // Cancelled classes
-    /\b(Lab\s+\w+)\b/i                     // Other lab variations
-  ];
-  
-  for (const pattern of roomPatterns) {
-    const match = rawText.match(pattern);
-    if (match) {
-      const room = match[1];
-      // Convert TBD to Online for consistency
-      return room.toUpperCase() === 'TBD' ? 'Online' : room;
-    }
-  }
-  
-  return null;
-};
-
-/**
  * Validation functions
  */
 export const isValidData = (value: any): boolean => {
@@ -151,14 +114,6 @@ export const getCorrectedValue = (field: keyof CourseCorrection, item: Timetable
     const correction = COURSE_CORRECTIONS[course][field];
     if (correction) {
       return correction;
-    }
-  }
-  
-  // For room field, try to extract from raw data before using patterns
-  if (field === 'room') {
-    const extractedRoom = extractRoomFromRawData(item);
-    if (extractedRoom) {
-      return extractedRoom;
     }
   }
   

@@ -93,6 +93,32 @@ def test_parser_handles_meeting_room_numbered_admin_block():
     assert item['room'] == 'Meeting Room 1 Admin Block'
 
 
+def test_parser_strips_faculty_prefix_from_room_values():
+    email_body = (
+        '50\tManagement Sciences\tPhDMS\tPhD-1\tMS 6432 Strategic Entrepreneurial Marketing\tDr. Fahim A Khan\tDr. Fahim A Khan 206\t06:30 PM - 09:30 PM\tSZABIST University\nH-8/4 ISB Campus'
+    )
+
+    items = parse_html_with_advanced_pandas(email_body)
+    assert len(items) == 1
+
+    item = items[0]
+    assert item['faculty'] == 'Dr. Fahim A Khan'
+    assert item['room'] == '206'
+
+
+def test_parser_moves_leading_room_name_into_faculty():
+    email_body = (
+        '51\tComputer Sciences\tBSSE\tBSSE 5 A\tSECL 3604 Lab: Software Construction and Development (0,1)\tJawad\tNaseer Lab 01\t12:00 PM - 02:00 PM\tSZABIST University\nH-8/4 ISB Campus'
+    )
+
+    items = parse_html_with_advanced_pandas(email_body)
+    assert len(items) == 1
+
+    item = items[0]
+    assert item['faculty'] == 'Jawad Naseer'
+    assert item['room'] == 'Lab 01'
+
+
 def test_parser_handles_conference_room_and_trailing_course_suffix():
     email_body = (
         '19\tManagement Sciences\tMSBA /MSMS\tMSMS /MSBA\tPerformance Management\tDr. Faisal Malik\tConference Room\t11:10 AM - 02:10 PM\tSZABIST University\nH-8/4 ISB Campus\n'

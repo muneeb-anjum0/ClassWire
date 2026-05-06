@@ -3,8 +3,7 @@ import { TimetableItem } from '../../types/api';
 import { 
   isValidData as validateData, 
   getCorrectedValue, 
-  generateCourseTitle as generateTitle,
-  extractRoomFromRawData
+  generateCourseTitle as generateTitle
 } from '../../utils/courseCorrections';
 import { normalizeSemesterLabel } from '../../utils/semesterNormalization';
 
@@ -75,12 +74,6 @@ const getDisplayRoom = (item: TimetableItem): string => {
   // For other courses, check if original data is valid (including "-")
   if (validateData(room)) {
     return room!;
-  }
-  
-  // Try to extract from raw data if available
-  const extractedRoom = extractRoomFromRawData(item);
-  if (extractedRoom) {
-    return extractedRoom;
   }
   
   // Use centralized correction system
