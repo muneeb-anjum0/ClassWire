@@ -395,6 +395,100 @@
   color: #10b981;
 }
 
+html[data-theme='dark'] .login-page {
+  color: var(--theme-text-primary, #f2f4f7);
+  background:
+    radial-gradient(circle at 15% 10%, rgba(84, 91, 103, 0.2), transparent 34%),
+    radial-gradient(circle at 85% 85%, rgba(58, 63, 73, 0.2), transparent 34%),
+    linear-gradient(135deg, #0d0f12 0%, #13161b 42%, #08090b 100%);
+}
+
+html[data-theme='dark'] .login-page::before {
+  background-image:
+    linear-gradient(rgba(208, 212, 219, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(208, 212, 219, 0.06) 1px, transparent 1px);
+}
+
+html[data-theme='dark'] .login-shell {
+  border-color: var(--theme-border, #444a54);
+  background: color-mix(in srgb, var(--theme-surface, #111317) 88%, transparent);
+  box-shadow:
+    0 30px 90px rgba(5, 7, 10, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme='dark'] .login-visual {
+  background:
+    linear-gradient(145deg, rgba(84, 91, 103, 0.12), rgba(58, 63, 73, 0.12)),
+    color-mix(in srgb, var(--theme-surface-elevated, #171a1f) 88%, transparent);
+}
+
+html[data-theme='dark'] .orb-one,
+html[data-theme='dark'] .orb-two {
+  background: rgba(103, 112, 126, 0.18);
+}
+
+html[data-theme='dark'] .visual-card,
+html[data-theme='dark'] .schedule-item,
+html[data-theme='dark'] .floating-pill,
+html[data-theme='dark'] .login-panel,
+html[data-theme='dark'] .login-footer div {
+  border-color: var(--theme-border-soft, #3b4049);
+  background: color-mix(in srgb, var(--theme-surface-elevated, #171a1f) 88%, transparent);
+  box-shadow: 0 18px 40px rgba(5, 7, 10, 0.22);
+}
+
+html[data-theme='dark'] .schedule-item.active {
+  border-color: color-mix(in srgb, var(--theme-accent, #d7dbe2) 38%, var(--theme-border-soft, #3b4049));
+  background: linear-gradient(135deg, rgba(103, 112, 126, 0.2), rgba(70, 77, 89, 0.16));
+}
+
+html[data-theme='dark'] .schedule-time,
+html[data-theme='dark'] .gmail-icon-wrap {
+  background: var(--theme-surface, #111317);
+  color: var(--theme-accent-strong, #f7f8fa);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent, #d7dbe2) 28%, transparent);
+}
+
+html[data-theme='dark'] .visual-card-header,
+html[data-theme='dark'] .visual-card-header h2,
+html[data-theme='dark'] .schedule-item strong,
+html[data-theme='dark'] .login-copy h1 {
+  color: var(--theme-text-primary, #f2f4f7);
+}
+
+html[data-theme='dark'] .visual-label,
+html[data-theme='dark'] .eyebrow,
+html[data-theme='dark'] .visual-card-header svg,
+html[data-theme='dark'] .floating-pill svg,
+html[data-theme='dark'] .login-footer svg {
+  color: var(--theme-accent-strong, #f7f8fa);
+}
+
+html[data-theme='dark'] .schedule-item p,
+html[data-theme='dark'] .login-copy > p:last-child,
+html[data-theme='dark'] .floating-pill,
+html[data-theme='dark'] .login-footer div {
+  color: var(--theme-text-secondary, #d0d4db);
+}
+
+html[data-theme='dark'] .gmail-btn {
+  background: linear-gradient(135deg, #4d545f, #373d47);
+  color: #f8fafc;
+  box-shadow:
+    0 20px 45px rgba(5, 7, 10, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+html[data-theme='dark'] .gmail-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #5a6270, #444c58);
+}
+
+html[data-theme='dark'] .spinner {
+  border-color: rgba(208, 212, 219, 0.3);
+  border-top-color: var(--theme-text-primary, #f2f4f7);
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);

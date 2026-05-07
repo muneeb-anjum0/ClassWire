@@ -2,36 +2,121 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
   background: var(--theme-page-bg, #f8fafc);
   color: var(--theme-text-primary, #0f172a);
+  text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  overflow-x: hidden;
+  background: var(--theme-page-bg, #f8fafc);
+  color: var(--theme-text-primary, #0f172a);
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+#root {
+  min-height: 100vh;
+  isolation: isolate;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+button,
+[role='button'],
+a,
+input,
+textarea,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:not(:disabled),
+[role='button']:not(:disabled) {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+img,
+svg {
+  display: block;
+}
+
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+  font-family:
+    source-code-pro,
+    Menlo,
+    Monaco,
+    Consolas,
+    'Courier New',
     monospace;
 }
 
-/* Fast and smooth drop-from-above animations with bounce */
+/* Prevent iPhone/Safari input zoom */
+input,
+textarea,
+select {
+  font-size: 16px;
+}
+
+/* Better mobile scrolling */
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
+/* Timetable scrolling stays available */
+.timetable-container {
+  overflow: auto;
+}
+
+/* Smooth but not bouncy animations */
 @keyframes drop-bounce {
   0% {
     opacity: 0;
-    transform: translateY(-60px) scale(0.95);
+    transform: translateY(-18px) scale(0.985);
   }
-  60% {
-    opacity: 0.9;
-    transform: translateY(8px) scale(1.02);
-  }
-  80% {
-    opacity: 1;
-    transform: translateY(-4px) scale(1);
-  }
+
   100% {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -41,12 +126,9 @@ code {
 @keyframes drop-bounce-fast {
   0% {
     opacity: 0;
-    transform: translateY(-40px) scale(0.98);
+    transform: translateY(-12px) scale(0.99);
   }
-  70% {
-    opacity: 0.95;
-    transform: translateY(4px) scale(1.01);
-  }
+
   100% {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -56,12 +138,9 @@ code {
 @keyframes drop-subtle {
   0% {
     opacity: 0;
-    transform: translateY(-30px);
+    transform: translateY(-8px);
   }
-  70% {
-    opacity: 0.9;
-    transform: translateY(3px);
-  }
+
   100% {
     opacity: 1;
     transform: translateY(0);
@@ -71,16 +150,9 @@ code {
 @keyframes modal-drop {
   0% {
     opacity: 0;
-    transform: translateY(-80px) scale(0.9);
+    transform: translateY(10px) scale(0.985);
   }
-  60% {
-    opacity: 0.8;
-    transform: translateY(10px) scale(1.03);
-  }
-  85% {
-    opacity: 1;
-    transform: translateY(-3px) scale(1);
-  }
+
   100% {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -92,135 +164,189 @@ code {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+
   100% {
     opacity: 0;
-    transform: translateY(-30px) scale(1.02);
+    transform: translateY(-18px) scale(1.01);
   }
 }
 
-/* Animation classes */
+@keyframes gentle-pulse {
+  0%,
+  100% {
+    opacity: 0.32;
+  }
+
+  50% {
+    opacity: 0.58;
+  }
+}
+
+@keyframes subtle-shift {
+  0%,
+  100% {
+    transform: translateX(0) translateY(0);
+  }
+
+  50% {
+    transform: translateX(-1px) translateY(1px);
+  }
+}
+
+@keyframes floating {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
 .animate-drop-bounce {
-  animation: drop-bounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: drop-bounce 0.22s cubic-bezier(.2, .8, .2, 1);
   animation-fill-mode: both;
 }
 
 .animate-drop-bounce-fast {
-  animation: drop-bounce-fast 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: drop-bounce-fast 0.18s cubic-bezier(.2, .8, .2, 1);
   animation-fill-mode: both;
 }
 
 .animate-drop-subtle {
-  animation: drop-subtle 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  animation: drop-subtle 0.2s cubic-bezier(.2, .8, .2, 1);
   animation-fill-mode: both;
 }
 
 .animate-modal-drop {
-  animation: modal-drop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: modal-drop 0.2s cubic-bezier(.2, .8, .2, 1);
   animation-fill-mode: both;
 }
 
 .animate-login-exit-smooth {
-  animation: login-exit-smooth 0.4s ease-out forwards;
+  animation: login-exit-smooth 0.28s ease-out forwards;
 }
 
-/* Delay classes for staggered animations */
-.delay-50 { animation-delay: 50ms; }
-.delay-75 { animation-delay: 75ms; }
-.delay-100 { animation-delay: 100ms; }
-.delay-150 { animation-delay: 150ms; }
-.delay-200 { animation-delay: 200ms; }
-.delay-250 { animation-delay: 250ms; }
-.delay-300 { animation-delay: 300ms; }
-.delay-350 { animation-delay: 350ms; }
-.delay-400 { animation-delay: 400ms; }
-.delay-450 { animation-delay: 450ms; }
-.delay-500 { animation-delay: 500ms; }
-.delay-600 { animation-delay: 600ms; }
-.delay-700 { animation-delay: 700ms; }
-.delay-800 { animation-delay: 800ms; }
-
-/* Enable scrolling in timetable but hide scrollbars */
-.timetable-container {
-  overflow: auto;
+/* Delay classes */
+.delay-50 {
+  animation-delay: 50ms;
 }
 
-/* Subtle background animations for liveliness */
-@keyframes gentle-pulse {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 0.6; }
+.delay-75 {
+  animation-delay: 75ms;
 }
 
-@keyframes subtle-shift {
-  0%, 100% { transform: translateX(0) translateY(0); }
-  25% { transform: translateX(1px) translateY(-1px); }
-  50% { transform: translateX(-1px) translateY(1px); }
-  75% { transform: translateX(-1px) translateY(-1px); }
+.delay-100 {
+  animation-delay: 100ms;
 }
 
-@keyframes floating {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-3px); }
+.delay-150 {
+  animation-delay: 150ms;
 }
 
-/* Enhanced hover effects */
+.delay-200 {
+  animation-delay: 200ms;
+}
+
+.delay-250 {
+  animation-delay: 250ms;
+}
+
+.delay-300 {
+  animation-delay: 300ms;
+}
+
+.delay-350 {
+  animation-delay: 350ms;
+}
+
+.delay-400 {
+  animation-delay: 400ms;
+}
+
+.delay-450 {
+  animation-delay: 450ms;
+}
+
+.delay-500 {
+  animation-delay: 500ms;
+}
+
+.delay-600 {
+  animation-delay: 600ms;
+}
+
+.delay-700 {
+  animation-delay: 700ms;
+}
+
+.delay-800 {
+  animation-delay: 800ms;
+}
+
+/* Safer hover utilities */
 .enhanced-hover {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease;
 }
 
-.enhanced-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+@media (hover: hover) and (pointer: fine) {
+  .enhanced-hover:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 10px 25px -3px rgba(0, 0, 0, 0.1),
+      0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  }
+
+  .subtle-glow:hover {
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.2);
+  }
 }
 
-/* Gradient text for special elements */
 .gradient-text {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
   background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
 }
 
-/* Subtle glow effects */
 .subtle-glow {
   box-shadow: 0 0 20px rgba(59, 130, 246, 0.1);
 }
 
-.subtle-glow:hover {
-  box-shadow: 0 0 30px rgba(59, 130, 246, 0.2);
-}
-
-/* Mobile-specific touch optimizations */
+/* Mobile touch fixes WITHOUT forcing every button huge */
 @media (hover: none) and (pointer: coarse) {
-  /* Mobile device styles - remove hover effects and improve touch */
-  .hover\:from-blue-50:hover {
-    --tw-gradient-from: rgb(239 246 255) !important;
-  }
-  
-  .hover\:to-indigo-50:hover {
-    --tw-gradient-to: rgb(238 242 255) !important;
-  }
-  
-  .hover\:border-blue-300:hover {
-    border-color: rgb(147 197 253) !important;
-  }
-  
-  .hover\:scale-105:hover {
-    transform: scale(1.05) !important;
-  }
-  
-  /* Ensure buttons are properly sized for touch */
-  button {
-    min-height: 44px;
-    min-width: 44px;
-  }
-  
-  /* Remove tap highlight on iOS */
   * {
     -webkit-tap-highlight-color: transparent;
   }
+
+  button,
+  [role='button'],
+  a {
+    touch-action: manipulation;
+  }
+
+  .hover\:scale-105:hover {
+    transform: none !important;
+  }
+
+  .enhanced-hover:hover {
+    transform: none !important;
+    box-shadow: none !important;
+  }
 }
 
-/* Active states for touch devices */
+/* Optional utility for buttons that really need 44px touch targets */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+}
+
 .active\:from-blue-100:active {
   --tw-gradient-from: rgb(219 234 254) !important;
 }
@@ -239,4 +365,16 @@ code {
 
 .touch-manipulation {
   touch-action: manipulation;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }
