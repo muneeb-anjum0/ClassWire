@@ -108,7 +108,7 @@ const SemesterManager: React.FC<SemesterManagerProps> = ({
       alignItems: 'center',
       justifyContent: 'center',
       padding: '14px',
-      background: 'rgba(15, 23, 42, 0.48)',
+      background: 'rgba(0, 0, 0, 0.48)',
       backdropFilter: 'blur(8px)',
       WebkitBackdropFilter: 'blur(8px)',
       overscrollBehavior: 'contain',
@@ -390,15 +390,13 @@ const SemesterManager: React.FC<SemesterManagerProps> = ({
       padding: '0 17px',
       border: 'none',
       borderRadius: '999px',
-      background:
-        'linear-gradient(135deg, var(--theme-accent, #2563eb), color-mix(in srgb, var(--theme-accent, #2563eb) 76%, #22c55e))',
+      background: '#000000',
       color: '#ffffff',
       fontSize: '12.5px',
       fontWeight: 900,
       cursor: isSaving ? 'not-allowed' : 'pointer',
       opacity: isSaving ? 0.7 : 1,
-      boxShadow:
-        '0 8px 18px color-mix(in srgb, var(--theme-accent, #2563eb) 24%, transparent)',
+      boxShadow: '0 8px 18px rgba(0, 0, 0, 0.24)',
       transition: 'filter 150ms ease, transform 150ms ease, box-shadow 150ms ease',
     },
   };
@@ -559,6 +557,18 @@ const SemesterManager: React.FC<SemesterManagerProps> = ({
             .semester-list-scroll {
               max-height: 120px !important;
             }
+          }
+
+          html[data-theme='dark'] .semester-save-btn {
+            background: #1a1a1a !important;
+            color: #ffffff !important;
+            border: 1px solid #2a2a2a !important;
+            box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3) !important;
+          }
+
+          html[data-theme='dark'] .semester-save-btn:hover:not(:disabled) {
+            background: #242424 !important;
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4) !important;
           }
         `}
       </style>

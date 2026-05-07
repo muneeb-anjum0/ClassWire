@@ -397,10 +397,7 @@
 
 html[data-theme='dark'] .login-page {
   color: var(--theme-text-primary, #f2f4f7);
-  background:
-    radial-gradient(circle at 15% 10%, rgba(84, 91, 103, 0.2), transparent 34%),
-    radial-gradient(circle at 85% 85%, rgba(58, 63, 73, 0.2), transparent 34%),
-    linear-gradient(135deg, #0d0f12 0%, #13161b 42%, #08090b 100%);
+  background: #000000;
 }
 
 html[data-theme='dark'] .login-page::before {
@@ -418,9 +415,7 @@ html[data-theme='dark'] .login-shell {
 }
 
 html[data-theme='dark'] .login-visual {
-  background:
-    linear-gradient(145deg, rgba(84, 91, 103, 0.12), rgba(58, 63, 73, 0.12)),
-    color-mix(in srgb, var(--theme-surface-elevated, #171a1f) 88%, transparent);
+  background: #0a0a0a;
 }
 
 html[data-theme='dark'] .orb-one,
@@ -440,7 +435,7 @@ html[data-theme='dark'] .login-footer div {
 
 html[data-theme='dark'] .schedule-item.active {
   border-color: color-mix(in srgb, var(--theme-accent, #d7dbe2) 38%, var(--theme-border-soft, #3b4049));
-  background: linear-gradient(135deg, rgba(103, 112, 126, 0.2), rgba(70, 77, 89, 0.16));
+  background: #151515;
 }
 
 html[data-theme='dark'] .schedule-time,

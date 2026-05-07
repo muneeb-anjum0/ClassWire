@@ -28,6 +28,7 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({ status, message }) =>
         return {
           accent: 'status-indicator--loading',
           glass: 'status-indicator-glass--loading',
+          badge: 'status-indicator__badge--loading',
           title: 'theme-text-primary',
           subtitle: 'theme-text-secondary',
         };
@@ -35,6 +36,7 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({ status, message }) =>
         return {
           accent: 'status-indicator--success',
           glass: 'status-indicator-glass--success',
+          badge: 'status-indicator__badge--success',
           title: 'theme-text-primary',
           subtitle: 'theme-text-secondary',
         };
@@ -42,6 +44,7 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({ status, message }) =>
         return {
           accent: 'status-indicator--error',
           glass: 'status-indicator-glass--error',
+          badge: 'status-indicator__badge--error',
           title: 'theme-text-primary',
           subtitle: 'theme-text-secondary',
         };
@@ -49,6 +52,7 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({ status, message }) =>
         return {
           accent: 'status-indicator--warning',
           glass: 'status-indicator-glass--warning',
+          badge: 'status-indicator__badge--warning',
           title: 'theme-text-primary',
           subtitle: 'theme-text-secondary',
         };
@@ -56,6 +60,7 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({ status, message }) =>
         return {
           accent: 'status-indicator--idle',
           glass: 'status-indicator-glass--loading',
+          badge: 'status-indicator__badge--loading',
           title: 'theme-text-primary',
           subtitle: 'theme-text-secondary',
         };
@@ -177,6 +182,54 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({ status, message }) =>
               inset 0 1px 0 rgba(255, 255, 255, 0.2);
           }
 
+          html[data-theme='dark'] .status-indicator-glass {
+            box-shadow:
+              0 10px 28px rgba(0, 0, 0, 0.3),
+              inset 0 1px 0 rgba(255, 255, 255, 0.05);
+          }
+
+          html[data-theme='dark'] .status-indicator-glass--loading {
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: linear-gradient(135deg, rgba(10, 10, 10, 0.98), rgba(18, 18, 18, 0.98));
+          }
+
+          html[data-theme='dark'] .status-indicator-glass--loading::before {
+            background: none;
+          }
+
+          html[data-theme='dark'] .status-indicator-glass--success {
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: linear-gradient(135deg, rgba(10, 10, 10, 0.98), rgba(18, 18, 18, 0.98));
+          }
+
+          html[data-theme='dark'] .status-indicator-glass--success::before {
+            background: none;
+          }
+
+          html[data-theme='dark'] .status-indicator-glass--error {
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: linear-gradient(135deg, rgba(10, 10, 10, 0.98), rgba(18, 18, 18, 0.98));
+          }
+
+          html[data-theme='dark'] .status-indicator-glass--error::before {
+            background: none;
+          }
+
+          html[data-theme='dark'] .status-indicator-glass--warning {
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: linear-gradient(135deg, rgba(10, 10, 10, 0.98), rgba(18, 18, 18, 0.98));
+          }
+
+          html[data-theme='dark'] .status-indicator-glass--warning::before {
+            background: none;
+          }
+
+          html[data-theme='dark'] .status-indicator-glass:hover {
+            box-shadow:
+              0 14px 34px rgba(0, 0, 0, 0.28),
+              inset 0 1px 0 rgba(255, 255, 255, 0.08);
+          }
+
           .status-indicator-glass--loading:hover {
             border-color: rgba(96, 165, 250, 0.42);
           }
@@ -218,6 +271,17 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({ status, message }) =>
             background: color-mix(in srgb, var(--theme-surface-elevated, #ffffff) 86%, transparent);
           }
 
+          html[data-theme='dark'] .status-indicator__icon-clean {
+            color: rgba(255, 255, 255, 0.78);
+            background: rgba(255, 255, 255, 0.03);
+            border-color: rgba(255, 255, 255, 0.08);
+          }
+
+          html[data-theme='dark'] .status-indicator__icon-clean:hover {
+            color: rgba(255, 255, 255, 0.92);
+            background: rgba(255, 255, 255, 0.05);
+          }
+
           .status-indicator__badge-clean {
             border-radius: 999px !important;
             color: var(--theme-text-secondary, #64748b);
@@ -226,6 +290,36 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({ status, message }) =>
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
             font-weight: 700;
+          }
+
+          html[data-theme='dark'] .status-indicator__badge-clean {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(255, 255, 255, 0.08);
+            color: rgba(255, 255, 255, 0.86);
+          }
+
+          html[data-theme='dark'] .status-indicator__badge--loading {
+            color: rgb(96, 165, 250);
+            background: rgba(96, 165, 250, 0.12);
+            border-color: rgba(96, 165, 250, 0.28);
+          }
+
+          html[data-theme='dark'] .status-indicator__badge--success {
+            color: rgb(134, 239, 172);
+            background: rgba(134, 239, 172, 0.12);
+            border-color: rgba(134, 239, 172, 0.28);
+          }
+
+          html[data-theme='dark'] .status-indicator__badge--error {
+            color: rgb(248, 113, 113);
+            background: rgba(248, 113, 113, 0.12);
+            border-color: rgba(248, 113, 113, 0.28);
+          }
+
+          html[data-theme='dark'] .status-indicator__badge--warning {
+            color: rgb(251, 191, 36);
+            background: rgba(251, 191, 36, 0.12);
+            border-color: rgba(251, 191, 36, 0.28);
           }
 
           @keyframes statusIndicatorIn {
@@ -298,7 +392,7 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({ status, message }) =>
               </p>
 
               <span
-                className="status-indicator__badge status-indicator__badge-clean px-1.5 py-0.5 text-[0.64rem]"
+                className={`status-indicator__badge status-indicator__badge-clean ${theme.badge} px-1.5 py-0.5 text-[0.64rem]`}
               >
                 {status.toUpperCase()}
               </span>
