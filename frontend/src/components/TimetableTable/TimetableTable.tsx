@@ -148,20 +148,6 @@ const groupAndSortData = (items: TimetableItem[]) => {
 
       return timeA - timeB;
     });
-
-    if (!loggedSemesters.has(semester)) {
-      loggedSemesters.add(semester);
-      console.log(`Semester "${semester}" sorted order:`);
-
-      grouped[semester].forEach((item, index) => {
-        const displayTime = getDisplayTime(item);
-        const timeMinutes = parseTimeToMinutes(displayTime);
-
-        console.log(
-          `  ${index + 1}. ${getCourseCode(item)} - ${displayTime} (${timeMinutes} minutes)`
-        );
-      });
-    }
   });
 
   const sortedSemesters = Object.keys(grouped).sort();
