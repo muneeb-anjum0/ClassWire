@@ -38,7 +38,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Ensure API base URL is detected before performing auth-related network actions
     (async () => {
       try {
-        const selected = await apiService.initialize();
+        await apiService.initialize();
       } catch (e) {
       }
     })();
