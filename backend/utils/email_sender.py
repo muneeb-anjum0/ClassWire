@@ -1,8 +1,13 @@
 import os
+import base64
 import requests
 import smtplib
 from email.message import EmailMessage
 from typing import Dict, List
+
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 
 def _smtp_settings() -> Dict[str, object]:
@@ -199,6 +204,48 @@ def send_timetable_email(to_email: str, university_email: str, timetable: Dict) 
         server.ehlo()
         server.login(username, password)
         server.send_message(msg)
+
+
+def send_timetable_email_with_gmail(
+    to_email: str,
+    university_email: str,
+    timetable: Dict,
+    token_data: Dict,
+) -> None:
+    if not token_data:
+        raise RuntimeError('Gmail token data is missing. Sign in with Gmail again.')
+
+    scopes = token_data.get('scopes') or []
+    if 'https://www.googleapis.com/auth/gmail.send' not in scopes:
+        raise RuntimeError('Gmail send permission is missing. Sign out and sign in again to grant email sending access.')
+
+    credentials = Credentials(
+        token=token_data.get('token'),
+        refresh_token=token_data.get('refresh_token'),
+        token_uri=token_data.get('token_uri'),
+        client_id=token_data.get('client_id'),
+        client_secret=token_data.get('client_secret'),
+        scopes=scopes,
+    )
+    service = build('gmail', 'v1', credentials=credentials, cache_discovery=False)
+
+    subject = f"Inbox2Table: timetable for {timetable.get('for_day', 'today')}"
+    msg = EmailMessage()
+    msg['Subject'] = subject
+    msg['From'] = university_email
+    msg['To'] = to_email
+    msg.set_content(_build_plain_text(timetable))
+    msg.add_alternative(build_timetable_email_html(timetable, university_email), subtype='html')
+
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
+
+    try:
+        service.users().messages().send(
+            userId='me',
+            body={'raw': raw},
+        ).execute()
+    except HttpError as error:
+        raise RuntimeError(f"Gmail send failed: {error}") from error
 
 
 def send_timetable_email_with_resend(to_email: str, university_email: str, timetable: Dict) -> None:

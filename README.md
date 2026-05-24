@@ -251,7 +251,15 @@ Inbox2Table can send a formatted timetable email every day. The user enters a pe
 3. Formats the timetable as an HTML email.
 4. Sends it to the saved personal email address.
 
-Recommended backend environment variables on Render:
+No-domain setup on Render:
+
+Inbox2Table can send through the authenticated Gmail account using the Gmail API. This uses HTTPS and does not require SMTP ports or a custom domain. After deploying this version, users should sign out and sign in again once so Google grants the added `gmail.send` permission.
+
+```text
+AUTOMATION_SECRET=choose-a-long-random-secret
+```
+
+Optional Resend setup if you later verify a sender/domain:
 
 ```text
 RESEND_API_KEY=your-resend-api-key

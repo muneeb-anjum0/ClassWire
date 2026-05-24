@@ -270,6 +270,7 @@ def gmail_auth():
         flow = Flow.from_client_secrets_file(
             client_secrets_file,
             scopes=['https://www.googleapis.com/auth/gmail.readonly',
+                   'https://www.googleapis.com/auth/gmail.send',
                    'https://www.googleapis.com/auth/userinfo.email',
                    'https://www.googleapis.com/auth/userinfo.profile',
                    'openid']
@@ -336,6 +337,7 @@ def gmail_callback():
         flow = Flow.from_client_secrets_file(
             client_secrets_file,
             scopes=['https://www.googleapis.com/auth/gmail.readonly',
+                   'https://www.googleapis.com/auth/gmail.send',
                    'https://www.googleapis.com/auth/userinfo.email',
                    'https://www.googleapis.com/auth/userinfo.profile',
                    'openid']
