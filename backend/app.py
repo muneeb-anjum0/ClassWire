@@ -630,6 +630,7 @@ def get_config():
             'semester_filter': user_settings.get('allowed_semesters', settings.allowed_semesters),
             'personal_email': user_settings.get('personal_email', ''),
             'daily_email_enabled': user_settings.get('daily_email_enabled', bool(user_settings.get('personal_email'))),
+            'daily_email_last_result': user_settings.get('daily_email_last_result'),
             'schedule_time': f"{settings.check_hour_local:02d}:{settings.check_minute_local:02d}",
             'timezone': user_settings.get('timezone', settings.tz),
             'max_results': getattr(settings, 'max_results_per_semester', 50)
@@ -881,9 +882,30 @@ def send_test_timetable_email():
 
         from utils.daily_email import send_daily_timetable_email_for_user
 
+        user_settings['daily_email_last_result'] = {
+            'status': 'running',
+            'success': None,
+            'message': 'Test email job is running',
+            'started_at': datetime.now().isoformat(),
+        }
+        supabase_manager.save_user_settings(user['id'], user_settings)
+
         def run_email_job():
             try:
                 result = send_daily_timetable_email_for_user(user, user_settings)
+                latest_settings = supabase_manager.get_user_settings(user['id'])
+                latest_settings['daily_email_last_result'] = {
+                    **result,
+                    'status': 'success' if result.get('success') else 'error',
+                    'message': (
+                        f"Test email sent to {result.get('personal_email')}"
+                        if result.get('success')
+                        else result.get('error', 'Test email failed')
+                    ),
+                    'finished_at': datetime.now().isoformat(),
+                }
+                supabase_manager.save_user_settings(user['id'], latest_settings)
+
                 if result.get('success'):
                     logger.info(
                         "Test timetable email sent for %s to %s",
@@ -899,6 +921,16 @@ def send_test_timetable_email():
                     job_error,
                     exc_info=True,
                 )
+                latest_settings = supabase_manager.get_user_settings(user['id'])
+                latest_settings['daily_email_last_result'] = {
+                    'status': 'error',
+                    'success': False,
+                    'message': str(job_error),
+                    'error': str(job_error),
+                    'personal_email': user_settings.get('personal_email'),
+                    'finished_at': datetime.now().isoformat(),
+                }
+                supabase_manager.save_user_settings(user['id'], latest_settings)
 
         threading.Thread(target=run_email_job, daemon=True).start()
 

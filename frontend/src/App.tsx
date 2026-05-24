@@ -649,7 +649,28 @@ function AppContent() {
       if (response.success) {
         setStatus('success');
         setMessage(`Test email started for ${trimmedEmail}. Check your inbox in a minute.`);
-        await checkStatus();
+
+        for (let attempt = 0; attempt < 12; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 5000));
+          const latestConfig = await loadConfig();
+          const lastResult = latestConfig?.daily_email_last_result;
+
+          if (lastResult?.status === 'success') {
+            setStatus('success');
+            setMessage(lastResult.message || `Test email sent to ${trimmedEmail}.`);
+            await checkStatus();
+            return;
+          }
+
+          if (lastResult?.status === 'error') {
+            setStatus('error');
+            setMessage(lastResult.error || lastResult.message || 'Test email failed. Check SMTP settings.');
+            return;
+          }
+        }
+
+        setStatus('warning');
+        setMessage('Test email is still running or failed silently. Check Render logs for the background job.');
       } else {
         setStatus('error');
         setMessage(response.error || 'Failed to send test email');

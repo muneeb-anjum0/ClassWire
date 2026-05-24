@@ -39,6 +39,16 @@ export interface ConfigData {
   semester_filter: string[];
   personal_email?: string;
   daily_email_enabled?: boolean;
+  daily_email_last_result?: {
+    status?: 'running' | 'success' | 'error';
+    success?: boolean | null;
+    message?: string;
+    error?: string;
+    personal_email?: string;
+    items?: number;
+    started_at?: string;
+    finished_at?: string;
+  } | null;
   schedule_time: string;
   timezone: string;
   max_results: number;
