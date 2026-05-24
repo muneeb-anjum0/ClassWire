@@ -104,6 +104,7 @@ from database.supabase_client import supabase_manager
 OAUTH_STATE_TTL_SECONDS = 600
 oauth_state_store = {}
 outlook_sender_state_store = {}
+official_gmail_sender_state_store = {}
 
 
 def _cleanup_oauth_state_store():
@@ -158,6 +159,31 @@ def _pop_outlook_sender_state(state):
     return outlook_sender_state_store.pop(state, None)
 
 
+def _cleanup_official_gmail_sender_state_store():
+    now_ts = datetime.now().timestamp()
+    expired_states = [
+        state_key
+        for state_key, state_data in official_gmail_sender_state_store.items()
+        if now_ts - state_data.get('created_at', 0) > OAUTH_STATE_TTL_SECONDS
+    ]
+    for state_key in expired_states:
+        official_gmail_sender_state_store.pop(state_key, None)
+
+
+def _store_official_gmail_sender_state(state):
+    _cleanup_official_gmail_sender_state_store()
+    official_gmail_sender_state_store[state] = {
+        'created_at': datetime.now().timestamp(),
+    }
+
+
+def _pop_official_gmail_sender_state(state):
+    _cleanup_official_gmail_sender_state_store()
+    if not state:
+        return None
+    return official_gmail_sender_state_store.pop(state, None)
+
+
 def get_public_origin():
     """Return the externally reachable origin for this backend."""
     env_origin = os.environ.get('PUBLIC_BACKEND_URL')
@@ -178,6 +204,9 @@ def get_redirect_uri():
 
 def get_outlook_sender_redirect_uri():
     return get_public_origin() + '/api/auth/outlook-sender/callback'
+
+def get_official_gmail_sender_redirect_uri():
+    return get_public_origin() + '/api/auth/official-gmail-sender/callback'
 
 def get_public_request_url():
     """Return the externally visible URL for the current request."""
@@ -277,6 +306,131 @@ def oauth_config_info():
             'error': str(e),
             'timestamp': datetime.now().isoformat()
         }), 500
+
+@app.route('/api/auth/official-gmail-sender', methods=['GET'])
+def official_gmail_sender_auth():
+    """One-time OAuth flow for the official Inbox2Table Gmail sender mailbox."""
+    try:
+        expected_token = os.environ.get('AUTOMATION_SECRET', '')
+        provided_token = request.args.get('token', '')
+        auth_header = request.headers.get('Authorization', '')
+
+        if auth_header.startswith('Bearer '):
+            provided_token = auth_header.replace('Bearer ', '', 1).strip()
+
+        if not expected_token or provided_token != expected_token:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+
+        from google_auth_oauthlib.flow import Flow
+
+        client_secret_json = os.environ.get('OFFICIAL_GMAIL_CLIENT_SECRET_JSON', '').strip()
+        if not client_secret_json:
+            return jsonify({
+                'success': False,
+                'error': 'OFFICIAL_GMAIL_CLIENT_SECRET_JSON must be configured before connecting the sender Gmail account.'
+            }), 500
+
+        try:
+            client_config = json.loads(client_secret_json)
+        except json.JSONDecodeError as json_error:
+            return jsonify({
+                'success': False,
+                'error': f'OFFICIAL_GMAIL_CLIENT_SECRET_JSON is not valid JSON: {json_error}'
+            }), 500
+
+        flow = Flow.from_client_config(
+            client_config,
+            scopes=['https://www.googleapis.com/auth/gmail.send'],
+        )
+        flow.redirect_uri = get_official_gmail_sender_redirect_uri()
+
+        authorization_url, state = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true',
+            prompt='consent',
+        )
+        _store_official_gmail_sender_state(state)
+
+        if request.args.get('json') == '1':
+            return jsonify({
+                'success': True,
+                'auth_url': authorization_url,
+                'redirect_uri': get_official_gmail_sender_redirect_uri(),
+            })
+
+        return redirect(authorization_url)
+
+    except Exception as e:
+        logger.error(f"Official Gmail sender auth failed: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/auth/official-gmail-sender/callback', methods=['GET'])
+def official_gmail_sender_callback():
+    """Exchange the official Gmail sender OAuth code for a refresh token to store in Render."""
+    try:
+        if request.args.get('error'):
+            error = request.args.get('error_description') or request.args.get('error')
+            return jsonify({'success': False, 'error': error}), 400
+
+        state_data = _pop_official_gmail_sender_state(request.args.get('state'))
+        if not state_data:
+            return jsonify({'success': False, 'error': 'Invalid or expired official Gmail sender state. Start the connect flow again.'}), 400
+
+        from google_auth_oauthlib.flow import Flow
+
+        client_secret_json = os.environ.get('OFFICIAL_GMAIL_CLIENT_SECRET_JSON', '').strip()
+        if not client_secret_json:
+            return jsonify({'success': False, 'error': 'OFFICIAL_GMAIL_CLIENT_SECRET_JSON is not configured'}), 500
+
+        client_config = json.loads(client_secret_json)
+        flow = Flow.from_client_config(
+            client_config,
+            scopes=['https://www.googleapis.com/auth/gmail.send'],
+        )
+        flow.redirect_uri = get_official_gmail_sender_redirect_uri()
+        flow.fetch_token(authorization_response=get_public_request_url())
+
+        credentials = flow.credentials
+        if not credentials.refresh_token:
+            return jsonify({
+                'success': False,
+                'error': 'Google did not return a refresh token. Start the connect flow again and accept consent.'
+            }), 500
+
+        import html as html_escape
+
+        sender_email = os.environ.get('OFFICIAL_GMAIL_SENDER_EMAIL', 'inbox2table@gmail.com').strip()
+        safe_sender_email = html_escape.escape(sender_email)
+        safe_refresh_token = html_escape.escape(credentials.refresh_token)
+
+        html = f"""
+        <!doctype html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Inbox2Table Official Gmail Sender Connected</title>
+          </head>
+          <body style="font-family:Arial,Helvetica,sans-serif;max-width:760px;margin:40px auto;padding:0 18px;line-height:1.5;color:#111827;">
+            <h1>Official Gmail sender connected</h1>
+            <p>Sender mailbox: <strong>{safe_sender_email}</strong></p>
+            <p>Add these Render environment variables, then redeploy the backend:</p>
+            <pre style="white-space:pre-wrap;background:#f3f4f6;border:1px solid #d1d5db;border-radius:8px;padding:14px;">EMAIL_DELIVERY_PROVIDER=official_gmail
+OFFICIAL_GMAIL_SENDER_EMAIL={safe_sender_email}
+OFFICIAL_GMAIL_REFRESH_TOKEN={safe_refresh_token}</pre>
+            <p>This page shows a secret token once. Close it after updating Render.</p>
+          </body>
+        </html>
+        """
+        response = app.response_class(html, mimetype='text/html')
+        response.headers['Cache-Control'] = 'no-store'
+        response.headers['Pragma'] = 'no-cache'
+        return response
+
+    except Exception as e:
+        logger.error(f"Official Gmail sender callback failed: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/auth/outlook-sender', methods=['GET'])
 def outlook_sender_auth():

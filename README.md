@@ -155,7 +155,10 @@ The frontend runs on `http://localhost:3000` by default.
 | `SUPABASE_SERVICE_KEY` | Supabase service key used by the backend |
 | `CLIENT_SECRET_JSON` | Google OAuth client secret JSON for hosted environments |
 | `AUTOMATION_SECRET` | Secret token used to protect the daily email automation endpoint |
-| `EMAIL_DELIVERY_PROVIDER` | Email sender selection. Use `outlook` on Render to send from the official Inbox2Table mailbox. |
+| `EMAIL_DELIVERY_PROVIDER` | Email sender selection. Use `official_gmail` on Render to send from the official Inbox2Table mailbox. |
+| `OFFICIAL_GMAIL_CLIENT_SECRET_JSON` | Google OAuth client secret JSON for the official Gmail sender mailbox |
+| `OFFICIAL_GMAIL_REFRESH_TOKEN` | One-time OAuth refresh token for the official Gmail sender mailbox |
+| `OFFICIAL_GMAIL_SENDER_EMAIL` | Official Gmail sender address, for example `inbox2table@gmail.com` |
 | `OUTLOOK_CLIENT_ID` | Microsoft app client ID for the official sender mailbox |
 | `OUTLOOK_CLIENT_SECRET` | Microsoft app client secret for the official sender mailbox |
 | `OUTLOOK_REFRESH_TOKEN` | One-time OAuth refresh token for the official sender mailbox |
@@ -259,24 +262,22 @@ Inbox2Table can send a formatted timetable email every day. The user enters a pe
 
 No-domain setup on Render:
 
-Inbox2Table reads timetable emails from the student's Google account, but sends daily timetable emails from the official Outlook sender mailbox. This keeps university inbox access separate from delivery identity and avoids Render's blocked SMTP ports by using Microsoft Graph over HTTPS.
+Inbox2Table reads timetable emails from the student's Google account, but sends daily timetable emails from the official Gmail sender mailbox. This keeps university inbox access separate from delivery identity and avoids Render's blocked SMTP ports by using the Gmail API over HTTPS.
 
 ```text
 AUTOMATION_SECRET=choose-a-long-random-secret
-EMAIL_DELIVERY_PROVIDER=outlook
-OUTLOOK_TENANT=consumers
-OUTLOOK_SENDER_EMAIL=inbox2table@hotmail.com
-OUTLOOK_CLIENT_ID=your-microsoft-app-client-id
-OUTLOOK_CLIENT_SECRET=your-microsoft-app-client-secret
-OUTLOOK_REFRESH_TOKEN=generated-by-the-outlook-sender-connect-flow
+EMAIL_DELIVERY_PROVIDER=official_gmail
+OFFICIAL_GMAIL_SENDER_EMAIL=inbox2table@gmail.com
+OFFICIAL_GMAIL_CLIENT_SECRET_JSON={"web":{...}}
+OFFICIAL_GMAIL_REFRESH_TOKEN=generated-by-the-official-gmail-sender-connect-flow
 ```
 
-To generate `OUTLOOK_REFRESH_TOKEN`, create a Microsoft app registration for the official sender mailbox, add this web redirect URI, and then open the sender connect URL:
+To generate `OFFICIAL_GMAIL_REFRESH_TOKEN`, create a Google OAuth web client for the official sender mailbox, add this redirect URI, and then open the sender connect URL:
 
 ```text
-Redirect URI: https://your-backend.example.com/api/auth/outlook-sender/callback
-Connect URL: https://your-backend.example.com/api/auth/outlook-sender?token=YOUR_AUTOMATION_SECRET
-Microsoft permissions: Mail.Send, User.Read, offline_access
+Redirect URI: https://your-backend.example.com/api/auth/official-gmail-sender/callback
+Connect URL: https://your-backend.example.com/api/auth/official-gmail-sender?token=YOUR_AUTOMATION_SECRET
+Google scope: https://www.googleapis.com/auth/gmail.send
 ```
 
 SMTP can be used on hosts that allow outbound SMTP traffic:

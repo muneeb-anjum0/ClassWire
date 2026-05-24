@@ -1,5 +1,6 @@
 import os
 import base64
+import json
 import requests
 import smtplib
 from email.message import EmailMessage
@@ -7,6 +8,7 @@ from email.utils import formatdate, make_msgid
 from datetime import datetime
 from typing import Dict, List
 
+from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -32,7 +34,7 @@ def _resend_settings() -> Dict[str, str]:
 
 def get_email_delivery_provider() -> str:
     provider = os.environ.get('EMAIL_DELIVERY_PROVIDER', 'gmail').strip().lower()
-    if provider not in {'gmail', 'smtp', 'resend', 'outlook'}:
+    if provider not in {'gmail', 'official_gmail', 'smtp', 'resend', 'outlook'}:
         return 'gmail'
     return provider
 
@@ -201,6 +203,9 @@ def send_timetable_email(to_email: str, university_email: str, timetable: Dict) 
     if provider == 'outlook':
         return send_timetable_email_with_outlook(to_email, university_email, timetable)
 
+    if provider == 'official_gmail':
+        return send_timetable_email_with_official_gmail(to_email, university_email, timetable)
+
     if provider == 'gmail':
         raise RuntimeError('Gmail API sending requires token data. Use send_timetable_email_with_gmail.')
 
@@ -307,6 +312,76 @@ def send_timetable_email_with_gmail(
         'snippet': sent_message.get('snippet', ''),
         'subject': subject,
         'from': university_email,
+        'to': to_email,
+    }
+
+
+def _official_gmail_credentials() -> Credentials:
+    client_secret_json = os.environ.get('OFFICIAL_GMAIL_CLIENT_SECRET_JSON', '').strip()
+    refresh_token = os.environ.get('OFFICIAL_GMAIL_REFRESH_TOKEN', '').strip()
+
+    if not client_secret_json or not refresh_token:
+        raise RuntimeError('OFFICIAL_GMAIL_CLIENT_SECRET_JSON and OFFICIAL_GMAIL_REFRESH_TOKEN must be configured')
+
+    try:
+        client_config = json.loads(client_secret_json)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError('OFFICIAL_GMAIL_CLIENT_SECRET_JSON must be valid JSON') from exc
+
+    client_section = client_config.get('web') or client_config.get('installed') or {}
+    client_id = client_section.get('client_id')
+    client_secret = client_section.get('client_secret')
+    token_uri = client_section.get('token_uri', 'https://oauth2.googleapis.com/token')
+
+    if not client_id or not client_secret:
+        raise RuntimeError('OFFICIAL_GMAIL_CLIENT_SECRET_JSON is missing client_id or client_secret')
+
+    credentials = Credentials(
+        token=None,
+        refresh_token=refresh_token,
+        token_uri=token_uri,
+        client_id=client_id,
+        client_secret=client_secret,
+        scopes=['https://www.googleapis.com/auth/gmail.send'],
+    )
+    credentials.refresh(Request())
+    return credentials
+
+
+def send_timetable_email_with_official_gmail(to_email: str, university_email: str, timetable: Dict) -> Dict:
+    sender_email = os.environ.get('OFFICIAL_GMAIL_SENDER_EMAIL', '').strip()
+    if not sender_email:
+        raise RuntimeError('OFFICIAL_GMAIL_SENDER_EMAIL must be configured')
+
+    credentials = _official_gmail_credentials()
+    service = build('gmail', 'v1', credentials=credentials, cache_discovery=False)
+
+    subject = _build_subject(timetable)
+    msg = EmailMessage()
+    msg['Subject'] = subject
+    msg['From'] = f"Inbox2Table <{sender_email}>"
+    msg['To'] = to_email
+    msg['Date'] = formatdate(localtime=True)
+    msg['Message-ID'] = make_msgid(domain='inbox2table.local')
+    msg.set_content(_build_plain_text(timetable))
+    msg.add_alternative(build_timetable_email_html(timetable, university_email), subtype='html')
+
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
+
+    try:
+        send_result = service.users().messages().send(
+            userId='me',
+            body={'raw': raw},
+        ).execute()
+    except HttpError as error:
+        raise RuntimeError(f"Official Gmail send failed: {error}") from error
+
+    return {
+        'provider': 'official_gmail',
+        'message_id': send_result.get('id'),
+        'thread_id': send_result.get('threadId'),
+        'subject': subject,
+        'from': sender_email,
         'to': to_email,
     }
 
