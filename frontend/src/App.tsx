@@ -650,10 +650,16 @@ function AppContent() {
         setStatus('success');
         setMessage(`Test email started for ${trimmedEmail}. Check your inbox in a minute.`);
 
-        for (let attempt = 0; attempt < 12; attempt += 1) {
+        for (let attempt = 0; attempt < 18; attempt += 1) {
           await new Promise((resolve) => window.setTimeout(resolve, 5000));
           const latestConfig = await loadConfig();
           const lastResult = latestConfig?.daily_email_last_result;
+
+          if (lastResult?.status === 'scraping' || lastResult?.status === 'sending') {
+            setStatus('loading');
+            setMessage(lastResult.message || 'Test email job is still running...');
+            continue;
+          }
 
           if (lastResult?.status === 'success') {
             setStatus('success');

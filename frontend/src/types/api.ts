@@ -40,7 +40,7 @@ export interface ConfigData {
   personal_email?: string;
   daily_email_enabled?: boolean;
   daily_email_last_result?: {
-    status?: 'running' | 'success' | 'error';
+    status?: 'running' | 'scraping' | 'sending' | 'success' | 'error';
     success?: boolean | null;
     message?: string;
     error?: string;

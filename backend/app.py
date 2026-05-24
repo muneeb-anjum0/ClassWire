@@ -9,6 +9,7 @@ import logging
 import socket
 import re
 import threading
+import uuid
 from datetime import datetime
 from flask import Flask, jsonify, request, session, redirect
 from flask_cors import CORS
@@ -882,19 +883,35 @@ def send_test_timetable_email():
 
         from utils.daily_email import send_daily_timetable_email_for_user
 
+        job_id = str(uuid.uuid4())
+
+        def save_email_job_status(update):
+            latest_settings = supabase_manager.get_user_settings(user['id'])
+            latest_settings['daily_email_last_result'] = {
+                **(latest_settings.get('daily_email_last_result') or {}),
+                **update,
+                'job_id': job_id,
+                'updated_at': datetime.now().isoformat(),
+            }
+            supabase_manager.save_user_settings(user['id'], latest_settings)
+
         user_settings['daily_email_last_result'] = {
             'status': 'running',
             'success': None,
             'message': 'Test email job is running',
+            'job_id': job_id,
             'started_at': datetime.now().isoformat(),
         }
         supabase_manager.save_user_settings(user['id'], user_settings)
 
         def run_email_job():
             try:
-                result = send_daily_timetable_email_for_user(user, user_settings)
-                latest_settings = supabase_manager.get_user_settings(user['id'])
-                latest_settings['daily_email_last_result'] = {
+                result = send_daily_timetable_email_for_user(
+                    user,
+                    user_settings,
+                    status_callback=save_email_job_status,
+                )
+                save_email_job_status({
                     **result,
                     'status': 'success' if result.get('success') else 'error',
                     'message': (
@@ -903,8 +920,7 @@ def send_test_timetable_email():
                         else result.get('error', 'Test email failed')
                     ),
                     'finished_at': datetime.now().isoformat(),
-                }
-                supabase_manager.save_user_settings(user['id'], latest_settings)
+                })
 
                 if result.get('success'):
                     logger.info(
@@ -921,23 +937,49 @@ def send_test_timetable_email():
                     job_error,
                     exc_info=True,
                 )
-                latest_settings = supabase_manager.get_user_settings(user['id'])
-                latest_settings['daily_email_last_result'] = {
+                save_email_job_status({
                     'status': 'error',
                     'success': False,
                     'message': str(job_error),
                     'error': str(job_error),
                     'personal_email': user_settings.get('personal_email'),
                     'finished_at': datetime.now().isoformat(),
+                })
+
+        def mark_timeout_if_still_running():
+            try:
+                timeout_seconds = int(os.environ.get('TEST_EMAIL_TIMEOUT_SECONDS', '75'))
+                threading.Event().wait(timeout_seconds)
+                latest_settings = supabase_manager.get_user_settings(user['id'])
+                last_result = latest_settings.get('daily_email_last_result') or {}
+                if last_result.get('job_id') != job_id:
+                    return
+                if last_result.get('status') in {'success', 'error'}:
+                    return
+
+                stage = last_result.get('status') or 'running'
+                latest_settings['daily_email_last_result'] = {
+                    **last_result,
+                    'status': 'error',
+                    'success': False,
+                    'message': f"Test email timed out while {stage}. Check Render logs for the stuck step.",
+                    'error': f"Timed out while {stage}",
+                    'finished_at': datetime.now().isoformat(),
+                    'updated_at': datetime.now().isoformat(),
                 }
                 supabase_manager.save_user_settings(user['id'], latest_settings)
+                logger.error("Test timetable email timed out for %s while %s", user.get('email'), stage)
+            except Exception as timeout_error:
+                logger.error("Could not mark test timetable email timeout: %s", timeout_error, exc_info=True)
 
         threading.Thread(target=run_email_job, daemon=True).start()
+        threading.Thread(target=mark_timeout_if_still_running, daemon=True).start()
 
         return jsonify({
             'success': True,
             'message': 'Test timetable email started. Check your inbox in a minute.',
             'personal_email': user_settings.get('personal_email'),
+            'job_id': job_id,
             'timestamp': datetime.now().isoformat()
         }), 202
 

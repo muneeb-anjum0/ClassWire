@@ -1,5 +1,5 @@
 import logging
-from typing import Dict
+from typing import Callable, Dict, Optional
 
 from database.supabase_client import supabase_manager
 from scraper.scheduler import run_once
@@ -8,7 +8,11 @@ from utils.email_sender import send_timetable_email
 LOGGER = logging.getLogger(__name__)
 
 
-def send_daily_timetable_email_for_user(user: Dict, settings: Dict) -> Dict:
+def send_daily_timetable_email_for_user(
+    user: Dict,
+    settings: Dict,
+    status_callback: Optional[Callable[[Dict], None]] = None,
+) -> Dict:
     """Run the scraper for one user and send their formatted timetable email."""
     personal_email = (settings.get('personal_email') or '').strip()
     university_email = user.get('email')
@@ -31,6 +35,15 @@ def send_daily_timetable_email_for_user(user: Dict, settings: Dict) -> Dict:
         }
 
     LOGGER.info("Running daily timetable email for %s -> %s", university_email, personal_email)
+    if status_callback:
+        status_callback({
+            'status': 'scraping',
+            'success': None,
+            'message': 'Scraping the latest timetable from Gmail',
+            'personal_email': personal_email,
+            'user_email': university_email,
+        })
+
     scrape_result = run_once(
         user_email=university_email,
         show_table=False,
@@ -47,6 +60,16 @@ def send_daily_timetable_email_for_user(user: Dict, settings: Dict) -> Dict:
         }
 
     timetable = scrape_result.get('data') or {}
+    if status_callback:
+        status_callback({
+            'status': 'sending',
+            'success': None,
+            'message': f"Scrape completed. Sending email to {personal_email}",
+            'personal_email': personal_email,
+            'user_email': university_email,
+            'items': len(timetable.get('items') or []),
+        })
+
     send_timetable_email(personal_email, university_email, timetable)
     return {
         'user_email': university_email,
