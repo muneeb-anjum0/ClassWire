@@ -648,7 +648,7 @@ function AppContent() {
 
       if (response.success) {
         setStatus('success');
-        setMessage(`Test email sent to ${trimmedEmail}.`);
+        setMessage(`Test email started for ${trimmedEmail}. Check your inbox in a minute.`);
         await checkStatus();
       } else {
         setStatus('error');

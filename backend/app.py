@@ -8,6 +8,7 @@ import json
 import logging
 import socket
 import re
+import threading
 from datetime import datetime
 from flask import Flask, jsonify, request, session, redirect
 from flask_cors import CORS
@@ -880,11 +881,33 @@ def send_test_timetable_email():
 
         from utils.daily_email import send_daily_timetable_email_for_user
 
-        result = send_daily_timetable_email_for_user(user, user_settings)
+        def run_email_job():
+            try:
+                result = send_daily_timetable_email_for_user(user, user_settings)
+                if result.get('success'):
+                    logger.info(
+                        "Test timetable email sent for %s to %s",
+                        user.get('email'),
+                        result.get('personal_email'),
+                    )
+                else:
+                    logger.error("Test timetable email failed for %s: %s", user.get('email'), result)
+            except Exception as job_error:
+                logger.error(
+                    "Background test timetable email failed for %s: %s",
+                    user.get('email'),
+                    job_error,
+                    exc_info=True,
+                )
+
+        threading.Thread(target=run_email_job, daemon=True).start()
+
         return jsonify({
-            **result,
+            'success': True,
+            'message': 'Test timetable email started. Check your inbox in a minute.',
+            'personal_email': user_settings.get('personal_email'),
             'timestamp': datetime.now().isoformat()
-        }), 200 if result.get('success') else 400
+        }), 202
 
     except Exception as e:
         logger.error(f"Test timetable email failed: {e}", exc_info=True)
