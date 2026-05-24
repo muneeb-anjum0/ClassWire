@@ -155,6 +155,7 @@ The frontend runs on `http://localhost:3000` by default.
 | `SUPABASE_SERVICE_KEY` | Supabase service key used by the backend |
 | `CLIENT_SECRET_JSON` | Google OAuth client secret JSON for hosted environments |
 | `AUTOMATION_SECRET` | Secret token used to protect the daily email automation endpoint |
+| `EMAIL_DELIVERY_PROVIDER` | Email sender selection: `gmail` by default, or `smtp`/`resend` if explicitly needed |
 | `RESEND_API_KEY` | Recommended email API key for Render deployments |
 | `EMAIL_FROM` | Verified sender address for API-based email |
 | `SMTP_HOST` | SMTP host for non-Render/paid deployments |
@@ -257,6 +258,7 @@ Inbox2Table can send through the authenticated Gmail account using the Gmail API
 
 ```text
 AUTOMATION_SECRET=choose-a-long-random-secret
+EMAIL_DELIVERY_PROVIDER=gmail
 ```
 
 Optional Resend setup if you later verify a sender/domain:
@@ -266,6 +268,7 @@ RESEND_API_KEY=your-resend-api-key
 EMAIL_FROM=Inbox2Table <your-verified-sender@example.com>
 SMTP_FROM_NAME=Inbox2Table
 AUTOMATION_SECRET=choose-a-long-random-secret
+EMAIL_DELIVERY_PROVIDER=smtp
 ```
 
 SMTP can be used on hosts that allow outbound SMTP traffic:

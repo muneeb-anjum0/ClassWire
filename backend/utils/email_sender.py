@@ -3,6 +3,7 @@ import base64
 import requests
 import smtplib
 from email.message import EmailMessage
+from datetime import datetime
 from typing import Dict, List
 
 from google.oauth2.credentials import Credentials
@@ -26,6 +27,13 @@ def _resend_settings() -> Dict[str, str]:
         'from_email': os.environ.get('EMAIL_FROM') or os.environ.get('SMTP_USERNAME', ''),
         'from_name': os.environ.get('SMTP_FROM_NAME', 'Inbox2Table'),
     }
+
+
+def get_email_delivery_provider() -> str:
+    provider = os.environ.get('EMAIL_DELIVERY_PROVIDER', 'gmail').strip().lower()
+    if provider not in {'gmail', 'smtp', 'resend'}:
+        return 'gmail'
+    return provider
 
 
 def _escape(value: object) -> str:
@@ -178,9 +186,14 @@ def build_timetable_email_html(timetable: Dict, university_email: str) -> str:
 
 
 def send_timetable_email(to_email: str, university_email: str, timetable: Dict) -> None:
-    if os.environ.get('RESEND_API_KEY'):
+    provider = get_email_delivery_provider()
+
+    if provider == 'resend':
         send_timetable_email_with_resend(to_email, university_email, timetable)
         return
+
+    if provider == 'gmail':
+        raise RuntimeError('Gmail API sending requires token data. Use send_timetable_email_with_gmail.')
 
     smtp = _smtp_settings()
     username = str(smtp['username'])
@@ -219,6 +232,13 @@ def send_timetable_email_with_gmail(
     if 'https://www.googleapis.com/auth/gmail.send' not in scopes:
         raise RuntimeError('Gmail send permission is missing. Sign out and sign in again to grant email sending access.')
 
+    expiry = None
+    if token_data.get('expiry'):
+        try:
+            expiry = datetime.fromisoformat(str(token_data['expiry']).replace('Z', '+00:00'))
+        except Exception:
+            expiry = None
+
     credentials = Credentials(
         token=token_data.get('token'),
         refresh_token=token_data.get('refresh_token'),
@@ -226,6 +246,7 @@ def send_timetable_email_with_gmail(
         client_id=token_data.get('client_id'),
         client_secret=token_data.get('client_secret'),
         scopes=scopes,
+        expiry=expiry,
     )
     service = build('gmail', 'v1', credentials=credentials, cache_discovery=False)
 

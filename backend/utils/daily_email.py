@@ -4,7 +4,7 @@ from typing import Callable, Dict, Optional
 
 from database.supabase_client import supabase_manager
 from scraper.scheduler import run_once
-from utils.email_sender import send_timetable_email, send_timetable_email_with_gmail
+from utils.email_sender import get_email_delivery_provider, send_timetable_email, send_timetable_email_with_gmail
 
 LOGGER = logging.getLogger(__name__)
 
@@ -81,7 +81,9 @@ def send_daily_timetable_email_for_user(
             'items': len(timetable.get('items') or []),
         })
 
-    if not os.environ.get('RESEND_API_KEY') and not os.environ.get('SMTP_PASSWORD'):
+    provider = get_email_delivery_provider()
+
+    if provider == 'gmail':
         token_data = supabase_manager.get_user_tokens(user_id)
         send_timetable_email_with_gmail(personal_email, university_email, timetable, token_data)
     else:
