@@ -1,6 +1,25 @@
 import axios, { AxiosResponse } from 'axios';
 import { ApiResponse, TimetableData, ConfigData, StatusData } from '../types/api';
 
+export const BACKEND_WAKE_EVENT = 'backend-wake-state';
+const BACKEND_WAKE_DELAY_MS = 4500;
+
+const getBackendWakeMessage = (url?: string) => {
+  if (url?.includes('/api/scrape')) {
+    return 'Backend is waking up on Render. The parser will start as soon as the service is ready.';
+  }
+
+  return 'Backend is waking up on Render. First request after inactivity can take about a minute.';
+};
+
+const emitBackendWakeState = (active: boolean, message?: string) => {
+  window.dispatchEvent(
+    new CustomEvent(BACKEND_WAKE_EVENT, {
+      detail: { active, message },
+    })
+  );
+};
+
 // Dynamic API base URL helper
 const getLocalApiBaseUrl = () => {
   const hostname = window.location.hostname;
@@ -43,6 +62,15 @@ const rateLimiter = {
 
 // Add request interceptor to include user email in headers
 api.interceptors.request.use((config) => {
+  const wakeTimer = window.setTimeout(() => {
+    emitBackendWakeState(true, getBackendWakeMessage(config.url));
+  }, BACKEND_WAKE_DELAY_MS);
+
+  (config as any).metadata = {
+    ...((config as any).metadata || {}),
+    wakeTimer,
+  };
+
   const user = localStorage.getItem('user');
   if (user) {
     try {
@@ -66,10 +94,22 @@ api.interceptors.request.use((config) => {
 // Add response interceptor to log all responses
 api.interceptors.response.use(
   (response) => {
+    const wakeTimer = (response.config as any).metadata?.wakeTimer;
+    if (wakeTimer) {
+      window.clearTimeout(wakeTimer);
+      emitBackendWakeState(false);
+    }
+
     console.log('✅ [API RESPONSE]', response.config.url, 'Status:', response.status, 'Data:', response.data); // Debug
     return response;
   },
   (error) => {
+    const wakeTimer = (error.config as any)?.metadata?.wakeTimer;
+    if (wakeTimer) {
+      window.clearTimeout(wakeTimer);
+      emitBackendWakeState(false);
+    }
+
     console.error('❌ [API ERROR]', error.config?.url, 'Status:', error.response?.status, 'Error:', error.response?.data); // Debug
     return Promise.reject(error);
   }

@@ -337,7 +337,8 @@
   animation: spin 760ms linear infinite;
 }
 
-.error-box {
+.error-box,
+.wake-box {
   max-width: 460px;
   display: flex;
   align-items: flex-start;
@@ -350,24 +351,41 @@
   color: #991b1b;
 }
 
-.err-icon {
+.wake-box {
+  border-color: rgba(59, 130, 246, 0.2);
+  background: rgba(239, 246, 255, 0.92);
+  color: #1d4ed8;
+}
+
+.err-icon,
+.wake-icon {
   width: 20px;
   height: 20px;
   flex: 0 0 auto;
   margin-top: 2px;
 }
 
-.err-title {
+.wake-icon {
+  animation: spin 760ms linear infinite;
+}
+
+.err-title,
+.wake-title {
   margin: 0;
   font-size: 14px;
   font-weight: 850;
 }
 
-.err-desc {
+.err-desc,
+.wake-desc {
   margin: 4px 0 0;
   color: #b91c1c;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.wake-desc {
+  color: #2563eb;
 }
 
 .login-footer {
@@ -482,6 +500,16 @@ html[data-theme='dark'] .gmail-btn:hover:not(:disabled) {
 html[data-theme='dark'] .spinner {
   border-color: rgba(208, 212, 219, 0.3);
   border-top-color: var(--theme-text-primary, #f2f4f7);
+}
+
+html[data-theme='dark'] .wake-box {
+  border-color: rgba(96, 165, 250, 0.26);
+  background: rgba(37, 99, 235, 0.12);
+  color: #93c5fd;
+}
+
+html[data-theme='dark'] .wake-desc {
+  color: #bfdbfe;
 }
 
 @keyframes spin {

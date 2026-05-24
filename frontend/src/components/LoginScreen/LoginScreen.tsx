@@ -1,14 +1,26 @@
-import React, { useState } from 'react';
-import { AlertCircle, CalendarDays, ShieldCheck, Sparkles } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { AlertCircle, CalendarDays, Loader, ShieldCheck, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { BACKEND_WAKE_EVENT } from '../../services/api';
 import './LoginScreen.css';
 
 const LoginScreen: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [isExiting, setIsExiting] = useState(false);
+  const [wakeMessage, setWakeMessage] = useState('');
 
   const { loginWithGmail } = useAuth();
+
+  useEffect(() => {
+    const handleBackendWakeState = (event: Event) => {
+      const { active, message } = (event as CustomEvent<{ active: boolean; message?: string }>).detail;
+      setWakeMessage(active ? message || 'Backend is waking up on Render. First request after inactivity can take about a minute.' : '');
+    };
+
+    window.addEventListener(BACKEND_WAKE_EVENT, handleBackendWakeState);
+    return () => window.removeEventListener(BACKEND_WAKE_EVENT, handleBackendWakeState);
+  }, []);
 
   const handleGmailLogin = async () => {
     if (isLoading) return;
@@ -111,8 +123,18 @@ const LoginScreen: React.FC = () => {
                 <img src="/gmail.svg" alt="" className="gmail-mark" />
               )}
             </span>
-            <span>{isLoading ? 'Connecting...' : 'Continue with Gmail'}</span>
+            <span>{wakeMessage ? 'Waking backend...' : isLoading ? 'Connecting...' : 'Continue with Gmail'}</span>
           </button>
+
+          {wakeMessage && (
+            <div className="wake-box" role="status">
+              <Loader className="wake-icon" />
+              <div>
+                <p className="wake-title">Starting backend</p>
+                <p className="wake-desc">{wakeMessage}</p>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="error-box" role="alert">

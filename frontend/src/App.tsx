@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
-import { apiService } from './services/api';
+import { BACKEND_WAKE_EVENT, apiService } from './services/api';
 import { TimetableData, ApiResponse, StatusData, ConfigData } from './types/api';
 import TimetableTable from './components/TimetableTable/TimetableTable';
 import SummaryStats from './components/SummaryStats/SummaryStats';
@@ -139,6 +139,7 @@ function AppContent() {
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const [showSemesterManager, setShowSemesterManager] = useState(false);
   const [operationInProgress, setOperationInProgress] = useState(false);
+  const [isBackendWaking, setIsBackendWaking] = useState(false);
 
   const clearLogoutConfirmTimer = () => {
     if (logoutConfirmTimer.current !== null) {
@@ -178,6 +179,21 @@ function AppContent() {
     return () => {
       clearLogoutConfirmTimer();
     };
+  }, []);
+
+  useEffect(() => {
+    const handleBackendWakeState = (event: Event) => {
+      const { active, message: wakeMessage } = (event as CustomEvent<{ active: boolean; message?: string }>).detail;
+      setIsBackendWaking(active);
+
+      if (active) {
+        setStatus('loading');
+        setMessage(wakeMessage || 'Backend is waking up on Render. First request after inactivity can take about a minute.');
+      }
+    };
+
+    window.addEventListener(BACKEND_WAKE_EVENT, handleBackendWakeState);
+    return () => window.removeEventListener(BACKEND_WAKE_EVENT, handleBackendWakeState);
   }, []);
 
   useEffect(() => {
@@ -813,7 +829,7 @@ function AppContent() {
             </section>
           )}
 
-          {(status !== 'idle' || config) && (
+          {(status !== 'idle' || config || isBackendWaking) && (
             <StatusIndicator
               status={
                 status === 'loading'
@@ -827,7 +843,9 @@ function AppContent() {
                   : 'success'
               }
               message={
-                message ||
+                isBackendWaking
+                  ? message || 'Backend is waking up on Render. First request after inactivity can take about a minute.'
+                  : message ||
                 (detectedSemesters.length > 0
                   ? `${detectedSemesters.length} semester(s) configured`
                   : 'Ready to configure semesters')

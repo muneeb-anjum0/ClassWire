@@ -70,7 +70,9 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({ status, message }) =>
   const theme = getStatusTheme();
 
   const statusLabel =
-    status === 'loading'
+    status === 'loading' && message.toLowerCase().includes('backend is waking')
+      ? 'Starting backend'
+      : status === 'loading'
       ? 'Running scraper'
       : status === 'success'
       ? 'Ready'
