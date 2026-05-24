@@ -13,6 +13,7 @@ import uuid
 from datetime import datetime
 from flask import Flask, jsonify, request, session, redirect
 from flask_cors import CORS
+from urllib.parse import urlencode
 
 # Backend imports are now local since all backend code is in this directory
 
@@ -102,6 +103,7 @@ from database.supabase_client import supabase_manager
 
 OAUTH_STATE_TTL_SECONDS = 600
 oauth_state_store = {}
+outlook_sender_state_store = {}
 
 
 def _cleanup_oauth_state_store():
@@ -131,6 +133,31 @@ def _pop_oauth_state(state):
     return oauth_state_store.pop(state, None)
 
 
+def _cleanup_outlook_sender_state_store():
+    now_ts = datetime.now().timestamp()
+    expired_states = [
+        state_key
+        for state_key, state_data in outlook_sender_state_store.items()
+        if now_ts - state_data.get('created_at', 0) > OAUTH_STATE_TTL_SECONDS
+    ]
+    for state_key in expired_states:
+        outlook_sender_state_store.pop(state_key, None)
+
+
+def _store_outlook_sender_state(state):
+    _cleanup_outlook_sender_state_store()
+    outlook_sender_state_store[state] = {
+        'created_at': datetime.now().timestamp(),
+    }
+
+
+def _pop_outlook_sender_state(state):
+    _cleanup_outlook_sender_state_store()
+    if not state:
+        return None
+    return outlook_sender_state_store.pop(state, None)
+
+
 def get_public_origin():
     """Return the externally reachable origin for this backend."""
     env_origin = os.environ.get('PUBLIC_BACKEND_URL')
@@ -148,6 +175,9 @@ def get_public_origin():
 
 def get_redirect_uri():
     return get_public_origin() + '/api/auth/gmail/callback'
+
+def get_outlook_sender_redirect_uri():
+    return get_public_origin() + '/api/auth/outlook-sender/callback'
 
 def get_public_request_url():
     """Return the externally visible URL for the current request."""
@@ -247,6 +277,162 @@ def oauth_config_info():
             'error': str(e),
             'timestamp': datetime.now().isoformat()
         }), 500
+
+@app.route('/api/auth/outlook-sender', methods=['GET'])
+def outlook_sender_auth():
+    """One-time OAuth flow for the official Inbox2Table Outlook sender mailbox."""
+    try:
+        expected_token = os.environ.get('AUTOMATION_SECRET', '')
+        provided_token = request.args.get('token', '')
+        auth_header = request.headers.get('Authorization', '')
+
+        if auth_header.startswith('Bearer '):
+            provided_token = auth_header.replace('Bearer ', '', 1).strip()
+
+        if not expected_token or provided_token != expected_token:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+
+        client_id = os.environ.get('OUTLOOK_CLIENT_ID', '').strip()
+        client_secret = os.environ.get('OUTLOOK_CLIENT_SECRET', '').strip()
+        tenant = os.environ.get('OUTLOOK_TENANT', 'consumers').strip() or 'consumers'
+
+        if not client_id or not client_secret:
+            return jsonify({
+                'success': False,
+                'error': 'OUTLOOK_CLIENT_ID and OUTLOOK_CLIENT_SECRET must be configured before connecting the sender mailbox.'
+            }), 500
+
+        state = uuid.uuid4().hex
+        _store_outlook_sender_state(state)
+
+        scope = 'offline_access https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read'
+        auth_url = (
+            f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize?"
+            + urlencode({
+                'client_id': client_id,
+                'response_type': 'code',
+                'redirect_uri': get_outlook_sender_redirect_uri(),
+                'response_mode': 'query',
+                'scope': scope,
+                'state': state,
+                'prompt': 'consent',
+            })
+        )
+
+        if request.args.get('json') == '1':
+            return jsonify({
+                'success': True,
+                'auth_url': auth_url,
+                'redirect_uri': get_outlook_sender_redirect_uri(),
+            })
+
+        return redirect(auth_url)
+
+    except Exception as e:
+        logger.error(f"Outlook sender auth failed: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/auth/outlook-sender/callback', methods=['GET'])
+def outlook_sender_callback():
+    """Exchange the official sender OAuth code for a refresh token to store in Render."""
+    try:
+        if request.args.get('error'):
+            error = request.args.get('error_description') or request.args.get('error')
+            return jsonify({'success': False, 'error': error}), 400
+
+        state_data = _pop_outlook_sender_state(request.args.get('state'))
+        if not state_data:
+            return jsonify({'success': False, 'error': 'Invalid or expired Outlook sender state. Start the connect flow again.'}), 400
+
+        code = request.args.get('code')
+        if not code:
+            return jsonify({'success': False, 'error': 'Missing Outlook authorization code'}), 400
+
+        client_id = os.environ.get('OUTLOOK_CLIENT_ID', '').strip()
+        client_secret = os.environ.get('OUTLOOK_CLIENT_SECRET', '').strip()
+        tenant = os.environ.get('OUTLOOK_TENANT', 'consumers').strip() or 'consumers'
+        scope = 'offline_access https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read'
+
+        import requests
+
+        token_response = requests.post(
+            f'https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token',
+            data={
+                'client_id': client_id,
+                'client_secret': client_secret,
+                'grant_type': 'authorization_code',
+                'code': code,
+                'redirect_uri': get_outlook_sender_redirect_uri(),
+                'scope': scope,
+            },
+            timeout=30,
+        )
+
+        if token_response.status_code >= 400:
+            return jsonify({
+                'success': False,
+                'error': f"Outlook token exchange failed {token_response.status_code}: {token_response.text}",
+            }), 500
+
+        token_json = token_response.json()
+        refresh_token = token_json.get('refresh_token')
+        access_token = token_json.get('access_token')
+
+        if not refresh_token:
+            return jsonify({
+                'success': False,
+                'error': 'Microsoft did not return a refresh token. Start the connect flow again and accept consent.',
+            }), 500
+
+        mailbox = os.environ.get('OUTLOOK_SENDER_EMAIL', '').strip()
+        if access_token:
+            try:
+                profile_response = requests.get(
+                    'https://graph.microsoft.com/v1.0/me',
+                    headers={'Authorization': f'Bearer {access_token}'},
+                    timeout=30,
+                )
+                if profile_response.status_code < 400:
+                    profile = profile_response.json()
+                    mailbox = profile.get('mail') or profile.get('userPrincipalName') or mailbox
+            except Exception as profile_error:
+                logger.warning(f"Could not verify Outlook sender profile: {profile_error}")
+
+        import html as html_escape
+
+        safe_mailbox = html_escape.escape(mailbox or 'inbox2table@hotmail.com')
+        safe_tenant = html_escape.escape(tenant)
+        safe_refresh_token = html_escape.escape(refresh_token)
+
+        html = f"""
+        <!doctype html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Inbox2Table Outlook Sender Connected</title>
+          </head>
+          <body style="font-family:Arial,Helvetica,sans-serif;max-width:760px;margin:40px auto;padding:0 18px;line-height:1.5;color:#111827;">
+            <h1>Outlook sender connected</h1>
+            <p>Signed in mailbox: <strong>{safe_mailbox}</strong></p>
+            <p>Add these Render environment variables, then redeploy the backend:</p>
+            <pre style="white-space:pre-wrap;background:#f3f4f6;border:1px solid #d1d5db;border-radius:8px;padding:14px;">EMAIL_DELIVERY_PROVIDER=outlook
+OUTLOOK_TENANT={safe_tenant}
+OUTLOOK_SENDER_EMAIL={safe_mailbox}
+OUTLOOK_REFRESH_TOKEN={safe_refresh_token}</pre>
+            <p>This page shows a secret token once. Close it after updating Render.</p>
+          </body>
+        </html>
+        """
+        response = app.response_class(html, mimetype='text/html')
+        response.headers['Cache-Control'] = 'no-store'
+        response.headers['Pragma'] = 'no-cache'
+        return response
+
+    except Exception as e:
+        logger.error(f"Outlook sender callback failed: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/auth/gmail', methods=['GET'])
 def gmail_auth():

@@ -155,8 +155,13 @@ The frontend runs on `http://localhost:3000` by default.
 | `SUPABASE_SERVICE_KEY` | Supabase service key used by the backend |
 | `CLIENT_SECRET_JSON` | Google OAuth client secret JSON for hosted environments |
 | `AUTOMATION_SECRET` | Secret token used to protect the daily email automation endpoint |
-| `EMAIL_DELIVERY_PROVIDER` | Email sender selection: `gmail` by default, or `smtp`/`resend` if explicitly needed |
-| `RESEND_API_KEY` | Recommended email API key for Render deployments |
+| `EMAIL_DELIVERY_PROVIDER` | Email sender selection. Use `outlook` on Render to send from the official Inbox2Table mailbox. |
+| `OUTLOOK_CLIENT_ID` | Microsoft app client ID for the official sender mailbox |
+| `OUTLOOK_CLIENT_SECRET` | Microsoft app client secret for the official sender mailbox |
+| `OUTLOOK_REFRESH_TOKEN` | One-time OAuth refresh token for the official sender mailbox |
+| `OUTLOOK_SENDER_EMAIL` | Official sender address, for example `inbox2table@hotmail.com` |
+| `OUTLOOK_TENANT` | Microsoft tenant for the sender flow. Use `consumers` for Hotmail/Outlook personal accounts. |
+| `RESEND_API_KEY` | Optional email API key if a verified sender/domain is added later |
 | `EMAIL_FROM` | Verified sender address for API-based email |
 | `SMTP_HOST` | SMTP host for non-Render/paid deployments |
 | `SMTP_PORT` | SMTP port for non-Render/paid deployments |
@@ -254,21 +259,24 @@ Inbox2Table can send a formatted timetable email every day. The user enters a pe
 
 No-domain setup on Render:
 
-Inbox2Table can send through the authenticated Gmail account using the Gmail API. This uses HTTPS and does not require SMTP ports or a custom domain. After deploying this version, users should sign out and sign in again once so Google grants the added `gmail.send` permission.
+Inbox2Table reads timetable emails from the student's Google account, but sends daily timetable emails from the official Outlook sender mailbox. This keeps university inbox access separate from delivery identity and avoids Render's blocked SMTP ports by using Microsoft Graph over HTTPS.
 
 ```text
 AUTOMATION_SECRET=choose-a-long-random-secret
-EMAIL_DELIVERY_PROVIDER=gmail
+EMAIL_DELIVERY_PROVIDER=outlook
+OUTLOOK_TENANT=consumers
+OUTLOOK_SENDER_EMAIL=inbox2table@hotmail.com
+OUTLOOK_CLIENT_ID=your-microsoft-app-client-id
+OUTLOOK_CLIENT_SECRET=your-microsoft-app-client-secret
+OUTLOOK_REFRESH_TOKEN=generated-by-the-outlook-sender-connect-flow
 ```
 
-Optional Resend setup if you later verify a sender/domain:
+To generate `OUTLOOK_REFRESH_TOKEN`, create a Microsoft app registration for the official sender mailbox, add this web redirect URI, and then open the sender connect URL:
 
 ```text
-RESEND_API_KEY=your-resend-api-key
-EMAIL_FROM=Inbox2Table <your-verified-sender@example.com>
-SMTP_FROM_NAME=Inbox2Table
-AUTOMATION_SECRET=choose-a-long-random-secret
-EMAIL_DELIVERY_PROVIDER=smtp
+Redirect URI: https://your-backend.example.com/api/auth/outlook-sender/callback
+Connect URL: https://your-backend.example.com/api/auth/outlook-sender?token=YOUR_AUTOMATION_SECRET
+Microsoft permissions: Mail.Send, User.Read, offline_access
 ```
 
 SMTP can be used on hosts that allow outbound SMTP traffic:

@@ -32,7 +32,7 @@ def _resend_settings() -> Dict[str, str]:
 
 def get_email_delivery_provider() -> str:
     provider = os.environ.get('EMAIL_DELIVERY_PROVIDER', 'gmail').strip().lower()
-    if provider not in {'gmail', 'smtp', 'resend'}:
+    if provider not in {'gmail', 'smtp', 'resend', 'outlook'}:
         return 'gmail'
     return provider
 
@@ -198,6 +198,9 @@ def send_timetable_email(to_email: str, university_email: str, timetable: Dict) 
     if provider == 'resend':
         return send_timetable_email_with_resend(to_email, university_email, timetable)
 
+    if provider == 'outlook':
+        return send_timetable_email_with_outlook(to_email, university_email, timetable)
+
     if provider == 'gmail':
         raise RuntimeError('Gmail API sending requires token data. Use send_timetable_email_with_gmail.')
 
@@ -345,4 +348,85 @@ def send_timetable_email_with_resend(to_email: str, university_email: str, timet
         'provider': 'resend',
         'response': response.json() if response.content else {},
         'subject': subject,
+    }
+
+
+def _get_outlook_access_token() -> str:
+    client_id = os.environ.get('OUTLOOK_CLIENT_ID', '')
+    client_secret = os.environ.get('OUTLOOK_CLIENT_SECRET', '')
+    refresh_token = os.environ.get('OUTLOOK_REFRESH_TOKEN', '')
+    tenant = os.environ.get('OUTLOOK_TENANT', 'consumers')
+
+    if not client_id or not client_secret or not refresh_token:
+        raise RuntimeError('OUTLOOK_CLIENT_ID, OUTLOOK_CLIENT_SECRET, and OUTLOOK_REFRESH_TOKEN must be configured')
+
+    response = requests.post(
+        f'https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token',
+        data={
+            'client_id': client_id,
+            'client_secret': client_secret,
+            'grant_type': 'refresh_token',
+            'refresh_token': refresh_token,
+            'scope': 'offline_access https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read',
+        },
+        timeout=30,
+    )
+
+    if response.status_code >= 400:
+        raise RuntimeError(f"Outlook token refresh failed {response.status_code}: {response.text}")
+
+    return response.json()['access_token']
+
+
+def send_timetable_email_with_outlook(to_email: str, university_email: str, timetable: Dict) -> Dict:
+    sender_email = os.environ.get('OUTLOOK_SENDER_EMAIL') or os.environ.get('SMTP_USERNAME', '')
+    if not sender_email:
+        raise RuntimeError('OUTLOOK_SENDER_EMAIL must be configured')
+
+    access_token = _get_outlook_access_token()
+    subject = _build_subject(timetable)
+    html = build_timetable_email_html(timetable, university_email)
+
+    response = requests.post(
+        'https://graph.microsoft.com/v1.0/me/sendMail',
+        headers={
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+        },
+        json={
+            'message': {
+                'subject': subject,
+                'body': {
+                    'contentType': 'HTML',
+                    'content': html,
+                },
+                'toRecipients': [
+                    {
+                        'emailAddress': {
+                            'address': to_email,
+                        },
+                    },
+                ],
+                'replyTo': [
+                    {
+                        'emailAddress': {
+                            'address': sender_email,
+                        },
+                    },
+                ],
+            },
+            'saveToSentItems': True,
+        },
+        timeout=30,
+    )
+
+    if response.status_code >= 400:
+        raise RuntimeError(f"Outlook sendMail failed {response.status_code}: {response.text}")
+
+    return {
+        'provider': 'outlook',
+        'subject': subject,
+        'from': sender_email,
+        'to': to_email,
+        'status_code': response.status_code,
     }
