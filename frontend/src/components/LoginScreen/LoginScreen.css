@@ -323,6 +323,21 @@
   color: #475569;
 }
 
+.legal-consent__title {
+  margin: 0 0 10px;
+  color: #0f172a;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.legal-consent__checks {
+  display: grid;
+  gap: 10px;
+}
+
 .legal-consent__check {
   display: flex;
   align-items: flex-start;
@@ -517,7 +532,8 @@ html[data-theme='dark'] .gmail-icon-wrap {
 html[data-theme='dark'] .visual-card-header,
 html[data-theme='dark'] .visual-card-header h2,
 html[data-theme='dark'] .schedule-item strong,
-html[data-theme='dark'] .login-copy h1 {
+html[data-theme='dark'] .login-copy h1,
+html[data-theme='dark'] .legal-consent__title {
   color: var(--theme-text-primary, #f2f4f7);
 }
 

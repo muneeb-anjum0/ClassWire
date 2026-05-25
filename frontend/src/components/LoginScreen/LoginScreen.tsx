@@ -11,12 +11,17 @@ const LoginScreen: React.FC = () => {
   const [error, setError] = useState('');
   const [isExiting, setIsExiting] = useState(false);
   const [wakeMessage, setWakeMessage] = useState('');
-  const [hasAcceptedLegal, setHasAcceptedLegal] = useState(() => {
+  const [hasAcceptedPrivacy, setHasAcceptedPrivacy] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(LEGAL_ACCEPTANCE_KEY) === 'true';
+  });
+  const [hasAcceptedTerms, setHasAcceptedTerms] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem(LEGAL_ACCEPTANCE_KEY) === 'true';
   });
 
   const { loginWithGmail } = useAuth();
+  const hasAcceptedLegal = hasAcceptedPrivacy && hasAcceptedTerms;
 
   useEffect(() => {
     const handleBackendWakeState = (event: Event) => {
@@ -31,7 +36,7 @@ const LoginScreen: React.FC = () => {
   const handleGmailLogin = async () => {
     if (isLoading) return;
 
-    if (!hasAcceptedLegal) {
+    if (!hasAcceptedPrivacy || !hasAcceptedTerms) {
       setError('Please accept the Privacy Policy and Terms of Service to continue.');
       return;
     }
@@ -138,26 +143,35 @@ const LoginScreen: React.FC = () => {
             <span>{wakeMessage ? 'Waking backend...' : isLoading ? 'Connecting...' : 'Continue with Gmail'}</span>
           </button>
 
-          {!hasAcceptedLegal && (
-            <div className="legal-consent" role="group" aria-label="Privacy and terms agreement">
+          <div className="legal-consent" role="group" aria-label="Privacy and terms agreement">
+            {!hasAcceptedLegal && (
+              <p className="legal-consent__title">Review before continuing</p>
+            )}
+
+            <div className="legal-consent__checks">
               <label className="legal-consent__check">
                 <input
                   type="checkbox"
-                  checked={hasAcceptedLegal}
-                  onChange={(event) => {
-                    setHasAcceptedLegal(event.target.checked);
-                    if (event.target.checked) {
-                      window.localStorage.setItem(LEGAL_ACCEPTANCE_KEY, 'true');
-                    }
-                  }}
+                  checked={hasAcceptedPrivacy}
+                  onChange={(event) => setHasAcceptedPrivacy(event.target.checked)}
                 />
                 <span>
-                  I agree to the <a href="/privacy">Privacy Policy</a> and{' '}
-                  <a href="/terms">Terms of Service</a>.
+                  I agree to the <a href="/privacy">Privacy Policy</a>.
+                </span>
+              </label>
+
+              <label className="legal-consent__check">
+                <input
+                  type="checkbox"
+                  checked={hasAcceptedTerms}
+                  onChange={(event) => setHasAcceptedTerms(event.target.checked)}
+                />
+                <span>
+                  I agree to the <a href="/terms">Terms of Service</a>.
                 </span>
               </label>
             </div>
-          )}
+          </div>
 
           {wakeMessage && (
             <div className="wake-box" role="status">
