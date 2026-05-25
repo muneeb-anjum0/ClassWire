@@ -1,6 +1,4 @@
-"""
-Test Suite for Timetable Scraper Backend
-"""
+"""Backend tests for Inbox2Table."""
 import pytest
 import json
 from unittest.mock import Mock, patch, MagicMock

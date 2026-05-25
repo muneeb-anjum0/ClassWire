@@ -1186,7 +1186,7 @@ function AppContent() {
 
         <footer className="bg-transparent border-0">
           <div className="w-full py-2 text-center text-xs theme-text-muted">
-            &copy; {new Date().getFullYear()} Timetable Wizard v2.0
+            &copy; {new Date().getFullYear()} Inbox2Table
           </div>
         </footer>
 

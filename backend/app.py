@@ -1,7 +1,4 @@
-"""
-Flask backend for TimeTable Scraper with Multi-User Support
-Provides RESTful API endpoints for the React frontend
-"""
+"""Flask backend for Inbox2Table."""
 import os
 import sys
 import json
