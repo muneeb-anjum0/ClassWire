@@ -16,6 +16,7 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AUTH_POPUP_TIMEOUT_MS = 300000;
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -32,7 +33,15 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const authTimeoutRef = React.useRef<number | null>(null);
   const apiBaseOrigin = apiService.getBaseOrigin();
+
+  const clearAuthTimeout = () => {
+    if (authTimeoutRef.current !== null) {
+      window.clearTimeout(authTimeoutRef.current);
+      authTimeoutRef.current = null;
+    }
+  };
 
   useEffect(() => {
     // Ensure API base URL is detected before performing auth-related network actions
@@ -98,20 +107,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       
       if (event.data.type === 'GMAIL_AUTH_SUCCESS') {
+        clearAuthTimeout();
         const userData = event.data.user;
         setUser(userData);
         localStorage.setItem('user', JSON.stringify(userData));
         setLoading(false);
       } else if (event.data.type === 'GMAIL_AUTH_ERROR') {
-        const errorMsg = event.data.error;
-        
-        // Handle specific scope errors more gracefully
-        if (errorMsg && errorMsg.includes('Scope has changed')) {
-          // Don't show error to user, just set loading to false
-          setLoading(false);
-        } else {
-          setLoading(false);
-        }
+        clearAuthTimeout();
+        setLoading(false);
       }
     };
     
@@ -119,6 +122,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setLoading(false);
     
     return () => {
+      clearAuthTimeout();
       window.removeEventListener('message', handleGmailAuthMessage);
     };
   }, [apiBaseOrigin]);
@@ -141,20 +145,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         'width=500,height=600,scrollbars=yes,resizable=yes'
       );
       
-      if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+      if (!popup) {
         throw new Error('Popup blocked. Please allow popups for this site.');
       }
       
-      const checkClosed = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(checkClosed);
-          setLoading(false);
-        }
-      }, 1000);
-      
-      setTimeout(() => {
-        clearInterval(checkClosed);
-      }, 300000);
+      clearAuthTimeout();
+      authTimeoutRef.current = window.setTimeout(() => {
+        setLoading(false);
+        authTimeoutRef.current = null;
+      }, AUTH_POPUP_TIMEOUT_MS);
 
       return true;
     } catch (error) {
