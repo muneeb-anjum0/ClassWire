@@ -3,6 +3,7 @@ import { ApiResponse, TimetableData, ConfigData, StatusData } from '../types/api
 
 export const BACKEND_WAKE_EVENT = 'backend-wake-state';
 const BACKEND_WAKE_DELAY_MS = 4500;
+const PRODUCTION_API_BASE_URL = 'https://timetable-wizard.onrender.com';
 
 const getBackendWakeMessage = (url?: string) =>
   url?.includes('/api/scrape')
@@ -16,7 +17,7 @@ const emitBackendWakeState = (active: boolean, message?: string) => {
 const getLocalApiBaseUrl = () => {
   const hostname = window.location.hostname;
   if (hostname === 'localhost' || hostname === '127.0.0.1') return 'http://localhost:5000';
-  return `http://${hostname}:5000`;
+  return PRODUCTION_API_BASE_URL;
 };
 
 const api = axios.create({
@@ -89,11 +90,12 @@ export const apiService = {
   _axiosInstance: api,
 
   initialize: async (): Promise<string> => {
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     const candidates = Array.from(new Set([
       process.env.REACT_APP_API_URL,
-      'http://localhost:5000',
-      'http://127.0.0.1:5000',
-      `http://${window.location.hostname}:5000`,
+      isLocalhost ? 'http://localhost:5000' : undefined,
+      isLocalhost ? 'http://127.0.0.1:5000' : undefined,
+      PRODUCTION_API_BASE_URL,
     ].filter(Boolean))) as string[];
 
     for (const candidate of candidates) {
