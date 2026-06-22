@@ -189,7 +189,7 @@ def gmail_auth():
         flow.redirect_uri = get_redirect_uri()
         authorization_url, state = flow.authorization_url(
             access_type="offline",
-            include_granted_scopes="true",
+            include_granted_scopes=False,
             prompt="consent",
         )
 
@@ -241,21 +241,10 @@ def gmail_callback():
         if code_verifier and hasattr(flow, "code_verifier"):
             flow.code_verifier = code_verifier
 
-        authorization_response = get_public_request_url()
-        try:
-            flow.fetch_token(authorization_response=authorization_response)
-        except Exception as error:
-            if "scope" not in str(error).lower():
-                raise
-
-            parsed = urllib.parse.urlparse(authorization_response)
-            query_params = urllib.parse.parse_qs(parsed.query)
-            actual_scopes = query_params.get("scope", [""])[0].split(" ")
-            flow = Flow.from_client_secrets_file(client_secrets_file, scopes=actual_scopes)
-            flow.redirect_uri = get_redirect_uri()
-            if code_verifier and hasattr(flow, "code_verifier"):
-                flow.code_verifier = code_verifier
-            flow.fetch_token(authorization_response=authorization_response)
+        # OAuth codes are single-use. Accept Google's scope normalization instead
+        # of retrying an exchange that may already have consumed the code.
+        os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
+        flow.fetch_token(authorization_response=get_public_request_url())
 
         credentials = flow.credentials
 
