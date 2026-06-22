@@ -34,7 +34,7 @@ jobs:
           pip-audit -r backend/requirements.txt --progress-spinner off
           python -m pytest backend/tests
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
