@@ -8,12 +8,12 @@ interface LegalPageProps {
   kind: LegalPageKind;
 }
 
-const lastUpdated = 'May 25, 2026';
+const lastUpdated = 'June 21, 2026';
 
 const privacySections = [
   {
-    title: 'What Inbox2Table Does',
-    body: 'Inbox2Table connects to your Gmail account only after you grant permission, searches for timetable-related emails, parses class schedule details, and displays them in the app. If you enable daily email delivery, the app sends your formatted timetable to the personal email address you save.',
+    title: 'What ClassWire Does',
+    body: 'ClassWire connects to your Gmail account only after you grant permission, searches for timetable-related emails, parses class schedule details, and displays them in the app. If you enable daily email delivery, the app sends your formatted timetable to the personal email address you save.',
   },
   {
     title: 'Information We Process',
@@ -21,7 +21,7 @@ const privacySections = [
   },
   {
     title: 'How We Use Your Data',
-    body: 'Your data is used to authenticate your session, find and parse timetable emails, show your class schedule, remember your semester preferences, and send optional daily timetable emails. Inbox2Table does not sell your data or use it for advertising.',
+    body: 'Your data is used to authenticate your session, find and parse timetable emails, show your class schedule, remember your semester preferences, and send optional daily timetable emails. ClassWire does not sell your data or use it for advertising.',
   },
   {
     title: 'Google User Data',
@@ -29,7 +29,7 @@ const privacySections = [
   },
   {
     title: 'Storage And Security',
-    body: 'Configuration data may be stored in the backend database so your timetable settings continue working across sessions. OAuth credentials and delivery secrets are handled server-side. You should avoid sharing credentials or refresh tokens publicly.',
+    body: 'Configuration data may be stored in the backend database so your timetable settings continue working across sessions. OAuth credentials and delivery secrets are handled server-side. Avoid sharing credentials or refresh tokens publicly.',
   },
   {
     title: 'Your Choices',
@@ -44,23 +44,23 @@ const privacySections = [
 const termsSections = [
   {
     title: 'Using The Service',
-    body: 'Inbox2Table is provided to help students organize timetable emails into a readable schedule. You agree to use the app only with accounts and timetable data you are allowed to access.',
+    body: 'ClassWire is provided to help students organize timetable emails into a readable schedule. Use it only with accounts and timetable data you are allowed to access.',
   },
   {
     title: 'Account Access',
-    body: 'The app relies on Google OAuth. You are responsible for choosing the Google account you connect and for revoking access if you no longer want Inbox2Table to process that account.',
+    body: 'The app relies on Google OAuth. You are responsible for choosing the Google account you connect and for revoking access if you no longer want ClassWire to process that account.',
   },
   {
     title: 'Daily Email Automation',
-    body: 'If you enable daily delivery, Inbox2Table may run scheduled automation and send formatted timetable emails to the personal email address you save. You can disable this feature from the app.',
+    body: 'If you enable daily delivery, ClassWire may run scheduled automation and send formatted timetable emails to the personal email address you save. You can disable this feature from the app.',
   },
   {
     title: 'Accuracy',
-    body: 'Inbox2Table parses timetable emails automatically. While the app is designed to be helpful, parsed schedules may contain mistakes if source emails are missing, delayed, formatted unusually, or changed by the institution.',
+    body: 'ClassWire parses timetable emails automatically. Parsed schedules can still contain mistakes if source emails are missing, delayed, formatted unusually, or changed by the institution.',
   },
   {
     title: 'Acceptable Use',
-    body: 'Do not use Inbox2Table to access another person’s email, send unwanted messages, abuse Google services, overload the backend, or attempt to bypass security controls.',
+    body: 'Do not use ClassWire to access another person’s email, send unwanted messages, abuse Google services, overload the backend, or attempt to bypass security controls.',
   },
   {
     title: 'Changes',
@@ -82,7 +82,7 @@ const LegalPage: React.FC<LegalPageProps> = ({ kind }) => {
         <nav className="legal-nav" aria-label="Legal navigation">
           <a href="/" className="legal-back">
             <ArrowLeft size={17} />
-            <span>Back to Inbox2Table</span>
+            <span>Back to ClassWire</span>
           </a>
 
           <div className="legal-tabs">
@@ -95,12 +95,12 @@ const LegalPage: React.FC<LegalPageProps> = ({ kind }) => {
           <div className="legal-icon">
             {isPrivacy ? <ShieldCheck size={28} /> : <FileText size={28} />}
           </div>
-          <p className="legal-eyebrow">Inbox2Table</p>
+          <p className="legal-eyebrow">ClassWire</p>
           <h1>{isPrivacy ? 'Privacy Policy' : 'Terms of Service'}</h1>
           <p>
             {isPrivacy
-              ? 'Clear rules for how Inbox2Table handles Gmail access, timetable data, and daily email delivery.'
-              : 'The terms for using Inbox2Table to parse timetable emails and automate daily schedule delivery.'}
+              ? 'Clear rules for how ClassWire handles Gmail access, timetable data, and daily email delivery.'
+              : 'The terms for using ClassWire to parse timetable emails and automate daily schedule delivery.'}
           </p>
           <span>Last updated {lastUpdated}</span>
         </header>

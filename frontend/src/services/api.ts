@@ -4,6 +4,7 @@ import { ApiResponse, TimetableData, ConfigData, StatusData } from '../types/api
 export const BACKEND_WAKE_EVENT = 'backend-wake-state';
 const BACKEND_WAKE_DELAY_MS = 4500;
 const PRODUCTION_API_BASE_URL = 'https://timetable-wizard.onrender.com';
+const CONFIGURED_API_URL = import.meta.env.VITE_API_URL;
 
 const getBackendWakeMessage = (url?: string) =>
   url?.includes('/api/scrape')
@@ -14,6 +15,18 @@ const emitBackendWakeState = (active: boolean, message?: string) => {
   window.dispatchEvent(new CustomEvent(BACKEND_WAKE_EVENT, { detail: { active, message } }));
 };
 
+const getBackendUnavailableMessage = (attemptedCandidates: string[]) => {
+  const localCandidates = attemptedCandidates.filter(
+    (candidate) => candidate.includes('localhost') || candidate.includes('127.0.0.1')
+  );
+
+  if (localCandidates.length > 0) {
+    return 'Unable to reach the backend. Start the local API server on port 5000 or set REACT_APP_API_URL to a working backend URL.';
+  }
+
+  return 'Unable to reach the backend. Check REACT_APP_API_URL or make sure the deployed API is available.';
+};
+
 const getLocalApiBaseUrl = () => {
   const hostname = window.location.hostname;
   if (hostname === 'localhost' || hostname === '127.0.0.1') return 'http://localhost:5000';
@@ -21,7 +34,7 @@ const getLocalApiBaseUrl = () => {
 };
 
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || getLocalApiBaseUrl(),
+  baseURL: CONFIGURED_API_URL || getLocalApiBaseUrl(),
   timeout: 120000,
   withCredentials: true,
 });
@@ -45,16 +58,6 @@ api.interceptors.request.use((config) => {
   }, BACKEND_WAKE_DELAY_MS);
 
   (config as any).metadata = { ...((config as any).metadata || {}), wakeTimer };
-
-  const user = localStorage.getItem('user');
-  if (user) {
-    try {
-      const userData = JSON.parse(user);
-      if (userData.email) config.headers['X-User-Email'] = userData.email;
-    } catch (error) {
-      console.error('Error parsing stored user data:', error);
-    }
-  }
 
   return config;
 });
@@ -92,11 +95,12 @@ export const apiService = {
   initialize: async (): Promise<string> => {
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     const candidates = Array.from(new Set([
-      process.env.REACT_APP_API_URL,
+      CONFIGURED_API_URL,
       isLocalhost ? 'http://localhost:5000' : undefined,
       isLocalhost ? 'http://127.0.0.1:5000' : undefined,
       PRODUCTION_API_BASE_URL,
     ].filter(Boolean))) as string[];
+    let lastError: unknown = null;
 
     for (const candidate of candidates) {
       try {
@@ -113,12 +117,15 @@ export const apiService = {
           api.defaults.baseURL = candidate;
           return candidate;
         }
-      } catch {
+      } catch (error) {
+        lastError = error;
         await new Promise((resolve) => window.setTimeout(resolve, 200));
       }
     }
 
-    return api.defaults.baseURL as string;
+    const errorMessage = getBackendUnavailableMessage(candidates);
+    const causeMessage = lastError instanceof Error ? ` ${lastError.message}` : '';
+    throw new Error(`${errorMessage}${causeMessage}`.trim());
   },
 
   getBaseOrigin: (): string => {
@@ -137,9 +144,13 @@ export const apiService = {
     return response.data;
   },
 
-  login: async (email: string): Promise<{ success: boolean; user?: { id: string; email: string }; error?: string }> => {
-    const response: AxiosResponse<{ success: boolean; user?: { id: string; email: string }; error?: string }> = await api.post('/api/auth/login', { email });
+  getSession: async (): Promise<{ success: boolean; user: { id: string; email: string } }> => {
+    const response = await api.get('/api/auth/session');
     return response.data;
+  },
+
+  logout: async (): Promise<void> => {
+    await api.post('/api/auth/logout');
   },
 
   healthCheck: async (): Promise<ApiResponse> => {
@@ -188,9 +199,7 @@ export const apiService = {
     if (rateLimiter.shouldBlock('/api/scrape')) {
       throw new Error('Please wait before running the scraper again');
     }
-    const user = localStorage.getItem('user');
-    const payload = user ? { user_email: JSON.parse(user).email } : {};
-    const response: AxiosResponse<ApiResponse<TimetableData>> = await api.post('/api/scrape', payload);
+    const response: AxiosResponse<ApiResponse<TimetableData>> = await api.post('/api/scrape');
     return response.data;
   },
 

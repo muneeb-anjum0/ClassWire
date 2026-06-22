@@ -12,10 +12,13 @@
 **/.pytest_cache
 **/__pycache__
 *.py[cod]
+.venv/
+backend/FIREBASE_SERVICE_ACCOUNT.json
 
 # production
 /build
 /frontend/build
+/frontend/dist
 
 # misc
 .DS_Store
@@ -34,3 +37,4 @@ data/cache
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.codegraph/

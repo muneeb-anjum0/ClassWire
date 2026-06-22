@@ -89,7 +89,7 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
     Args:
         user_email: Gmail user email (for Gmail API)
         show_table: Kept for legacy callers; the web app uses JSON responses.
-        user_id: Supabase user ID for storing results
+        user_id: Firestore user ID for storing results
         user_settings: User-specific settings (overrides global settings)
     """
     from .config import settings
@@ -113,8 +113,8 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
 
         if user_id:
             try:
-                from database.supabase_client import supabase_manager
-                token_data = supabase_manager.get_user_tokens(user_id)
+                from database.firestore_store import data_store
+                token_data = data_store.get_user_tokens(user_id)
                 if token_data:
                     from google.oauth2.credentials import Credentials
                     
@@ -161,10 +161,10 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
                 }
             }
             
-            # Save to Supabase if user_id provided, otherwise use local storage
+            # Save to Firestore if user_id provided, otherwise use local storage
             if user_id:
-                from database.supabase_client import supabase_manager
-                supabase_manager.save_timetable_cache(user_id, doc)
+                from database.firestore_store import data_store
+                data_store.save_timetable_cache(user_id, doc)
             else:
                 _save_json(doc)
                 
@@ -196,8 +196,8 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
             }
         }
         
-        from database.supabase_client import supabase_manager
-        supabase_manager.save_timetable_cache(user_id, doc)
+        from database.firestore_store import data_store
+        data_store.save_timetable_cache(user_id, doc)
         
         summary = doc.get("summary", {})
         LOGGER.info(f"Successfully parsed {summary['total_items']} items for date {target_date.date()}")

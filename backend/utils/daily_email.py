@@ -5,9 +5,9 @@ from typing import Callable, Dict, Optional
 
 from dateutil import tz
 
-from database.supabase_client import supabase_manager
+from database.firestore_store import data_store
 from scraper.scheduler import run_once
-from utils.email_sender import get_email_delivery_provider, send_timetable_email, send_timetable_email_with_gmail
+from utils.email_sender import send_timetable_email
 
 LOGGER = logging.getLogger(__name__)
 WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -98,7 +98,7 @@ def send_daily_timetable_email_for_user(
             timetable = _target_empty_timetable(settings, scrape_error)
             if user_id:
                 try:
-                    supabase_manager.save_timetable_cache(user_id, timetable)
+                    data_store.save_timetable_cache(user_id, timetable)
                 except Exception as cache_error:
                     LOGGER.warning("Could not save empty timetable cache for %s: %s", university_email, cache_error)
         else:
@@ -158,13 +158,7 @@ def send_daily_timetable_email_for_user(
             'items': len(timetable.get('items') or []),
         })
 
-    provider = get_email_delivery_provider()
-
-    if provider == 'gmail':
-        token_data = supabase_manager.get_user_tokens(user_id)
-        send_result = send_timetable_email_with_gmail(personal_email, university_email, timetable, token_data)
-    else:
-        send_result = send_timetable_email(personal_email, university_email, timetable)
+    send_result = send_timetable_email(personal_email, university_email, timetable)
 
     return {
         'user_email': university_email,
@@ -178,7 +172,7 @@ def send_daily_timetable_email_for_user(
 
 def send_daily_timetable_emails() -> Dict:
     """Run the scraper for every user with daily email enabled and send results."""
-    configured_users = supabase_manager.list_users_with_daily_email()
+    configured_users = data_store.list_users_with_daily_email()
     results = []
 
     for entry in configured_users:

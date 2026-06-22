@@ -1,1 +1,1 @@
-# Database module for Supabase operations
+"""Database helpers for Firestore-backed persistence."""

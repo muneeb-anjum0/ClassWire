@@ -1,6 +1,7 @@
 import os
 import sys
 import threading
+from unittest.mock import MagicMock
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -34,7 +35,7 @@ def test_no_classes_email_template_is_themed():
     assert 'Clear schedule' in html
     assert 'We will check again automatically' in html
     assert 'No Classes Found' in text
-    assert subject == 'Inbox2Table: No classes found for Wednesday'
+    assert subject == 'ClassWire: No classes found for Wednesday'
 
 
 def test_daily_email_sends_when_scraper_finds_no_messages(monkeypatch):
@@ -54,7 +55,6 @@ def test_daily_email_sends_when_scraper_finds_no_messages(monkeypatch):
         return {'provider': 'official_gmail', 'subject': _build_subject(timetable)}
 
     monkeypatch.setattr(daily_email, 'run_once', fake_run_once)
-    monkeypatch.setattr(daily_email, 'get_email_delivery_provider', lambda: 'official_gmail')
     monkeypatch.setattr(daily_email, 'send_timetable_email', fake_send_timetable_email)
 
     result = daily_email.send_daily_timetable_email_for_user(
@@ -94,9 +94,11 @@ def test_daily_email_falls_back_for_no_schedule_scraper_error(monkeypatch):
         sent['timetable'] = timetable
         return {'provider': 'official_gmail', 'subject': _build_subject(timetable)}
 
+    fake_store = MagicMock()
+    fake_store.save_timetable_cache = fake_save_timetable_cache
+
     monkeypatch.setattr(daily_email, 'run_once', fake_run_once)
-    monkeypatch.setattr(daily_email.supabase_manager, 'save_timetable_cache', fake_save_timetable_cache)
-    monkeypatch.setattr(daily_email, 'get_email_delivery_provider', lambda: 'official_gmail')
+    monkeypatch.setattr(daily_email, 'data_store', fake_store)
     monkeypatch.setattr(daily_email, 'send_timetable_email', fake_send_timetable_email)
 
     result = daily_email.send_daily_timetable_email_for_user(

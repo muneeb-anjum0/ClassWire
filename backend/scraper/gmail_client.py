@@ -14,7 +14,6 @@ from googleapiclient.errors import HttpError
 
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.send",
 ]
 
 LOGGER = logging.getLogger(__name__)

@@ -1,0 +1,378 @@
+.action-panel {
+  position: relative;
+  overflow: hidden;
+  border-radius: 2rem;
+  border: 1px solid var(--theme-border);
+  background: var(--theme-surface);
+  box-shadow: var(--theme-shadow);
+  animation: actionPanelEnter 260ms cubic-bezier(.2,.8,.2,1);
+}
+
+.action-panel--collapsed {
+  width: 100%;
+}
+
+.action-panel--collapsed .action-panel__meta-item {
+  min-height: 72px;
+}
+
+.action-panel::before {
+  content: none;
+}
+
+.action-panel__header {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 1.25rem;
+  margin-bottom: 0;
+}
+
+.action-panel__header h2 {
+  margin: 0.22rem 0 0;
+  font-size: 1.28rem;
+  line-height: 1.1;
+  font-weight: 900;
+  letter-spacing: -0.045em;
+}
+
+.action-panel__title {
+  display: inline-block;
+  margin: 0;
+  color: var(--theme-text-muted);
+  font-size: 0.84rem;
+  line-height: 1.1;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.action-panel__heading,
+.daily-email__copy {
+  min-width: 0;
+}
+
+.action-panel__body {
+  position: relative;
+  z-index: 1;
+}
+
+.action-panel__header-controls {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.action-panel__meta {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  align-items: stretch;
+  justify-content: end;
+  gap: 0.55rem;
+}
+
+.action-panel__meta-item {
+  min-width: 152px;
+  padding: 0.72rem 0.86rem;
+  border-radius: 1.35rem;
+  border: 1px solid var(--theme-border-soft);
+  background: var(--theme-surface-soft);
+  text-align: right;
+  box-shadow: var(--theme-button-shadow);
+}
+
+.action-panel__toggle {
+  width: 128px;
+  min-height: 2.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--theme-border-soft);
+  background: var(--theme-surface-soft);
+  color: var(--theme-text-primary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+  box-shadow: var(--theme-button-shadow);
+}
+
+.action-panel__toggle:hover {
+  transform: translateY(-1px);
+  background: var(--theme-surface-elevated);
+}
+
+.action-panel__toggle-icon {
+  width: 1rem;
+  height: 1rem;
+  transition: transform 180ms ease;
+}
+
+.action-panel__toggle-icon--open {
+  transform: rotate(180deg);
+}
+
+.action-panel__content {
+  display: grid;
+  gap: 0;
+  margin-top: 1rem;
+}
+
+.action-panel__content--open {
+  margin-top: 1rem;
+}
+
+.action-rail {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: auto auto auto 1fr;
+  align-items: center;
+  gap: 0.62rem;
+}
+
+.action-rail > .inline-flex {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+}
+
+.daily-email {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 520px);
+  align-items: center;
+  gap: 0.85rem;
+  margin-top: 0.85rem;
+  padding: 0.8rem;
+  border-radius: 1.35rem;
+  border: 1px solid var(--theme-border-soft);
+  background: var(--theme-surface-soft);
+  box-shadow: var(--theme-shadow-soft);
+  max-height: 220px;
+  opacity: 1;
+  overflow: hidden;
+  transition:
+    max-height 240ms ease,
+    opacity 180ms ease,
+    margin-top 240ms ease,
+    padding-top 240ms ease,
+    padding-bottom 240ms ease,
+    border-color 180ms ease;
+}
+
+.daily-email--collapsed {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-color: transparent;
+  pointer-events: none;
+}
+
+.daily-email__actions {
+  margin-top: 0.55rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.daily-email__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--theme-text-primary);
+  font-size: 0.76rem;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.daily-email__icon,
+.daily-email__save-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.daily-email__icon {
+  color: var(--theme-text-secondary);
+}
+
+.daily-email__copy p {
+  margin: 0.34rem 0 0;
+  color: var(--theme-text-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.daily-email__toggle {
+  min-height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--theme-border-soft);
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem 0.25rem 0.3rem;
+  background: var(--theme-surface);
+  color: var(--theme-text-primary);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 150ms ease, opacity 150ms ease, border-color 150ms ease;
+  box-shadow: var(--theme-button-shadow);
+}
+
+.daily-email__toggle:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--theme-accent-strong) 32%, var(--theme-border-soft));
+}
+
+.daily-email__toggle:disabled,
+.daily-email__save:disabled,
+.mobile-action:disabled,
+.btn-pill:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.daily-email__toggle-track {
+  position: relative;
+  width: 2.2rem;
+  height: 1.25rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--theme-text-muted) 45%, transparent);
+  transition: background 150ms ease;
+}
+
+.daily-email__toggle-track[data-active='true'] {
+  background: #16a34a;
+}
+
+.daily-email__toggle-thumb {
+  position: absolute;
+  top: 0.18rem;
+  left: 0.18rem;
+  width: 0.89rem;
+  height: 0.89rem;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid var(--theme-border-soft);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.14);
+  transition: transform 150ms ease;
+}
+
+.daily-email__toggle-track[data-active='true'] .daily-email__toggle-thumb {
+  transform: translateX(0.95rem);
+}
+
+.daily-email__controls {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 420px;
+}
+
+.daily-email__input {
+  width: 100%;
+  min-width: 0;
+  height: 2.55rem;
+  padding: 0 0.95rem;
+  border-radius: 999px;
+  border: 1px solid var(--theme-border-soft);
+  outline: none;
+  background: var(--theme-surface);
+  color: var(--theme-text-primary);
+  font-size: 0.85rem;
+  font-weight: 650;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    background 150ms ease;
+}
+
+.daily-email__input::placeholder {
+  color: var(--theme-text-muted);
+}
+
+.daily-email__input:focus {
+  border-color: color-mix(in srgb, var(--theme-accent-strong) 36%, var(--theme-border-soft));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent-soft) 70%, transparent);
+}
+
+.daily-email__save {
+  min-height: 2.55rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  border: 2px solid #000000;
+  border-radius: 999px;
+  padding: 0 0.95rem;
+  background: #000000;
+  color: #ffffff;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 150ms ease, opacity 150ms ease, background 150ms ease;
+  box-shadow: var(--theme-button-shadow);
+}
+
+.daily-email__save:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: #1a1a1a;
+}
+
+.daily-email__save--test {
+  border-color: var(--theme-border-soft);
+  background: var(--theme-surface);
+  color: var(--theme-text-primary);
+}
+
+.daily-email__save--test:hover:not(:disabled) {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--theme-surface-elevated) 100%, transparent),
+      color-mix(in srgb, var(--theme-surface-muted) 90%, transparent)
+    );
+}
+
+html[data-theme='dark'] .daily-email__save {
+  border-color: #ffffff;
+  background: #ffffff;
+  color: #000000;
+}
+
+html[data-theme='dark'] .daily-email__save:hover:not(:disabled) {
+  background: #f0f0f0;
+}
+
+html[data-theme='dark'] .daily-email__save--test {
+  border-color: #ffffff;
+  background: #1c1c1c;
+  color: var(--theme-text-primary);
+}
+
+html[data-theme='dark'] .daily-email__save--test:hover:not(:disabled) {
+  background: #282828;
+}

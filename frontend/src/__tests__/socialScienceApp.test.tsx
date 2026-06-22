@@ -1,23 +1,24 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+import { vi } from 'vitest';
 
 if (typeof window.matchMedia === 'undefined') {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
-    value: jest.fn().mockImplementation(query => ({
+    value: vi.fn().mockImplementation((query: string) => ({
       matches: false,
       media: query,
       onchange: null,
-      addListener: jest.fn(),
-      removeListener: jest.fn(),
-      addEventListener: jest.fn(),
-      removeEventListener: jest.fn(),
-      dispatchEvent: jest.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
     })),
   });
 }
 
-jest.mock('../services/api', () => {
+vi.mock('../services/api', () => {
   const mockItems = [
     {
       row_number: 1,
@@ -56,15 +57,17 @@ jest.mock('../services/api', () => {
   ];
 
   return {
+    BACKEND_WAKE_EVENT: 'backend-wake-state',
     apiService: {
-      initialize: jest.fn().mockResolvedValue('http://localhost:5000'),
-      getLatestTimetable: jest.fn().mockResolvedValue({ success: true, data: { items: mockItems }, cached: true }),
-      getConfig: jest.fn().mockResolvedValue({ success: true, data: { semester_filter: ['BSSS1', 'BS Psychology 1'] } }),
-      getStatus: jest.fn().mockResolvedValue({ success: true, data: {} }),
-      runScraper: jest.fn().mockResolvedValue({ success: true, data: { items: mockItems } }),
-      updateSemesters: jest.fn().mockResolvedValue({ success: true }),
+      initialize: vi.fn().mockResolvedValue('http://localhost:5000'),
+      getSession: vi.fn().mockResolvedValue({ success: true, user: { id: 'test-user', email: '2380223@szabist-isb.pk' } }),
+      getLatestTimetable: vi.fn().mockResolvedValue({ success: true, data: { items: mockItems }, cached: true }),
+      getConfig: vi.fn().mockResolvedValue({ success: true, data: { semester_filter: ['BSSS1', 'BS Psychology 1'] } }),
+      getStatus: vi.fn().mockResolvedValue({ success: true, data: {} }),
+      runScraper: vi.fn().mockResolvedValue({ success: true, data: { items: mockItems } }),
+      updateSemesters: vi.fn().mockResolvedValue({ success: true }),
       getBaseOrigin: () => 'http://localhost:5000',
-      getGmailAuthUrl: jest.fn(),
+      getGmailAuthUrl: vi.fn(),
       _axiosInstance: {},
     },
   };
@@ -75,7 +78,7 @@ beforeEach(() => {
 });
 
 test('App shows Social Sciences timetable in both semester sections', async () => {
-  const App = require('../App').default;
+  const App = (await import('../App')).default;
   render(<App />);
 
   // match semester headers flexibly (may render without spaces or split across nodes)

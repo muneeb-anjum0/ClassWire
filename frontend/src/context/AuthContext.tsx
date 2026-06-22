@@ -9,7 +9,6 @@ interface User {
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  login: (email: string) => Promise<boolean>;
   loginWithGmail: () => Promise<boolean>;
   logout: () => void;
   loading: boolean;
@@ -63,66 +62,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, [clearAuthPopupCheck, clearAuthTimeout]);
 
   useEffect(() => {
-    // Ensure API base URL is detected before performing auth-related network actions
-    (async () => {
+    const restoreSession = async () => {
       try {
         await apiService.initialize();
-      } catch (e) {
+        const response = await apiService.getSession();
+        setUser(response.user);
+      } catch {
+        setUser(null);
+      } finally {
+        setLoading(false);
       }
-    })();
+    };
 
     // Check for OAuth callback parameters (mobile redirect flow)
     const urlParams = new URLSearchParams(window.location.search);
     
-    if (urlParams.get('auth') === 'success' && urlParams.get('user_id') && urlParams.get('email')) {
-      const userData = {
-        id: urlParams.get('user_id')!,
-        email: urlParams.get('email')!
-      };
-      setUser(userData);
-      localStorage.setItem('user', JSON.stringify(userData));
-      
-      // Clean up URL parameters
-      const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-      window.history.replaceState({}, document.title, newUrl);
-      
-      setLoading(false);
-      return;
+    if (urlParams.has('auth')) {
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
     
-    if (urlParams.get('auth') === 'error') {
-      // Clean up URL parameters
-      const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-      window.history.replaceState({}, document.title, newUrl);
-      
-      setLoading(false);
-      return;
-    }
-    
-    // Check for stored user session
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (error) {
-        console.error('Error parsing stored user:', error);
-        localStorage.removeItem('user');
-      }
-    }
+    restoreSession();
     
     // Listen for Gmail OAuth callback
-    const handleGmailAuthMessage = (event: MessageEvent) => {
+    const handleGmailAuthMessage = async (event: MessageEvent) => {
       const apiBaseOrigin = apiService.getBaseOrigin();
       
-      // Allow the active backend origin plus local development origins.
-      const isAllowedOrigin =
-        event.origin === apiBaseOrigin ||
-        event.origin.startsWith('http://localhost:') || 
-        event.origin.startsWith('http://127.0.0.1:') || 
-        event.origin.startsWith('http://192.168.') ||
-        (event.origin.startsWith('https://') && event.origin.includes('.ngrok-'));
-      
-      if (!isAllowedOrigin) {
+      if (event.origin !== apiBaseOrigin) {
         return;
       }
 
@@ -131,11 +96,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       
       if (event.data.type === 'GMAIL_AUTH_SUCCESS') {
-        const userData = event.data.user;
-        setUser(userData);
-        localStorage.setItem('user', JSON.stringify(userData));
-        setLoading(false);
-        finishPendingGmailAuth(true);
+        try {
+          const response = await apiService.getSession();
+          setUser(response.user);
+          finishPendingGmailAuth(true);
+        } catch {
+          setUser(null);
+          finishPendingGmailAuth(false);
+        } finally {
+          setLoading(false);
+        }
       } else if (event.data.type === 'GMAIL_AUTH_ERROR') {
         setLoading(false);
         finishPendingGmailAuth(false);
@@ -143,8 +113,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
     
     window.addEventListener('message', handleGmailAuthMessage);
-    setLoading(false);
-    
     return () => {
       clearAuthTimeout();
       clearAuthPopupCheck();
@@ -194,39 +162,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       });
     } catch (error) {
       setLoading(false);
-      return false;
-    }
-  };
-
-  const login = async (email: string): Promise<boolean> => {
-    try {
-      setLoading(true);
-      const response = await apiService.login(email);
-      
-      if (response.success && response.user) {
-        const userData = response.user;
-        setUser(userData);
-        localStorage.setItem('user', JSON.stringify(userData));
-        return true;
-      } else {
-        return false;
-      }
-    } catch (error) {
-      return false;
-    } finally {
-      setLoading(false);
+      throw error;
     }
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('user');
+    void apiService.logout().catch(() => undefined);
   };
 
   const value: AuthContextType = {
     user,
     isAuthenticated: !!user,
-    login,
     loginWithGmail,
     logout,
     loading

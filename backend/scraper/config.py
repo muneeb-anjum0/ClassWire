@@ -1,22 +1,17 @@
-"""
-Config & settings loaded from .env (robust).
-"""
-import os
 import logging
+import os
+from pathlib import Path
 from typing import List
+
 from pydantic import BaseModel, Field, field_validator
-from dotenv import load_dotenv, find_dotenv
+from dotenv import load_dotenv
 
 LOGGER = logging.getLogger(__name__)
 
-# Find and load .env file with debug info
-env_file = find_dotenv(usecwd=True)
-if env_file:
-    LOGGER.debug(f"Loading .env from: {env_file}")
-    loaded = load_dotenv(env_file, override=True)
-    LOGGER.debug(f"Environment loaded successfully: {loaded}")
-else:
-    LOGGER.warning("No .env file found")
+# Load only the backend's local file. Deployment variables always take precedence.
+ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+if ENV_FILE.is_file():
+    load_dotenv(ENV_FILE, override=False)
 
 def _clean(v: str | None, default: str = "") -> str:
     v = (v or "").strip()

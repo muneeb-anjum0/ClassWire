@@ -1,1520 +1,342 @@
-"""Flask backend for Inbox2Table."""
+"""Flask backend for ClassWire."""
+
+from __future__ import annotations
+
+import html
+import json
 import os
 import sys
-import json
-import logging
-import socket
-import re
-import threading
-import uuid
+import urllib.parse
 from datetime import datetime
-from flask import Flask, jsonify, request, session, redirect
-from flask_cors import CORS
-from urllib.parse import urlencode
 
-# Backend imports are now local since all backend code is in this directory
+from flask import Flask, jsonify, redirect, request, session
+
+from core.authentication import authenticated_user
+from core.app_support import (
+    TemporaryStateStore,
+    configure_app,
+    configure_logging,
+    ensure_client_secrets_from_env,
+    get_google_client_secrets_file,
+    get_local_ip,
+    get_public_origin,
+    get_public_request_url,
+    get_redirect_uri,
+    validate_frontend_origin,
+)
+from database.firestore_store import data_store
+from routes.user_data import create_user_data_blueprint
+from scraper.config import settings
+from scraper.scheduler import run_once
 
 app = Flask(__name__)
-# Simple dev secret key so Flask session can store PKCE state/code_verifier
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-change-me')
-# Cross-site session cookies are required because the frontend talks to ngrok over XHR.
-app.config.update(
-    SESSION_COOKIE_SAMESITE='None',
-    SESSION_COOKIE_SECURE=True,
-)
+configure_app(app)
+logger = configure_logging()
+ensure_client_secrets_from_env()
 
-# CORS configuration for local dev + ngrok
-allowed_origin_patterns = [
-    r"^http://localhost:\d+$",
-    r"^http://127\.0\.0\.1:\d+$",
-    r"^http://192\.168\.\d+\.\d+:\d+$",
-    r"^https://.*\.ngrok-free\.dev$",
-    r"^https://.*\.ngrok-free\.app$",
-    r"^https://.*\.ngrok\.io$",
-    r"^https://.*\.vercel\.app$",
-    r"^https://.*\.vercel\.com$",
-]
+store = data_store
+oauth_state_store = TemporaryStateStore()
 
-CORS(
-    app,
-    resources={r"/api/.*": {"origins": allowed_origin_patterns}},
-    supports_credentials=True,
-    allow_headers=['Content-Type', 'Authorization', 'X-User-Email'],
-    methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
-)
-
-
-def _is_allowed_cors_origin(origin: str) -> bool:
-    return bool(origin and any(re.match(pattern, origin) for pattern in allowed_origin_patterns))
-
-
-@app.after_request
-def add_api_cors_headers(response):
-    """Keep API errors readable by browsers even when an endpoint fails."""
-    origin = request.headers.get('Origin', '')
-    if request.path.startswith('/api/') and _is_allowed_cors_origin(origin):
-        response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-User-Email'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-        response.headers['Vary'] = 'Origin'
-    return response
-
-# Enhanced logging setup
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
-
-# Reduce noise from external libraries during startup
-logging.getLogger('scraper.config').setLevel(logging.WARNING)
-logging.getLogger('database.supabase_client').setLevel(logging.WARNING)
-
-def _local_client_secrets_file():
-    return os.path.join(os.path.dirname(__file__), 'credentials', 'client_secret.json')
-
-
-def _render_secret_client_secrets_file():
-    return '/etc/secrets/client_secret.json'
-
-
-def _ensure_client_secrets_from_env():
-    client_secrets_env = os.environ.get('CLIENT_SECRET_JSON')
-    client_secrets_file = _local_client_secrets_file()
-    if client_secrets_env and not os.path.exists(client_secrets_file):
-        try:
-            os.makedirs(os.path.dirname(client_secrets_file), exist_ok=True)
-            with open(client_secrets_file, 'w', encoding='utf-8') as f:
-                f.write(client_secrets_env)
-            logger.info('Wrote client_secret.json from CLIENT_SECRET_JSON env var')
-        except Exception as e:
-            logger.error(f'Failed to write client_secret.json from env: {e}')
-
-
-def get_google_client_secrets_file():
-    local_file = _local_client_secrets_file()
-    render_secret_file = _render_secret_client_secrets_file()
-
-    if os.path.exists(local_file):
-        return local_file
-
-    if os.path.exists(render_secret_file):
-        return render_secret_file
-
-    return local_file
-
-
-_ensure_client_secrets_from_env()
-
-# Import after CORS setup
-from scraper.scheduler import run_once
-from scraper.config import settings
-from database.supabase_client import supabase_manager
-
-
-OAUTH_STATE_TTL_SECONDS = 600
-oauth_state_store = {}
-outlook_sender_state_store = {}
-official_gmail_sender_state_store = {}
-
-
-def _cleanup_oauth_state_store():
-    now_ts = datetime.now().timestamp()
-    expired_states = [
-        state_key
-        for state_key, state_data in oauth_state_store.items()
-        if now_ts - state_data.get('created_at', 0) > OAUTH_STATE_TTL_SECONDS
-    ]
-    for state_key in expired_states:
-        oauth_state_store.pop(state_key, None)
-
-
-def _store_oauth_state(state, code_verifier, frontend_origin):
-    _cleanup_oauth_state_store()
-    oauth_state_store[state] = {
-        'code_verifier': code_verifier,
-        'frontend_origin': frontend_origin,
-        'created_at': datetime.now().timestamp(),
-    }
-
-
-def _pop_oauth_state(state):
-    _cleanup_oauth_state_store()
-    if not state:
-        return None
-    return oauth_state_store.pop(state, None)
-
-
-def _cleanup_outlook_sender_state_store():
-    now_ts = datetime.now().timestamp()
-    expired_states = [
-        state_key
-        for state_key, state_data in outlook_sender_state_store.items()
-        if now_ts - state_data.get('created_at', 0) > OAUTH_STATE_TTL_SECONDS
-    ]
-    for state_key in expired_states:
-        outlook_sender_state_store.pop(state_key, None)
-
-
-def _store_outlook_sender_state(state):
-    _cleanup_outlook_sender_state_store()
-    outlook_sender_state_store[state] = {
-        'created_at': datetime.now().timestamp(),
-    }
-
-
-def _pop_outlook_sender_state(state):
-    _cleanup_outlook_sender_state_store()
-    if not state:
-        return None
-    return outlook_sender_state_store.pop(state, None)
-
-
-def _cleanup_official_gmail_sender_state_store():
-    now_ts = datetime.now().timestamp()
-    expired_states = [
-        state_key
-        for state_key, state_data in official_gmail_sender_state_store.items()
-        if now_ts - state_data.get('created_at', 0) > OAUTH_STATE_TTL_SECONDS
-    ]
-    for state_key in expired_states:
-        official_gmail_sender_state_store.pop(state_key, None)
-
-
-def _store_official_gmail_sender_state(state, code_verifier=None):
-    _cleanup_official_gmail_sender_state_store()
-    official_gmail_sender_state_store[state] = {
-        'code_verifier': code_verifier,
-        'created_at': datetime.now().timestamp(),
-    }
-
-
-def _pop_official_gmail_sender_state(state):
-    _cleanup_official_gmail_sender_state_store()
-    if not state:
-        return None
-    return official_gmail_sender_state_store.pop(state, None)
-
-
-def get_public_origin():
-    """Return the externally reachable origin for this backend."""
-    env_origin = os.environ.get('PUBLIC_BACKEND_URL')
-    if env_origin:
-        return env_origin.rstrip('/')
-
-    forwarded_host = request.headers.get('X-Forwarded-Host') or request.headers.get('X-Original-Host')
-    forwarded_proto = request.headers.get('X-Forwarded-Proto') or 'http'
-
-    if forwarded_host:
-        return f"{forwarded_proto}://{forwarded_host}".rstrip('/')
-
-    return request.host_url.rstrip('/')
-
-
-def get_redirect_uri():
-    return get_public_origin() + '/api/auth/gmail/callback'
-
-def get_outlook_sender_redirect_uri():
-    return get_public_origin() + '/api/auth/outlook-sender/callback'
-
-def get_official_gmail_sender_redirect_uri():
-    return get_public_origin() + '/api/auth/official-gmail-sender/callback'
-
-def get_public_request_url():
-    """Return the externally visible URL for the current request."""
-    public_origin = get_public_origin()
-    full_path = request.full_path
-
-    if full_path.endswith('?'):
-        full_path = full_path[:-1]
-
-    return public_origin + request.path + (f'?{request.query_string.decode("utf-8")}' if request.query_string else '')
-
-def get_local_ip():
-    """Get the local IP address dynamically"""
-    try:
-        # Connect to a dummy address to get the local IP
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("8.8.8.8", 80))
-            return s.getsockname()[0]
-    except Exception:
-        return "127.0.0.1"
-
-# Dynamic network configuration
 LOCAL_IP = get_local_ip()
-FRONTEND_PORT = int(os.environ.get('FRONTEND_PORT', 3000))
-BACKEND_PORT = int(os.environ.get('PORT', 5000))
+FRONTEND_PORT = int(os.environ.get("FRONTEND_PORT", 3000))
+
+
+def build_popup_message_page(*, frontend_origin: str, payload: dict, close_delay_ms: int, body_text: str) -> str:
+    target_origins = json.dumps(
+        [
+            frontend_origin,
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            f"http://{LOCAL_IP}:{FRONTEND_PORT}",
+        ]
+    )
+    message_payload = json.dumps(payload)
+    safe_body = html.escape(body_text)
+    return f"""
+    <html>
+    <body>
+      <script>
+      const targetOrigins = {target_origins};
+      const message = {message_payload};
+      targetOrigins.forEach(origin => {{
+        try {{
+          if (window.opener) {{
+            window.opener.postMessage(message, origin);
+          }}
+        }} catch (error) {{
+          console.log('Failed to post to:', origin, error);
+        }}
+      }});
+      setTimeout(() => window.close(), {close_delay_ms});
+      </script>
+      <p>{safe_body}</p>
+    </body>
+    </html>
+    """
+
+
+def build_mobile_redirect_page(frontend_url: str, params: dict, body_text: str) -> str:
+    redirect_url = f"{frontend_url}?{urllib.parse.urlencode(params)}"
+    safe_redirect = html.escape(redirect_url, quote=True)
+    safe_body = html.escape(body_text)
+    return f"""
+    <html>
+    <head>
+      <meta http-equiv="refresh" content="0; url={safe_redirect}">
+    </head>
+    <body>
+      <script>
+        window.location.href = {json.dumps(redirect_url)};
+      </script>
+      <p>{safe_body}</p>
+    </body>
+    </html>
+    """
+
+
+def is_mobile_request() -> bool:
+    user_agent = request.headers.get("User-Agent", "").lower()
+    mobile_markers = ["mobile", "android", "iphone", "ipad", "ipod", "blackberry", "opera mini"]
+    return any(marker in user_agent for marker in mobile_markers)
+
+
+def resolve_frontend_origin(state_data: dict | None = None) -> str:
+    frontend_origin = validate_frontend_origin(
+        (state_data or {}).get("frontend_origin") or session.get("frontend_origin")
+    )
+    if frontend_origin:
+        return frontend_origin
+
+    referer = request.headers.get("Referer", "")
+    if LOCAL_IP in referer:
+        return f"http://{LOCAL_IP}:{FRONTEND_PORT}"
+    if "localhost:3000" in referer or "127.0.0.1:3000" in referer:
+        return f"http://localhost:{FRONTEND_PORT}"
+
+    return f"http://{LOCAL_IP}:{FRONTEND_PORT}"
+
 
 def get_user_from_request():
-    """Extract user email from request headers or JSON"""
-    user_email = request.headers.get('X-User-Email')
-    
-    if not user_email and request.is_json:
-        user_email = request.json.get('user_email')
-    
-    if not user_email:
-        logger.warning("No user email found in request")
-        return None, jsonify({'error': 'User email required'}), 400
-        
-    try:
-        user = supabase_manager.get_or_create_user(user_email)
-        return user, None, None
-    except Exception as e:
-        logger.error(f"Error getting user: {e}")
-        return None, jsonify({'error': 'User management error'}), 500
+    """Compatibility helper kept for tests and simple request validation."""
+    return authenticated_user(store, logger)
 
-@app.route('/api/health', methods=['GET'])
+
+@app.route("/api/auth/session", methods=["GET"])
+def auth_session():
+    user, error_response, status_code = authenticated_user(store, logger)
+    if error_response:
+        return error_response, status_code
+    return jsonify({"success": True, "user": {"id": user["id"], "email": user["email"]}})
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return jsonify({"success": True})
+
+
+@app.route("/api/health", methods=["GET"])
 def health_check():
-    """Health check endpoint"""
     try:
-        return jsonify({
-            'status': 'healthy',
-            'timestamp': datetime.now().isoformat(),
-            'config_loaded': True,
-            'supabase_connected': True
-        })
-    except Exception as e:
-        return jsonify({
-            'status': 'unhealthy',
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }), 500
-
-@app.route('/api/oauth-config', methods=['GET'])
-def oauth_config_info():
-    """Diagnostic endpoint to show OAuth configuration"""
-    try:
-        # Show what redirect URI would be generated
-        origin = request.headers.get('Origin', '')
-        host = request.headers.get('Host', f'localhost:{BACKEND_PORT}')
-        redirect_uri = get_redirect_uri()
-        
-        # Load and show current OAuth config
-        import os
-        client_secrets_file = get_google_client_secrets_file()
-        
-        oauth_info = {
-            'current_redirect_uri': redirect_uri,
-            'request_origin': origin,
-            'request_host': host,
-            'public_origin': get_public_origin(),
-            'client_secrets_exists': os.path.exists(client_secrets_file)
-        }
-        
-        if os.path.exists(client_secrets_file):
-            with open(client_secrets_file, 'r') as f:
-                import json
-                client_config = json.load(f)
-                # Support both 'installed' (desktop) and 'web' (web app) formats
-                client_section = client_config.get('installed') or client_config.get('web') or {}
-                oauth_info['configured_redirect_uris'] = client_section.get('redirect_uris', [])
-                oauth_info['client_id'] = client_section.get('client_id', 'Not found')
-                oauth_info['client_secrets_type'] = 'installed' if 'installed' in client_config else ('web' if 'web' in client_config else 'unknown')
-        
-        return jsonify(oauth_info)
-        
-    except Exception as e:
-        return jsonify({
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }), 500
-
-@app.route('/api/auth/official-gmail-sender', methods=['GET'])
-def official_gmail_sender_auth():
-    """One-time OAuth flow for the official Inbox2Table Gmail sender mailbox."""
-    try:
-        expected_token = os.environ.get('AUTOMATION_SECRET', '')
-        provided_token = request.args.get('token', '')
-        auth_header = request.headers.get('Authorization', '')
-
-        if auth_header.startswith('Bearer '):
-            provided_token = auth_header.replace('Bearer ', '', 1).strip()
-
-        if not expected_token or provided_token != expected_token:
-            return jsonify({'success': False, 'error': 'Unauthorized'}), 401
-
-        from google_auth_oauthlib.flow import Flow
-
-        client_secret_json = os.environ.get('OFFICIAL_GMAIL_CLIENT_SECRET_JSON', '').strip()
-        if not client_secret_json:
-            return jsonify({
-                'success': False,
-                'error': 'OFFICIAL_GMAIL_CLIENT_SECRET_JSON must be configured before connecting the sender Gmail account.'
-            }), 500
-
-        try:
-            client_config = json.loads(client_secret_json)
-        except json.JSONDecodeError as json_error:
-            return jsonify({
-                'success': False,
-                'error': f'OFFICIAL_GMAIL_CLIENT_SECRET_JSON is not valid JSON: {json_error}'
-            }), 500
-
-        flow = Flow.from_client_config(
-            client_config,
-            scopes=['https://www.googleapis.com/auth/gmail.send'],
+        return jsonify(
+            {
+                "status": "healthy",
+                "timestamp": datetime.now().isoformat(),
+                "config_loaded": True,
+                "firestore_connected": store.is_healthy(),
+            }
         )
-        flow.redirect_uri = get_official_gmail_sender_redirect_uri()
-
-        authorization_url, state = flow.authorization_url(
-            access_type='offline',
-            include_granted_scopes='true',
-            prompt='consent',
-        )
-        code_verifier = flow.code_verifier if hasattr(flow, 'code_verifier') else None
-        _store_official_gmail_sender_state(state, code_verifier)
-
-        if request.args.get('json') == '1':
-            return jsonify({
-                'success': True,
-                'auth_url': authorization_url,
-                'redirect_uri': get_official_gmail_sender_redirect_uri(),
-            })
-
-        return redirect(authorization_url)
-
-    except Exception as e:
-        logger.error(f"Official Gmail sender auth failed: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception as error:
+        return jsonify(
+            {
+                "status": "unhealthy",
+                "error": "Backend health check failed",
+                "timestamp": datetime.now().isoformat(),
+            }
+        ), 500
 
 
-@app.route('/api/auth/official-gmail-sender/callback', methods=['GET'])
-def official_gmail_sender_callback():
-    """Exchange the official Gmail sender OAuth code for a refresh token to store in Render."""
-    try:
-        if request.args.get('error'):
-            error = request.args.get('error_description') or request.args.get('error')
-            return jsonify({'success': False, 'error': error}), 400
-
-        state_data = _pop_official_gmail_sender_state(request.args.get('state'))
-        if not state_data:
-            return jsonify({'success': False, 'error': 'Invalid or expired official Gmail sender state. Start the connect flow again.'}), 400
-
-        from google_auth_oauthlib.flow import Flow
-
-        client_secret_json = os.environ.get('OFFICIAL_GMAIL_CLIENT_SECRET_JSON', '').strip()
-        if not client_secret_json:
-            return jsonify({'success': False, 'error': 'OFFICIAL_GMAIL_CLIENT_SECRET_JSON is not configured'}), 500
-
-        client_config = json.loads(client_secret_json)
-        flow = Flow.from_client_config(
-            client_config,
-            scopes=['https://www.googleapis.com/auth/gmail.send'],
-        )
-        flow.redirect_uri = get_official_gmail_sender_redirect_uri()
-        code_verifier = state_data.get('code_verifier')
-        if code_verifier and hasattr(flow, 'code_verifier'):
-            flow.code_verifier = code_verifier
-        flow.fetch_token(authorization_response=get_public_request_url())
-
-        credentials = flow.credentials
-        if not credentials.refresh_token:
-            return jsonify({
-                'success': False,
-                'error': 'Google did not return a refresh token. Start the connect flow again and accept consent.'
-            }), 500
-
-        import html as html_escape
-
-        sender_email = os.environ.get('OFFICIAL_GMAIL_SENDER_EMAIL', 'inbox2table@gmail.com').strip()
-        safe_sender_email = html_escape.escape(sender_email)
-        safe_refresh_token = html_escape.escape(credentials.refresh_token)
-
-        html = f"""
-        <!doctype html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>Inbox2Table Official Gmail Sender Connected</title>
-          </head>
-          <body style="font-family:Arial,Helvetica,sans-serif;max-width:760px;margin:40px auto;padding:0 18px;line-height:1.5;color:#111827;">
-            <h1>Official Gmail sender connected</h1>
-            <p>Sender mailbox: <strong>{safe_sender_email}</strong></p>
-            <p>Add these Render environment variables, then redeploy the backend:</p>
-            <pre style="white-space:pre-wrap;background:#f3f4f6;border:1px solid #d1d5db;border-radius:8px;padding:14px;">EMAIL_DELIVERY_PROVIDER=official_gmail
-OFFICIAL_GMAIL_SENDER_EMAIL={safe_sender_email}
-OFFICIAL_GMAIL_REFRESH_TOKEN={safe_refresh_token}</pre>
-            <p>This page shows a secret token once. Close it after updating Render.</p>
-          </body>
-        </html>
-        """
-        response = app.response_class(html, mimetype='text/html')
-        response.headers['Cache-Control'] = 'no-store'
-        response.headers['Pragma'] = 'no-cache'
-        return response
-
-    except Exception as e:
-        logger.error(f"Official Gmail sender callback failed: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/auth/outlook-sender', methods=['GET'])
-def outlook_sender_auth():
-    """One-time OAuth flow for the official Inbox2Table Outlook sender mailbox."""
-    try:
-        expected_token = os.environ.get('AUTOMATION_SECRET', '')
-        provided_token = request.args.get('token', '')
-        auth_header = request.headers.get('Authorization', '')
-
-        if auth_header.startswith('Bearer '):
-            provided_token = auth_header.replace('Bearer ', '', 1).strip()
-
-        if not expected_token or provided_token != expected_token:
-            return jsonify({'success': False, 'error': 'Unauthorized'}), 401
-
-        client_id = os.environ.get('OUTLOOK_CLIENT_ID', '').strip()
-        client_secret = os.environ.get('OUTLOOK_CLIENT_SECRET', '').strip()
-        tenant = os.environ.get('OUTLOOK_TENANT', 'consumers').strip() or 'consumers'
-
-        if not client_id or not client_secret:
-            return jsonify({
-                'success': False,
-                'error': 'OUTLOOK_CLIENT_ID and OUTLOOK_CLIENT_SECRET must be configured before connecting the sender mailbox.'
-            }), 500
-
-        state = uuid.uuid4().hex
-        _store_outlook_sender_state(state)
-
-        scope = 'offline_access https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read'
-        auth_url = (
-            f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize?"
-            + urlencode({
-                'client_id': client_id,
-                'response_type': 'code',
-                'redirect_uri': get_outlook_sender_redirect_uri(),
-                'response_mode': 'query',
-                'scope': scope,
-                'state': state,
-                'prompt': 'consent',
-            })
-        )
-
-        if request.args.get('json') == '1':
-            return jsonify({
-                'success': True,
-                'auth_url': auth_url,
-                'redirect_uri': get_outlook_sender_redirect_uri(),
-            })
-
-        return redirect(auth_url)
-
-    except Exception as e:
-        logger.error(f"Outlook sender auth failed: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/auth/outlook-sender/callback', methods=['GET'])
-def outlook_sender_callback():
-    """Exchange the official sender OAuth code for a refresh token to store in Render."""
-    try:
-        if request.args.get('error'):
-            error = request.args.get('error_description') or request.args.get('error')
-            return jsonify({'success': False, 'error': error}), 400
-
-        state_data = _pop_outlook_sender_state(request.args.get('state'))
-        if not state_data:
-            return jsonify({'success': False, 'error': 'Invalid or expired Outlook sender state. Start the connect flow again.'}), 400
-
-        code = request.args.get('code')
-        if not code:
-            return jsonify({'success': False, 'error': 'Missing Outlook authorization code'}), 400
-
-        client_id = os.environ.get('OUTLOOK_CLIENT_ID', '').strip()
-        client_secret = os.environ.get('OUTLOOK_CLIENT_SECRET', '').strip()
-        tenant = os.environ.get('OUTLOOK_TENANT', 'consumers').strip() or 'consumers'
-        scope = 'offline_access https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read'
-
-        import requests
-
-        token_response = requests.post(
-            f'https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token',
-            data={
-                'client_id': client_id,
-                'client_secret': client_secret,
-                'grant_type': 'authorization_code',
-                'code': code,
-                'redirect_uri': get_outlook_sender_redirect_uri(),
-                'scope': scope,
-            },
-            timeout=30,
-        )
-
-        if token_response.status_code >= 400:
-            return jsonify({
-                'success': False,
-                'error': f"Outlook token exchange failed {token_response.status_code}: {token_response.text}",
-            }), 500
-
-        token_json = token_response.json()
-        refresh_token = token_json.get('refresh_token')
-        access_token = token_json.get('access_token')
-
-        if not refresh_token:
-            return jsonify({
-                'success': False,
-                'error': 'Microsoft did not return a refresh token. Start the connect flow again and accept consent.',
-            }), 500
-
-        mailbox = os.environ.get('OUTLOOK_SENDER_EMAIL', '').strip()
-        if access_token:
-            try:
-                profile_response = requests.get(
-                    'https://graph.microsoft.com/v1.0/me',
-                    headers={'Authorization': f'Bearer {access_token}'},
-                    timeout=30,
-                )
-                if profile_response.status_code < 400:
-                    profile = profile_response.json()
-                    mailbox = profile.get('mail') or profile.get('userPrincipalName') or mailbox
-            except Exception as profile_error:
-                logger.warning(f"Could not verify Outlook sender profile: {profile_error}")
-
-        import html as html_escape
-
-        safe_mailbox = html_escape.escape(mailbox or 'inbox2table@hotmail.com')
-        safe_tenant = html_escape.escape(tenant)
-        safe_refresh_token = html_escape.escape(refresh_token)
-
-        html = f"""
-        <!doctype html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>Inbox2Table Outlook Sender Connected</title>
-          </head>
-          <body style="font-family:Arial,Helvetica,sans-serif;max-width:760px;margin:40px auto;padding:0 18px;line-height:1.5;color:#111827;">
-            <h1>Outlook sender connected</h1>
-            <p>Signed in mailbox: <strong>{safe_mailbox}</strong></p>
-            <p>Add these Render environment variables, then redeploy the backend:</p>
-            <pre style="white-space:pre-wrap;background:#f3f4f6;border:1px solid #d1d5db;border-radius:8px;padding:14px;">EMAIL_DELIVERY_PROVIDER=outlook
-OUTLOOK_TENANT={safe_tenant}
-OUTLOOK_SENDER_EMAIL={safe_mailbox}
-OUTLOOK_REFRESH_TOKEN={safe_refresh_token}</pre>
-            <p>This page shows a secret token once. Close it after updating Render.</p>
-          </body>
-        </html>
-        """
-        response = app.response_class(html, mimetype='text/html')
-        response.headers['Cache-Control'] = 'no-store'
-        response.headers['Pragma'] = 'no-cache'
-        return response
-
-    except Exception as e:
-        logger.error(f"Outlook sender callback failed: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/auth/gmail', methods=['GET'])
+@app.route("/api/auth/gmail", methods=["GET"])
 def gmail_auth():
-    """Initiate Gmail OAuth flow"""
     try:
-        from scraper.gmail_client import get_credentials
-        import os
-        from google.auth.transport.requests import Request
         from google_auth_oauthlib.flow import Flow
-        
-        # Allow insecure transport for local development
-        os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-        
-        # Load client secrets
+
+        if get_public_origin().startswith("http://"):
+            os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
         client_secrets_file = get_google_client_secrets_file()
-        
         if not os.path.exists(client_secrets_file):
-            return jsonify({'error': 'Client secrets file not found'}), 500
-            
-        # Create flow instance to manage the OAuth 2.0 Authorization Grant Flow steps
+            return jsonify({"error": "Client secrets file not found"}), 500
+
         flow = Flow.from_client_secrets_file(
             client_secrets_file,
-            scopes=['https://www.googleapis.com/auth/gmail.readonly',
-                   'https://www.googleapis.com/auth/gmail.send',
-                   'https://www.googleapis.com/auth/userinfo.email',
-                   'https://www.googleapis.com/auth/userinfo.profile',
-                   'openid']
+            scopes=[
+                "https://www.googleapis.com/auth/gmail.readonly",
+                "https://www.googleapis.com/auth/userinfo.email",
+                "openid",
+            ],
         )
-        
-        # Save the frontend origin so the callback can redirect back correctly.
-        frontend_origin = request.args.get('frontend_origin') or request.headers.get('Origin') or request.headers.get('Referer', '').rstrip('/')
+
+        requested_origin = request.args.get("frontend_origin") or request.headers.get("Origin")
+        frontend_origin = validate_frontend_origin(requested_origin)
+        if requested_origin and not frontend_origin:
+            return jsonify({"error": "Untrusted frontend origin"}), 400
         if frontend_origin:
             try:
-                session['frontend_origin'] = frontend_origin
-            except Exception as sess_err:
-                logger.warning(f"Could not store frontend origin in session: {sess_err}")
+                session["frontend_origin"] = frontend_origin
+            except Exception as error:
+                logger.warning("Could not store frontend origin in session: %s", error)
 
-        # Build redirect URI from the externally reachable backend origin.
-        redirect_uri = get_redirect_uri()
-
-        flow.redirect_uri = redirect_uri
-        
+        flow.redirect_uri = get_redirect_uri()
         authorization_url, state = flow.authorization_url(
-            access_type='offline',
-            include_granted_scopes='true',
-            prompt='consent'
+            access_type="offline",
+            include_granted_scopes="true",
+            prompt="consent",
         )
+
         try:
-            session['auth_state'] = state
-            code_verifier = None
-            if hasattr(flow, 'code_verifier') and flow.code_verifier:
-                code_verifier = flow.code_verifier
-                session['code_verifier'] = code_verifier
+            session["auth_state"] = state
+            code_verifier = getattr(flow, "code_verifier", None)
+            if code_verifier:
+                session["code_verifier"] = code_verifier
+            oauth_state_store.store(state, code_verifier=code_verifier, frontend_origin=frontend_origin)
+        except Exception as error:
+            logger.warning("Could not store session data for PKCE: %s", error)
 
-            _store_oauth_state(state, code_verifier, frontend_origin)
-        except Exception as sess_err:
-            logger.warning(f'Could not store session data for PKCE: {sess_err}')
-
-        # For browser-driven mobile flows, redirect directly to Google so the user sees the consent page.
-        if request.args.get('redirect') == '1':
-            logger.info('Returning HTTP redirect to Google OAuth URL')
+        if request.args.get("redirect") == "1":
             return redirect(authorization_url)
 
-        # Return url/state to frontend
-        return jsonify({
-            'auth_url': authorization_url,
-            'state': state
-        })
-        
-    except Exception as e:
-        logger.error(f"Gmail auth error: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"auth_url": authorization_url, "state": state})
+    except Exception as error:
+        logger.error("Gmail auth error: %s", error)
+        return jsonify({"error": "Could not start Gmail authentication"}), 500
 
-@app.route('/api/auth/gmail/callback', methods=['GET'])
+
+@app.route("/api/auth/gmail/callback", methods=["GET"])
 def gmail_callback():
-    """Handle Gmail OAuth callback"""
+    state_data = None
+
     try:
         from google_auth_oauthlib.flow import Flow
-        import os
-        
-        # Allow insecure transport for local development
-        os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-        
-        # Load client secrets
+        from googleapiclient.discovery import build
+
+        if get_public_origin().startswith("http://"):
+            os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
         client_secrets_file = get_google_client_secrets_file()
-        
-        # Create flow instance
+
         flow = Flow.from_client_secrets_file(
             client_secrets_file,
-            scopes=['https://www.googleapis.com/auth/gmail.readonly',
-                   'https://www.googleapis.com/auth/gmail.send',
-                   'https://www.googleapis.com/auth/userinfo.email',
-                   'https://www.googleapis.com/auth/userinfo.profile',
-                   'openid']
+            scopes=[
+                "https://www.googleapis.com/auth/gmail.readonly",
+                "https://www.googleapis.com/auth/userinfo.email",
+                "openid",
+            ],
         )
-        # Build redirect URI from the externally reachable backend origin.
-        redirect_uri = get_redirect_uri()
+        flow.redirect_uri = get_redirect_uri()
 
-        flow.redirect_uri = redirect_uri
-        
+        callback_state = request.args.get("state")
+        state_data = oauth_state_store.pop(callback_state)
+        if not state_data:
+            return jsonify({"success": False, "error": "Invalid or expired OAuth state"}), 400
+        code_verifier = (state_data or {}).get("code_verifier") or session.get("code_verifier")
+        if code_verifier and hasattr(flow, "code_verifier"):
+            flow.code_verifier = code_verifier
+
         authorization_response = get_public_request_url()
-
-        callback_state = request.args.get('state')
-        state_data = _pop_oauth_state(callback_state)
-
-        frontend_origin_from_state = state_data.get('frontend_origin') if state_data else None
-        
-        try:
-            code_verifier = state_data.get('code_verifier') if state_data else None
-            if not code_verifier:
-                code_verifier = session.get('code_verifier')
-            if code_verifier and hasattr(flow, 'code_verifier'):
-                flow.code_verifier = code_verifier
-        except Exception as sess_err:
-            logger.warning(f'Could not read PKCE code_verifier from session: {sess_err}')
-
         try:
             flow.fetch_token(authorization_response=authorization_response)
-        except Exception as token_error:
-            if "scope" in str(token_error).lower():
-                import urllib.parse as urlparse
-                parsed_url = urlparse.urlparse(authorization_response)
-                query_params = urlparse.parse_qs(parsed_url.query)
-                
-                if 'scope' in query_params:
-                    actual_scopes = query_params['scope'][0].split(' ')
-                    
-                    flow = Flow.from_client_secrets_file(
-                        client_secrets_file,
-                        scopes=actual_scopes
-                    )
-                    
-                    redirect_uri = request.host_url.rstrip('/') + '/api/auth/gmail/callback'
-                    flow.redirect_uri = redirect_uri
-                
-                flow.fetch_token(authorization_response=authorization_response)
-            else:
-                raise token_error
-        
-        # Get credentials
+        except Exception as error:
+            if "scope" not in str(error).lower():
+                raise
+
+            parsed = urllib.parse.urlparse(authorization_response)
+            query_params = urllib.parse.parse_qs(parsed.query)
+            actual_scopes = query_params.get("scope", [""])[0].split(" ")
+            flow = Flow.from_client_secrets_file(client_secrets_file, scopes=actual_scopes)
+            flow.redirect_uri = get_redirect_uri()
+            if code_verifier and hasattr(flow, "code_verifier"):
+                flow.code_verifier = code_verifier
+            flow.fetch_token(authorization_response=authorization_response)
+
         credentials = flow.credentials
-        
-        # Get user info - try multiple approaches for getting user email
-        from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build
-        
+
         user_email = None
-        
         try:
-            gmail_service = build('gmail', 'v1', credentials=credentials)
-            profile = gmail_service.users().getProfile(userId='me').execute()
-            user_email = profile['emailAddress']
+            profile = build("gmail", "v1", credentials=credentials).users().getProfile(userId="me").execute()
+            user_email = profile["emailAddress"]
         except Exception:
-            try:
-                userinfo_service = build('oauth2', 'v2', credentials=credentials)
-                userinfo = userinfo_service.userinfo().get().execute()
-                user_email = userinfo.get('email')
-            except Exception as userinfo_error:
-                logger.error(f"Could not retrieve user email: {userinfo_error}")
-                raise Exception("Could not retrieve user email from any API")
-        
+            user_info = build("oauth2", "v2", credentials=credentials).userinfo().get().execute()
+            user_email = user_info.get("email")
+
         if not user_email:
             raise Exception("No user email found in OAuth response")
-        
-        logger.info(f"OAuth successful for user: {user_email}")
-        
-        # Create or get user in Supabase
-        user = supabase_manager.get_or_create_user(user_email)
-        
-        # Save Gmail tokens to Supabase
-        token_data = {
-            'token': credentials.token,
-            'refresh_token': credentials.refresh_token,
-            'token_uri': credentials.token_uri,
-            'client_id': credentials.client_id,
-            'client_secret': credentials.client_secret,
-            'scopes': credentials.scopes,
-            'expiry': credentials.expiry.isoformat() if credentials.expiry else None
-        }
-        
-        supabase_manager.save_user_tokens(user['id'], token_data)
-        
-        # Get frontend URL from the session (set when auth started)
-        frontend_url = frontend_origin_from_state or session.get('frontend_origin') or f'http://{LOCAL_IP}:{FRONTEND_PORT}'
 
-        # Fallbacks if the session is missing
-        referer = request.headers.get('Referer', '')
-        user_agent = request.headers.get('User-Agent', '')
-
-        if not (frontend_origin_from_state or session.get('frontend_origin')):
-            if LOCAL_IP in referer:
-                frontend_url = f'http://{LOCAL_IP}:{FRONTEND_PORT}'
-            elif 'localhost:3000' in referer or '127.0.0.1:3000' in referer:
-                frontend_url = f'http://localhost:{FRONTEND_PORT}'
-        
-        # Check if this is a mobile browser (Safari, iOS, etc.)
-        is_mobile = any(mobile_agent in user_agent.lower() for mobile_agent in 
-                       ['mobile', 'android', 'iphone', 'ipad', 'ipod', 'blackberry', 'opera mini'])
-        
-        if is_mobile:
-            # For mobile browsers, redirect directly to frontend with auth data in URL
-            import urllib.parse
-            auth_data = urllib.parse.urlencode({
-                'auth': 'success',
-                'user_id': user['id'],
-                'email': user_email
-            })
-            redirect_url = f"{frontend_url}?{auth_data}"
-            
-            return f"""
-            <html>
-            <head>
-                <meta http-equiv="refresh" content="0; url={redirect_url}">
-            </head>
-            <body>
-                <script>
-                    window.location.href = '{redirect_url}';
-                </script>
-                <p>Authentication successful! Redirecting...</p>
-            </body>
-            </html>
-            """
-        else:
-            # Desktop popup flow - use postMessage
-            frontend_origin = frontend_origin_from_state or session.get('frontend_origin') or f'http://localhost:{FRONTEND_PORT}'
-            target_origins = json.dumps([
-                frontend_origin,
-                'http://localhost:3000',
-                'http://127.0.0.1:3000',
-                f'http://{LOCAL_IP}:{FRONTEND_PORT}',
-            ])
-            message_payload = json.dumps({
-                'type': 'GMAIL_AUTH_SUCCESS',
-                'user': {
-                    'id': user['id'],
-                    'email': user_email,
-                },
-            })
-            return f"""
-            <html>
-            <body>
-            <script>
-            // Try to communicate with parent window using multiple target origins
-            const targetOrigins = {target_origins};
-            
-            const message = {message_payload};
-            
-            targetOrigins.forEach(origin => {{
-                try {{
-                    if (window.opener) {{
-                        window.opener.postMessage(message, origin);
-                    }}
-                }} catch (e) {{
-                    console.log('Failed to post to:', origin, e);
-                }}
-            }});
-            
-            setTimeout(() => window.close(), 1000);
-            </script>
-            <p>Authentication successful! This window will close automatically.</p>
-            </body>
-            </html>
-            """
-        
-    except Exception as e:
-        logger.error(f"Gmail callback error: {e}")
-        
-        # Get frontend URL for redirect
-        frontend_url = f'http://localhost:{FRONTEND_PORT}'  # default
-        
-        # Get frontend URL from the session (set when auth started)
-        callback_state = request.args.get('state')
-        state_data = locals().get('state_data') or _pop_oauth_state(callback_state)
-        frontend_origin_from_state = state_data.get('frontend_origin') if state_data else None
-
-        frontend_url = frontend_origin_from_state or session.get('frontend_origin') or f'http://{LOCAL_IP}:{FRONTEND_PORT}'
-
-        # Fallbacks if the session is missing
-        referer = request.headers.get('Referer', '')
-        user_agent = request.headers.get('User-Agent', '')
-
-        if not (frontend_origin_from_state or session.get('frontend_origin')):
-            if LOCAL_IP in referer:
-                frontend_url = f'http://{LOCAL_IP}:{FRONTEND_PORT}'
-            elif 'localhost:3000' in referer or '127.0.0.1:3000' in referer:
-                frontend_url = f'http://localhost:{FRONTEND_PORT}'
-        
-        # Check if this is a mobile browser
-        is_mobile = any(mobile_agent in user_agent.lower() for mobile_agent in 
-                       ['mobile', 'android', 'iphone', 'ipad', 'ipod', 'blackberry', 'opera mini'])
-        
-        if is_mobile:
-            # For mobile browsers, redirect to frontend with error
-            import urllib.parse
-            error_data = urllib.parse.urlencode({
-                'auth': 'error',
-                'error': str(e)
-            })
-            redirect_url = f"{frontend_url}?{error_data}"
-            
-            return f"""
-            <html>
-            <head>
-                <meta http-equiv="refresh" content="0; url={redirect_url}">
-            </head>
-            <body>
-                <script>
-                    window.location.href = '{redirect_url}';
-                </script>
-                <p>Authentication failed. Redirecting...</p>
-            </body>
-            </html>
-            """
-        else:
-            # Desktop popup flow
-            frontend_origin = frontend_origin_from_state or session.get('frontend_origin') or f'http://localhost:{FRONTEND_PORT}'
-            target_origins = json.dumps([
-                frontend_origin,
-                'http://localhost:3000',
-                'http://127.0.0.1:3000',
-                f'http://{LOCAL_IP}:{FRONTEND_PORT}',
-            ])
-            message_payload = json.dumps({
-                'type': 'GMAIL_AUTH_ERROR',
-                'error': str(e),
-            })
-            return f"""
-            <html>
-            <body>
-        <script>
-        // Try to communicate with parent window using multiple target origins
-        const targetOrigins = {target_origins};
-        
-        const message = {message_payload};
-        
-        targetOrigins.forEach(origin => {{
-            try {{
-                if (window.opener) {{
-                    window.opener.postMessage(message, origin);
-                }}
-            }} catch (e) {{
-                console.log('Failed to post to:', origin, e);
-            }}
-        }});
-        
-        setTimeout(() => window.close(), 2000);
-        </script>
-        <p>Authentication failed: {str(e)}</p>
-        <p>This window will close automatically.</p>
-        </body>
-        </html>
-        """
-
-@app.route('/api/auth/login', methods=['POST'])
-def login():
-    """Simple email-based login"""
-    try:
-        data = request.get_json()
-        email = data.get('email')
-        
-        if not email:
-            return jsonify({'error': 'Email required'}), 400
-            
-        user = supabase_manager.get_or_create_user(email)
-        
-        return jsonify({
-            'success': True,
-            'user': {
-                'id': user['id'],
-                'email': user['email']
+        user = store.get_or_create_user(user_email)
+        store.save_user_tokens(
+            user["id"],
+            {
+                "token": credentials.token,
+                "refresh_token": credentials.refresh_token,
+                "token_uri": credentials.token_uri,
+                "client_id": credentials.client_id,
+                "client_secret": credentials.client_secret,
+                "scopes": credentials.scopes,
+                "expiry": credentials.expiry.isoformat() if credentials.expiry else None,
             },
-            'message': 'Login successful'
-        })
-        
-    except Exception as e:
-        logger.error(f"Login error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/config', methods=['GET'])
-def get_config():
-    """Get current configuration for a user"""
-    try:
-        user, error_response, status_code = get_user_from_request()
-        if error_response:
-            return error_response, status_code
-            
-        user_settings = supabase_manager.get_user_settings(user['id'])
-        
-        # Return user-specific configuration
-        safe_config = {
-            'gmail_query': user_settings.get('gmail_query_base', settings.gmail_query_base),
-            'semester_filter': user_settings.get('allowed_semesters', settings.allowed_semesters),
-            'personal_email': user_settings.get('personal_email', ''),
-            'daily_email_enabled': user_settings.get('daily_email_enabled', bool(user_settings.get('personal_email'))),
-            'daily_email_last_result': user_settings.get('daily_email_last_result'),
-            'schedule_time': f"{settings.check_hour_local:02d}:{settings.check_minute_local:02d}",
-            'timezone': user_settings.get('timezone', settings.tz),
-            'max_results': getattr(settings, 'max_results_per_semester', 50)
-        }
-        return jsonify(safe_config)
-    except Exception as e:
-        logger.error(f"Error loading config: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/config/personal-email', methods=['POST', 'OPTIONS'])
-def update_personal_email():
-    """Update the personal recipient email used for daily timetable delivery."""
-    if request.method == 'OPTIONS':
-        return '', 200
-
-    try:
-        user, error_response, status_code = get_user_from_request()
-        if error_response:
-            return error_response, status_code
-
-        data = request.get_json() or {}
-        personal_email = (data.get('personal_email') or '').strip()
-
-        if personal_email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", personal_email):
-            return jsonify({
-                'success': False,
-                'error': 'Please enter a valid email address'
-            }), 400
-
-        current_settings = supabase_manager.get_user_settings(user['id'])
-        was_enabled = current_settings.get('daily_email_enabled', bool(current_settings.get('personal_email')))
-        current_settings['personal_email'] = personal_email
-        current_settings['daily_email_enabled'] = bool(personal_email) and bool(was_enabled)
-
-        success = supabase_manager.save_user_settings(user['id'], current_settings)
-
-        if not success:
-            return jsonify({
-                'success': False,
-                'error': 'Failed to save personal email'
-            }), 500
-
-        return jsonify({
-            'success': True,
-            'message': 'Daily email recipient saved' if personal_email else 'Daily email disabled',
-            'personal_email': personal_email,
-            'daily_email_enabled': current_settings['daily_email_enabled'],
-            'timestamp': datetime.now().isoformat()
-        })
-
-    except Exception as e:
-        logger.error(f"Error updating personal email: {e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@app.route('/api/config/daily-email-enabled', methods=['POST', 'OPTIONS'])
-def update_daily_email_enabled():
-    """Enable or disable scheduled daily timetable delivery for the current user."""
-    if request.method == 'OPTIONS':
-        return '', 200
-
-    try:
-        user, error_response, status_code = get_user_from_request()
-        if error_response:
-            return error_response, status_code
-
-        data = request.get_json() or {}
-        enabled = bool(data.get('daily_email_enabled'))
-
-        current_settings = supabase_manager.get_user_settings(user['id'])
-        personal_email = (current_settings.get('personal_email') or '').strip()
-
-        if enabled and not personal_email:
-            return jsonify({
-                'success': False,
-                'error': 'Save a personal email before enabling daily delivery'
-            }), 400
-
-        current_settings['daily_email_enabled'] = enabled
-        success = supabase_manager.save_user_settings(user['id'], current_settings)
-
-        if not success:
-            return jsonify({
-                'success': False,
-                'error': 'Failed to update daily email setting'
-            }), 500
-
-        return jsonify({
-            'success': True,
-            'message': 'Daily email enabled' if enabled else 'Daily email disabled',
-            'personal_email': personal_email,
-            'daily_email_enabled': enabled,
-            'timestamp': datetime.now().isoformat()
-        })
-
-    except Exception as e:
-        logger.error(f"Error updating daily email setting: {e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@app.route('/api/config/semesters', methods=['POST', 'OPTIONS'])
-def update_semesters():
-    """Update allowed semesters configuration for a user"""
-    # Handle preflight request
-    if request.method == 'OPTIONS':
-        return '', 200
-        
-    try:
-        logger.info('📨 [UPDATE_SEMESTERS] Received request')
-        logger.info(f'📨 [UPDATE_SEMESTERS] Headers: {dict(request.headers)}')
-        
-        user, error_response, status_code = get_user_from_request()
-        if error_response:
-            logger.error('❌ [UPDATE_SEMESTERS] Failed to get user')
-            return error_response, status_code
-        
-        logger.info(f'✅ [UPDATE_SEMESTERS] User: {user["email"]}')
-            
-        data = request.get_json()
-        logger.info(f'📨 [UPDATE_SEMESTERS] Received JSON data: {data}')
-        
-        if not data or 'semesters' not in data:
-            logger.error('❌ [UPDATE_SEMESTERS] Missing semesters data')
-            return jsonify({'error': 'Missing semesters data'}), 400
-        
-        new_semesters = data['semesters']
-        logger.info(f'📨 [UPDATE_SEMESTERS] New semesters: {new_semesters}')
-        
-        if not isinstance(new_semesters, list):
-            logger.error('❌ [UPDATE_SEMESTERS] Semesters is not a list')
-            return jsonify({'error': 'Semesters must be a list'}), 400
-
-        # Get current user settings
-        logger.info(f'📨 [UPDATE_SEMESTERS] Getting current settings for user {user["id"]}')
-        current_settings = supabase_manager.get_user_settings(user['id'])
-        logger.info(f'📨 [UPDATE_SEMESTERS] Current settings: {current_settings}')
-        
-        current_settings['allowed_semesters'] = new_semesters
-        logger.info(f'📨 [UPDATE_SEMESTERS] Updated settings: {current_settings}')
-        
-        # Save updated settings to Supabase
-        logger.info(f'📨 [UPDATE_SEMESTERS] Saving to Supabase...')
-        success = supabase_manager.save_user_settings(user['id'], current_settings)
-        logger.info(f'📨 [UPDATE_SEMESTERS] Save result: {success}')
-        
-        if success:
-            logger.info(f"✅ [UPDATE_SEMESTERS] Updated allowed semesters for user {user['email']}: {new_semesters}")
-            response = {
-                'success': True,
-                'message': f'Updated {len(new_semesters)} allowed semesters',
-                'semesters': new_semesters
-            }
-            logger.info(f'📤 [UPDATE_SEMESTERS] Returning response: {response}')
-            return jsonify(response)
-        else:
-            logger.error('❌ [UPDATE_SEMESTERS] Failed to save settings to Supabase')
-            return jsonify({'error': 'Failed to save settings'}), 500
-            
-    except Exception as e:
-        logger.error(f"❌ [UPDATE_SEMESTERS] Error: {e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@app.route('/api/scrape', methods=['POST'])
-def scrape_now():
-    """Run the scraper once and return results for the authenticated user"""
-    try:
-        user, error_response, status_code = get_user_from_request()
-        if error_response:
-            return error_response, status_code
-            
-        logger.info(f"Starting manual scrape via API for user {user['email']}")
-        
-        # Check if force_refresh parameter is provided
-        force_refresh = request.json.get('force_refresh', False) if request.is_json else False
-        
-        if force_refresh:
-            logger.info(f"Force refresh requested - clearing cache for user {user['id']}")
-            supabase_manager.clear_user_cache(user['id'])
-        
-        # Get user settings for the scrape
-        user_settings = supabase_manager.get_user_settings(user['id'])
-        
-        # Run the scraper with user-specific settings
-        result = run_once(
-            user_email=user['email'], 
-            show_table=False, 
-            user_id=user['id'], 
-            user_settings=user_settings
         )
-        
-        if result and result.get('success'):
-            return jsonify({
-                'success': True,
-                'message': 'Scrape completed successfully',
-                'data': result.get('data', []),
-                'timestamp': datetime.now().isoformat()
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'message': 'Scrape failed or no data found',
-                'error': result.get('error') if result else 'Unknown error',
-                'timestamp': datetime.now().isoformat()
-            }), 400
-            
-    except Exception as e:
-        logger.error(f"Error during scrape: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }), 500
 
-@app.route('/api/cache/clear', methods=['POST'])
-def clear_cache():
-    """Clear cached data for the authenticated user"""
-    try:
-        user, error_response, status_code = get_user_from_request()
-        if error_response:
-            return error_response, status_code
-            
-        logger.info(f"Clearing cache for user {user['email']}")
-        
-        success = supabase_manager.clear_user_cache(user['id'])
-        
-        if success:
-            return jsonify({
-                'success': True,
-                'message': 'Cache cleared successfully',
-                'timestamp': datetime.now().isoformat()
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'message': 'Failed to clear cache'
-            }), 500
-            
-    except Exception as e:
-        logger.error(f"Error in clear_cache: {e}")
-        return jsonify({'success': False, 'message': 'Internal server error'}), 500
+        session.clear()
+        session.permanent = True
+        session["user_id"] = user["id"]
+        session["user_email"] = user_email.strip().lower()
 
-@app.route('/api/automation/send-daily-timetables', methods=['POST'])
-def send_daily_timetables_automation():
-    """Protected endpoint for external schedulers to trigger daily timetable emails."""
-    try:
-        expected_token = os.environ.get('AUTOMATION_SECRET', '')
-        provided_token = request.headers.get('X-Automation-Token', '')
-        auth_header = request.headers.get('Authorization', '')
+        frontend_origin = resolve_frontend_origin(state_data)
+        if is_mobile_request():
+            return build_mobile_redirect_page(
+                frontend_origin,
+                {"auth": "success", "user_id": user["id"], "email": user_email},
+                "Authentication successful! Redirecting...",
+            )
 
-        if auth_header.startswith('Bearer '):
-            provided_token = auth_header.replace('Bearer ', '', 1).strip()
+        return build_popup_message_page(
+            frontend_origin=frontend_origin,
+            payload={"type": "GMAIL_AUTH_SUCCESS", "user": {"id": user["id"], "email": user_email}},
+            close_delay_ms=1000,
+            body_text="Authentication successful! This window will close automatically.",
+        )
+    except Exception as error:
+        logger.error("Gmail callback error: %s", error, exc_info=True)
+        state_data = state_data or oauth_state_store.pop(request.args.get("state"))
+        frontend_origin = resolve_frontend_origin(state_data)
 
-        if not expected_token or provided_token != expected_token:
-            return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+        if is_mobile_request():
+            return build_mobile_redirect_page(
+                frontend_origin,
+                {"auth": "error"},
+                "Authentication failed. Redirecting...",
+            )
 
-        from utils.daily_email import send_daily_timetable_emails
+        return build_popup_message_page(
+            frontend_origin=frontend_origin,
+            payload={"type": "GMAIL_AUTH_ERROR", "error": "Authentication failed"},
+            close_delay_ms=2000,
+            body_text="Authentication failed. Close this window and try again.",
+        )
 
-        job_id = str(uuid.uuid4())
 
-        def run_daily_email_job():
-            try:
-                result = send_daily_timetable_emails()
-                logger.info(
-                    "Daily timetable automation job %s finished: success=%s processed=%s failed=%s",
-                    job_id,
-                    result.get('success'),
-                    result.get('processed'),
-                    result.get('failed'),
-                )
-            except Exception as job_error:
-                logger.error(
-                    "Daily timetable automation job %s failed: %s",
-                    job_id,
-                    job_error,
-                    exc_info=True,
-                )
+app.register_blueprint(
+    create_user_data_blueprint(
+        logger=logger,
+        get_run_once=lambda: run_once,
+        get_settings=lambda: settings,
+        get_store=lambda: store,
+    )
+)
 
-        threading.Thread(target=run_daily_email_job, daemon=True).start()
 
-        return jsonify({
-            'success': True,
-            'job_id': job_id,
-            'message': 'Daily timetable automation started',
-            'timestamp': datetime.now().isoformat()
-        }), 202
-
-    except Exception as e:
-        logger.error(f"Daily timetable automation failed: {e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }), 500
-
-@app.route('/api/automation/send-test-timetable-email', methods=['POST', 'OPTIONS'])
-def send_test_timetable_email():
-    """Run and send the daily timetable email for the authenticated user only."""
-    if request.method == 'OPTIONS':
-        return '', 200
-
-    try:
-        user, error_response, status_code = get_user_from_request()
-        if error_response:
-            return error_response, status_code
-
-        user_settings = supabase_manager.get_user_settings(user['id'])
-
-        if not (user_settings.get('personal_email') or '').strip():
-            return jsonify({
-                'success': False,
-                'error': 'Save a personal email before sending a test.'
-            }), 400
-
-        from utils.daily_email import send_daily_timetable_email_for_user
-
-        job_id = str(uuid.uuid4())
-
-        def save_email_job_status(update):
-            latest_settings = supabase_manager.get_user_settings(user['id'])
-            latest_settings['daily_email_last_result'] = {
-                **(latest_settings.get('daily_email_last_result') or {}),
-                **update,
-                'job_id': job_id,
-                'updated_at': datetime.now().isoformat(),
-            }
-            supabase_manager.save_user_settings(user['id'], latest_settings)
-
-        user_settings['daily_email_last_result'] = {
-            'status': 'running',
-            'success': None,
-            'message': 'Mail send job is running',
-            'job_id': job_id,
-            'started_at': datetime.now().isoformat(),
-        }
-        supabase_manager.save_user_settings(user['id'], user_settings)
-
-        def run_email_job():
-            try:
-                result = send_daily_timetable_email_for_user(
-                    user,
-                    user_settings,
-                    status_callback=save_email_job_status,
-                )
-                save_email_job_status({
-                    **result,
-                    'status': 'success' if result.get('success') else 'error',
-                    'message': (
-                        f"No classes found email accepted by {result.get('send_result', {}).get('provider', 'email provider')} for {result.get('personal_email')}"
-                        if result.get('success') and result.get('items') == 0
-                        else f"Mail accepted by {result.get('send_result', {}).get('provider', 'email provider')} for {result.get('personal_email')}"
-                        if result.get('success')
-                        else result.get('error', 'Mail send failed')
-                    ),
-                    'finished_at': datetime.now().isoformat(),
-                })
-
-                if result.get('success'):
-                    logger.info(
-                        "Manual timetable email sent for %s to %s",
-                        user.get('email'),
-                        result.get('personal_email'),
-                    )
-                else:
-                    logger.error("Manual timetable email failed for %s: %s", user.get('email'), result)
-            except Exception as job_error:
-                logger.error(
-                    "Background manual timetable email failed for %s: %s",
-                    user.get('email'),
-                    job_error,
-                    exc_info=True,
-                )
-                save_email_job_status({
-                    'status': 'error',
-                    'success': False,
-                    'message': str(job_error),
-                    'error': str(job_error),
-                    'personal_email': user_settings.get('personal_email'),
-                    'finished_at': datetime.now().isoformat(),
-                })
-
-        def mark_timeout_if_still_running():
-            try:
-                timeout_seconds = int(os.environ.get('TEST_EMAIL_TIMEOUT_SECONDS', '75'))
-                threading.Event().wait(timeout_seconds)
-                latest_settings = supabase_manager.get_user_settings(user['id'])
-                last_result = latest_settings.get('daily_email_last_result') or {}
-                if last_result.get('job_id') != job_id:
-                    return
-                if last_result.get('status') in {'success', 'error'}:
-                    return
-
-                stage = last_result.get('status') or 'running'
-                latest_settings['daily_email_last_result'] = {
-                    **last_result,
-                    'status': 'error',
-                    'success': False,
-                    'message': f"Mail send timed out while {stage}. Check Render logs for the stuck step.",
-                    'error': f"Timed out while {stage}",
-                    'finished_at': datetime.now().isoformat(),
-                    'updated_at': datetime.now().isoformat(),
-                }
-                supabase_manager.save_user_settings(user['id'], latest_settings)
-                logger.error("Manual timetable email timed out for %s while %s", user.get('email'), stage)
-            except Exception as timeout_error:
-                logger.error("Could not mark manual timetable email timeout: %s", timeout_error, exc_info=True)
-
-        threading.Thread(target=run_email_job, daemon=True).start()
-        threading.Thread(target=mark_timeout_if_still_running, daemon=True).start()
-
-        return jsonify({
-            'success': True,
-            'message': 'Mail send started. Check your inbox in a minute.',
-            'personal_email': user_settings.get('personal_email'),
-            'job_id': job_id,
-            'timestamp': datetime.now().isoformat()
-        }), 202
-
-    except Exception as e:
-        logger.error(f"Manual timetable email failed: {e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }), 500
-
-@app.route('/api/timetable', methods=['GET'])
-def get_latest_timetable():
-    """Get the latest saved timetable data for a user"""
-    try:
-        logger.info(f"Timetable request received - Headers: {dict(request.headers)}")
-        user, error_response, status_code = get_user_from_request()
-        if error_response:
-            logger.warning(f"User validation failed: {error_response}")
-            return error_response, status_code
-            
-        logger.info(f"Getting timetable for user: {user['email']}")
-        # Get latest timetable cache from Supabase
-        cache_data = supabase_manager.get_latest_timetable_cache(user['id'])
-        latest_ts = supabase_manager.get_latest_timetable_timestamp(user['id'])
-
-        if not cache_data:
-            logger.info("No cached timetable data found")
-            return jsonify({
-                'success': False,
-                'message': 'No cached schedule data found. Run a scrape first.',
-                'timestamp': datetime.now().isoformat()
-            }), 404
-
-        # Use cache created_at (when available) so frontend shows true scrape/cache time.
-        response_ts = latest_ts or datetime.now().isoformat()
-
-        logger.info("Returning cached timetable data with timestamp: %s", response_ts)
-        return jsonify({
-            'success': True,
-            'data': cache_data,
-            'timestamp': response_ts,
-            'cached': True,
-        })
-            
-    except Exception as e:
-        logger.error(f"Error reading cached data: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }), 500
-
-@app.route('/api/status', methods=['GET'])
-def get_status():
-    """Get current system status"""
-    try:
-        # Get user from request for user-specific data
-        user, error_response, status_code = get_user_from_request()
-        user_id = user.get('id') if user else None
-        
-        # Get latest user-specific timetable cache timestamp from Supabase.
-        # This must represent when data was actually fetched/scraped.
-        latest_timestamp = supabase_manager.get_latest_timetable_timestamp(user_id)
-
-        last_update = latest_timestamp
-        
-        status_data = {
-            'timestamp': datetime.now().isoformat(),
-            'cache_exists': latest_timestamp is not None,
-            'last_update': last_update,
-            'source': 'supabase' if latest_timestamp else 'none'
-        }
-        
-        return jsonify({
-            'success': True,
-            'data': status_data,
-            'timestamp': datetime.now().isoformat()
-        })
-        
-    except Exception as e:
-        logger.error(f"Error getting status: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }), 500
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
     print(f"Starting server on 0.0.0.0:{port}")
-    print(f"Access URLs:")
+    print("Access URLs:")
     print(f"  Local: http://localhost:{port}")
     print(f"  Network: http://{LOCAL_IP}:{port}")
-    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
