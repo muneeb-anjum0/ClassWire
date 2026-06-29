@@ -16,7 +16,7 @@ google-auth-oauthlib>=1.4.0
 
 # HTML parsing and processing
 beautifulsoup4>=4.15.0
-lxml>=4.9.0
+lxml>=6.1.1
 
 # Configuration and environment management
 python-dotenv>=1.0.0
