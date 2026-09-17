@@ -3,6 +3,8 @@ import { ApiResponse, TimetableData, ConfigData, StatusData } from '../types/api
 
 export const BACKEND_WAKE_EVENT = 'backend-wake-state';
 const BACKEND_WAKE_DELAY_MS = 4500;
+const LOCAL_HEALTH_TIMEOUT_MS = 3000;
+const PRODUCTION_HEALTH_TIMEOUT_MS = 90000;
 const PRODUCTION_API_BASE_URL = 'https://timetable-wizard.onrender.com';
 const CONFIGURED_API_URL = import.meta.env.VITE_API_URL;
 
@@ -21,11 +23,13 @@ const getBackendUnavailableMessage = (attemptedCandidates: string[]) => {
   );
 
   if (localCandidates.length > 0) {
-    return 'Unable to reach the backend. Start the local API server on port 5000 or set REACT_APP_API_URL to a working backend URL.';
+    return 'Unable to reach the backend. Start the local API server on port 5000 or set VITE_API_URL to a working backend URL.';
   }
 
-  return 'Unable to reach the backend. Check REACT_APP_API_URL or make sure the deployed API is available.';
+  return 'Unable to reach the backend. Check VITE_API_URL or make sure the deployed API is available.';
 };
+
+const normalizeApiBaseUrl = (url: string) => url.trim().replace(/\/+$/, '');
 
 const getLocalApiBaseUrl = () => {
   const hostname = window.location.hostname;
@@ -99,19 +103,26 @@ export const apiService = {
       isLocalhost ? 'http://localhost:5000' : undefined,
       isLocalhost ? 'http://127.0.0.1:5000' : undefined,
       PRODUCTION_API_BASE_URL,
-    ].filter(Boolean))) as string[];
+    ].filter(Boolean).map((candidate) => normalizeApiBaseUrl(candidate as string))));
     let lastError: unknown = null;
 
     for (const candidate of candidates) {
+      const isLocalCandidate = candidate.includes('localhost') || candidate.includes('127.0.0.1');
+      const healthTimeoutMs = isLocalCandidate ? LOCAL_HEALTH_TIMEOUT_MS : PRODUCTION_HEALTH_TIMEOUT_MS;
+      const controller = new AbortController();
+      const timeoutTimer = window.setTimeout(() => controller.abort(), healthTimeoutMs);
+      const wakeTimer = isLocalCandidate
+        ? undefined
+        : window.setTimeout(() => {
+            emitBackendWakeState(true, getBackendWakeMessage());
+          }, BACKEND_WAKE_DELAY_MS);
+
       try {
-        const controller = new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), 3000);
         const res = await fetch(`${candidate}/api/health`, {
           method: 'GET',
           mode: 'cors',
           signal: controller.signal,
         });
-        window.clearTimeout(timer);
 
         if (res.ok) {
           api.defaults.baseURL = candidate;
@@ -120,6 +131,10 @@ export const apiService = {
       } catch (error) {
         lastError = error;
         await new Promise((resolve) => window.setTimeout(resolve, 200));
+      } finally {
+        window.clearTimeout(timeoutTimer);
+        if (wakeTimer !== undefined) window.clearTimeout(wakeTimer);
+        emitBackendWakeState(false);
       }
     }
 
