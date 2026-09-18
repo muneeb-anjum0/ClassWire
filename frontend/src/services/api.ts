@@ -235,6 +235,11 @@ export const apiService = {
     return response.data;
   },
 
+  searchTimetable: async (query: string): Promise<ApiResponse<TimetableData>> => {
+    const response: AxiosResponse<ApiResponse<TimetableData>> = await api.post('/api/search', { query });
+    return response.data;
+  },
+
   getLatestTimetable: async (): Promise<ApiResponse<TimetableData>> => {
     const response: AxiosResponse<ApiResponse<TimetableData>> = await api.get('/api/timetable');
     return response.data;

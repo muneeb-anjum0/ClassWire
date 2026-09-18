@@ -2,10 +2,9 @@ import React from 'react';
 import StatusIndicator from '../../components/StatusIndicator/StatusIndicator';
 import SummaryStats from '../../components/SummaryStats/SummaryStats';
 import TimetableTable from '../../components/TimetableTable/TimetableTable';
-import SemesterManager from '../../components/SemesterManager/SemesterManager';
 import LoginScreen from '../../components/LoginScreen/LoginScreen';
 import { useAuth } from '../../context/AuthContext';
-import QuickActionsPanel from './QuickActionsPanel';
+import SmartSearch from './SmartSearch';
 import { useDashboardController } from './useDashboardController';
 
 export default function DashboardPage() {
@@ -37,40 +36,14 @@ export default function DashboardPage() {
         </header>
 
         <main className="layout-shell px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-5 sm:space-y-6">
-          <QuickActionsPanel
-            dailyEmailEnabled={controller.dailyEmailEnabled}
-            isDailyEmailToggleSaving={controller.isDailyEmailToggleSaving}
-            isMobile={controller.isMobileQuickActions}
-            isOperationInProgress={controller.operationInProgress}
-            isPersonalEmailSaving={controller.isPersonalEmailSaving}
-            isQuickActionsExpanded={controller.isQuickActionsExpanded}
-            isScraperRunning={controller.isScraperRunning}
-            isSemesterUpdateRunning={controller.isSemesterUpdateRunning}
-            isTestEmailSending={controller.isTestEmailSending}
-            lastUpdateDisplay={controller.lastUpdateDisplay}
-            loggedInLabel={controller.loggedInLabel}
-            logoutConfirmArmed={controller.logoutConfirmArmed}
-            noSemestersConfigured={controller.noSemestersConfigured}
-            onCancelLogoutConfirm={controller.cancelLogoutConfirm}
-            onLogout={controller.handleLogoutClick}
-            onRunScraper={controller.runScraper}
-            onSavePersonalEmail={controller.handleSavePersonalEmail}
-            onSendTestEmail={controller.handleSendTestEmail}
-            onSetPersonalEmail={controller.setPersonalEmail}
-            onShowSemesterManager={() => controller.setShowSemesterManager(true)}
-            onTimetableDayChange={controller.handleTimetableDayChange}
-            onThemeToggle={() => controller.setTheme(controller.theme === 'dark' ? 'light' : 'dark')}
-            onToggleDailyEmail={controller.handleToggleDailyEmail}
-            onToggleQuickActions={() =>
-              controller.setIsQuickActionsExpanded((current) => !current)
-            }
-            personalEmail={controller.personalEmail}
-            quickActionsToggleLabel={controller.quickActionsToggleLabel}
-            runButtonText={controller.runButtonText}
-            semesterCount={controller.semesterCount}
-            theme={controller.theme}
-            timetableDay={controller.timetableDay}
+          <SmartSearch
+            query={controller.searchQuery}
+            setQuery={controller.setSearchQuery}
+            onSearch={controller.runSmartSearch}
+            loading={controller.isScraperRunning}
+            data={controller.timetableData}
             userEmail={controller.userEmail}
+            onLogout={controller.handleLogoutClick}
           />
 
           {(controller.status !== 'idle' || controller.isBackendWaking || controller.isStatusToastClosing) && (
@@ -103,7 +76,6 @@ export default function DashboardPage() {
             <section className="animate-timetable-enter">
               <SummaryStats
                 data={controller.timetableData}
-                config={controller.config || undefined}
                 filteredItems={controller.filteredItems}
               />
             </section>
@@ -127,19 +99,6 @@ export default function DashboardPage() {
               </section>
             )}
 
-          {controller.noSemestersConfigured && !controller.isScraperRunning && (
-            <section className="surface-card surface-card--compact surface-card--callout animate-timetable-enter">
-              <div className="compact-callout compact-callout--stacked">
-                <div className="compact-callout__content">
-                  <p className="compact-callout__eyebrow">Filter setup</p>
-                  <h3 className="compact-callout__title">Ready when you are</h3>
-                  <p className="compact-callout__text">
-                    Add semester or subject filters, then run the scraper to populate your timetable.
-                  </p>
-                </div>
-              </div>
-            </section>
-          )}
         </main>
 
         <footer className="bg-transparent border-0">
@@ -150,16 +109,6 @@ export default function DashboardPage() {
           </div>
         </footer>
 
-        <SemesterManager
-          isOpen={controller.showSemesterManager}
-          onClose={() => controller.setShowSemesterManager(false)}
-          currentSemesters={controller.detectedSemesters}
-          onSave={controller.handleSaveSemesters}
-          filterMode={controller.config?.filter_mode || 'semesters'}
-          currentSubjects={controller.config?.subject_filters || []}
-          currentFaculty={controller.config?.faculty_filters || []}
-          onSaveDiscovery={controller.handleSaveDiscovery}
-        />
       </div>
     </div>
   );

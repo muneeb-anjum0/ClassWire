@@ -248,17 +248,18 @@
 
 /* Connected compact summary ribbon */
 .summary-ribbon {
+  position: relative;
   overflow: hidden;
-  border: 1px solid var(--theme-border, #d8dde7);
-  border-radius: 20px;
-  background: var(--theme-surface, #fff);
-  box-shadow: var(--theme-shadow-soft, 0 12px 28px rgba(15, 23, 42, .07));
+  border: 1px solid color-mix(in srgb, var(--theme-border, #d8dde7) 80%, transparent);
+  border-radius: 24px;
+  background: linear-gradient(110deg, #fff 0 50%, color-mix(in srgb, var(--theme-accent-soft, #eef2ff) 42%, #fff) 100%);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, .07);
   animation: summaryCardIn 220ms cubic-bezier(.2,.8,.2,1) both;
 }
 
 .summary-ribbon__metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .summary-ribbon__metric {
@@ -267,9 +268,9 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 68px;
-  padding: 11px 16px;
-  transition: background 160ms ease;
+  min-height: 82px;
+  padding: 14px 22px;
+  transition: background 160ms ease, transform 160ms ease;
 }
 
 .summary-ribbon__metric:not(:last-child)::after {
@@ -282,25 +283,26 @@
   background: var(--theme-border-soft, #e8ebf0);
 }
 
-.summary-ribbon__metric:hover { background: var(--theme-surface-soft, #f8fafc); }
+.summary-ribbon__metric:hover { background: rgb(255 255 255 / 55%); transform: translateY(-1px); }
 
 .summary-ribbon__icon {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
   display: grid;
   place-items: center;
-  border-radius: 11px;
+  border-radius: 15px;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 70%);
 }
 
 .summary-ribbon__metric--1 .summary-ribbon__icon { background: #eef2ff; }
-.summary-ribbon__metric--2 .summary-ribbon__icon { background: #ecf8f4; }
+.summary-ribbon__metric--2 .summary-ribbon__icon { background: #f6edff; }
 .summary-ribbon__metric--3 .summary-ribbon__icon { background: #fff4e8; }
 .summary-ribbon__metric--4 .summary-ribbon__icon { background: #f6edff; }
-.summary-ribbon__icon img { width: 16px; height: 16px; }
+.summary-ribbon__icon img { width: 20px; height: 20px; }
 .summary-ribbon__copy { min-width: 0; display: grid; gap: 3px; }
-.summary-ribbon__label { overflow: hidden; color: var(--theme-text-muted, #778196); font-size: 9px; line-height: 1; font-weight: 850; letter-spacing: .09em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
-.summary-ribbon__value { overflow: hidden; color: var(--theme-text-primary, #111827); font-size: 21px; line-height: 1; font-weight: 850; letter-spacing: -.04em; text-overflow: ellipsis; white-space: nowrap; }
+.summary-ribbon__label { overflow: hidden; color: var(--theme-text-muted, #778196); font-size: 10px; line-height: 1; font-weight: 850; letter-spacing: .12em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.summary-ribbon__value { overflow: hidden; color: var(--theme-text-primary, #111827); font-size: 27px; line-height: 1; font-weight: 900; letter-spacing: -.055em; text-overflow: ellipsis; white-space: nowrap; }
 
 .summary-ribbon__semesters {
   min-width: 0;
@@ -329,11 +331,10 @@
 .summary-ribbon__empty { color: var(--theme-text-muted, #778196); font-size: 10px; }
 
 @media (max-width: 700px) {
-  .summary-ribbon { border-radius: 17px; }
+  .summary-ribbon { border-radius: 19px; }
   .summary-ribbon__metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .summary-ribbon__metric { min-height: 55px; padding: 9px 11px; }
+  .summary-ribbon__metric { min-height: 66px; padding: 10px 12px; }
   .summary-ribbon__metric:nth-child(2)::after { display: none; }
-  .summary-ribbon__metric:nth-child(-n+2) { border-bottom: 1px solid var(--theme-border-soft, #e8ebf0); }
   .summary-ribbon__metric:not(:last-child)::after { top: 10px; bottom: 10px; }
   .summary-ribbon__icon { width: 29px; height: 29px; flex-basis: 29px; border-radius: 9px; }
   .summary-ribbon__icon img { width: 14px; height: 14px; }

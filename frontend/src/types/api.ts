@@ -23,6 +23,19 @@ export interface TimetableData {
     unique_courses: number;
     unique_faculty: number;
   };
+  search?: {
+    query?: string;
+    saved_at?: string;
+    answer: string;
+    intent: 'schedule' | 'free_time';
+    days: string[];
+    entities: Record<string, string[]>;
+    free_slots: Record<string, string[]>;
+    faculty_availability?: Array<{
+      faculty: string;
+      slots: Record<string, string[]>;
+    }>;
+  };
 }
 
 export interface ApiResponse<T = any> {

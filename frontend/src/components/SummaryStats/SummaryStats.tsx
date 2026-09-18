@@ -1,15 +1,14 @@
 import React from 'react';
-import { TimetableData, ConfigData, TimetableItem } from '../../types/api';
+import { TimetableData, TimetableItem } from '../../types/api';
 import { normalizeSemesterLabel } from '../../utils/semesterNormalization';
 import './SummaryStats.css';
 
 interface SummaryStatsProps {
   data: TimetableData;
-  config?: ConfigData;
   filteredItems?: TimetableItem[];
 }
 
-const SummaryStats: React.FC<SummaryStatsProps> = ({ data, config, filteredItems }) => {
+const SummaryStats: React.FC<SummaryStatsProps> = ({ data, filteredItems }) => {
   if (!data || !data.summary) {
     return null;
   }
@@ -71,18 +70,6 @@ const SummaryStats: React.FC<SummaryStatsProps> = ({ data, config, filteredItems
       value: displaySummary.total_items || 0,
       icon: '/courses.svg',
       alt: 'Total Classes',
-    },
-    {
-      label: 'Unique Courses',
-      value: displaySummary.unique_courses || 0,
-      icon: '/uniqueCourses.svg',
-      alt: 'Unique Courses',
-    },
-    {
-      label: 'Faculty Members',
-      value: displaySummary.unique_faculty || 0,
-      icon: '/faculty.svg',
-      alt: 'Faculty Members',
     },
     {
       label: 'Current Day',

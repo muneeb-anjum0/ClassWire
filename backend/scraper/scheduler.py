@@ -136,6 +136,7 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
         timezone = user_settings.get('timezone', settings.tz) if user_settings else settings.tz
         next_day_available_hour = user_settings.get('next_day_available_hour', settings.next_day_available_hour) if user_settings else settings.next_day_available_hour
         timetable_day = user_settings.get('timetable_day', 'Auto') if user_settings else 'Auto'
+        should_save_cache = user_settings.get('_save_cache', True) if user_settings else True
         
         local_tz = tz.gettz(timezone)
         now_local = datetime.now(tz=local_tz)
@@ -233,10 +234,10 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
                             "unique_courses": len(set(item.get('course') for item in items if item.get('course'))),
                             "unique_faculty": len(set(item.get('faculty') for item in items if item.get('faculty')))},
             }
-            if user_id:
+            if user_id and should_save_cache:
                 from database.firestore_store import data_store
                 data_store.save_timetable_cache(user_id, doc)
-            else:
+            elif not user_id and should_save_cache:
                 _save_json(doc)
             return {"success": True, "data": doc, "message": f"Successfully found {len(items)} items for the week"}
 
@@ -260,10 +261,10 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
             }
             
             # Save to Firestore if user_id provided, otherwise use local storage
-            if user_id:
+            if user_id and should_save_cache:
                 from database.firestore_store import data_store
                 data_store.save_timetable_cache(user_id, doc)
-            else:
+            elif not user_id and should_save_cache:
                 _save_json(doc)
                 
             return {"success": True, "data": doc, "message": "No messages found for today"}
@@ -298,8 +299,9 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
             }
         }
         
-        from database.firestore_store import data_store
-        data_store.save_timetable_cache(user_id, doc)
+        if should_save_cache:
+            from database.firestore_store import data_store
+            data_store.save_timetable_cache(user_id, doc)
         
         summary = doc.get("summary", {})
         LOGGER.info(f"Successfully parsed {summary['total_items']} items for date {target_date.date()}")
