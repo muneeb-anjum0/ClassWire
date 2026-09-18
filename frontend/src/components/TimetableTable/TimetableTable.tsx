@@ -13,6 +13,7 @@ interface TimetableTableProps {
 const TimetableTable: React.FC<TimetableTableProps> = ({ items }) => {
   const safeItems = items || [];
   const { grouped, sortedSemesters } = groupAndSortData(safeItems);
+  const showDay = safeItems.some((item) => Boolean(item.schedule_day));
 
   return (
     <>
@@ -22,8 +23,8 @@ const TimetableTable: React.FC<TimetableTableProps> = ({ items }) => {
         <EmptyTimetableState />
       ) : (
         <div className="tw-stage">
-          <TimetableMobileSection grouped={grouped} sortedSemesters={sortedSemesters} />
-          <TimetableDesktopTable grouped={grouped} sortedSemesters={sortedSemesters} />
+          <TimetableMobileSection grouped={grouped} sortedSemesters={sortedSemesters} showDay={showDay} />
+          <TimetableDesktopTable grouped={grouped} sortedSemesters={sortedSemesters} showDay={showDay} />
         </div>
       )}
     </>

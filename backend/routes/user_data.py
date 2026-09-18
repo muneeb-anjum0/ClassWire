@@ -45,6 +45,7 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
                 {
                     "gmail_query": user_settings.get("gmail_query_base", settings.gmail_query_base),
                     "semester_filter": user_settings.get("allowed_semesters", settings.allowed_semesters),
+                    "timetable_day": user_settings.get("timetable_day", "Auto"),
                     "personal_email": user_settings.get("personal_email", ""),
                     "daily_email_enabled": user_settings.get(
                         "daily_email_enabled",
@@ -176,6 +177,28 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
             )
         except Exception as error:
             logger.error("Error updating semesters: %s", error, exc_info=True)
+            return jsonify({"success": False, "error": str(error)}), 500
+
+    @blueprint.route("/api/config/timetable-day", methods=["POST", "OPTIONS"])
+    def update_timetable_day():
+        if request.method == "OPTIONS":
+            return "", 200
+        try:
+            user, error_response, status_code = get_user_from_request()
+            if error_response:
+                return error_response, status_code
+            day = (request.get_json(silent=True) or {}).get("timetable_day", "")
+            allowed_days = {"Auto", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Entire Week"}
+            if day not in allowed_days:
+                return jsonify({"success": False, "error": "Invalid timetable day"}), 400
+            store = get_store()
+            current_settings = store.get_user_settings(user["id"])
+            current_settings["timetable_day"] = day
+            if not store.save_user_settings(user["id"], current_settings):
+                return jsonify({"success": False, "error": "Failed to save timetable day"}), 500
+            return jsonify({"success": True, "timetable_day": day, "message": f"Timetable day set to {day}"})
+        except Exception as error:
+            logger.error("Error updating timetable day: %s", error, exc_info=True)
             return jsonify({"success": False, "error": str(error)}), 500
 
     @blueprint.route("/api/scrape", methods=["POST"])

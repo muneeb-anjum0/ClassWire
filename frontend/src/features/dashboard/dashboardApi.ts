@@ -28,6 +28,7 @@ export function buildConfigAfterSemesterUpdate(
   return {
     gmail_query: currentConfig?.gmail_query || '',
     semester_filter: newSemesters,
+    timetable_day: currentConfig?.timetable_day || 'Auto',
     personal_email: currentConfig?.personal_email || personalEmail.trim(),
     daily_email_enabled: Boolean(currentConfig?.daily_email_enabled),
     schedule_time: currentConfig?.schedule_time || '00:00',

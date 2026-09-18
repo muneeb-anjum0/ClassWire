@@ -17,12 +17,15 @@ export default function DailyEmailFields({
 }: DailyEmailFieldsProps) {
   return (
     <>
-      <div className="daily-email__label">
-        <Mail className="daily-email__icon" aria-hidden="true" />
-        <span>Daily email</span>
+      <div className="daily-email__intro">
+        <span className="daily-email__icon-wrap" aria-hidden="true">
+          <Mail className="daily-email__icon" />
+        </span>
+        <span className="daily-email__intro-copy">
+          <span className="daily-email__label">Daily email</span>
+          {!compact && <span className="daily-email__description">Send your formatted timetable every day at 8:00 PM.</span>}
+        </span>
       </div>
-
-      {!compact && <p>Send the formatted timetable to your personal inbox every day at 8:00 PM.</p>}
 
       <div className="daily-email__actions">
         <button

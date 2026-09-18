@@ -35,6 +35,7 @@ export type QuickActionsPanelProps = {
   onSendTestEmail: () => void;
   onSetPersonalEmail: (email: string) => void;
   onShowSemesterManager: () => void;
+  onTimetableDayChange: (day: string) => void;
   onThemeToggle: () => void;
   onToggleDailyEmail: () => void;
   onToggleQuickActions: () => void;
@@ -43,5 +44,6 @@ export type QuickActionsPanelProps = {
   runButtonText: string;
   semesterCount: number;
   theme: DashboardTheme;
+  timetableDay: string;
   userEmail?: string;
 };

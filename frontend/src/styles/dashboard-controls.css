@@ -285,6 +285,17 @@ html[data-theme='dark'] .btn-pill--primary:hover:not(:disabled) {
   box-shadow: 0 10px 18px rgba(15, 23, 42, 0.1);
 }
 
+.signout-chip--idle {
+  color: var(--theme-danger);
+  border-color: color-mix(in srgb, var(--theme-danger) 28%, var(--theme-border-soft));
+  background: color-mix(in srgb, var(--theme-danger-soft) 58%, var(--theme-surface) 42%);
+}
+
+.signout-chip--idle:hover {
+  border-color: color-mix(in srgb, var(--theme-danger) 44%, var(--theme-border-soft));
+  background: color-mix(in srgb, var(--theme-danger-soft) 76%, var(--theme-surface) 24%);
+}
+
 .signout-chip__icon {
   width: 0.95rem;
   height: 0.95rem;

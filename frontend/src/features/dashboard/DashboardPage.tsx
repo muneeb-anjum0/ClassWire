@@ -58,6 +58,7 @@ export default function DashboardPage() {
             onSendTestEmail={controller.handleSendTestEmail}
             onSetPersonalEmail={controller.setPersonalEmail}
             onShowSemesterManager={() => controller.setShowSemesterManager(true)}
+            onTimetableDayChange={controller.handleTimetableDayChange}
             onThemeToggle={() => controller.setTheme(controller.theme === 'dark' ? 'light' : 'dark')}
             onToggleDailyEmail={controller.handleToggleDailyEmail}
             onToggleQuickActions={() =>
@@ -68,6 +69,7 @@ export default function DashboardPage() {
             runButtonText={controller.runButtonText}
             semesterCount={controller.semesterCount}
             theme={controller.theme}
+            timetableDay={controller.timetableDay}
             userEmail={controller.userEmail}
           />
 
