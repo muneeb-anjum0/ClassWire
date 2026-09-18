@@ -8,6 +8,10 @@ interface SemesterManagerProps {
   onClose: () => void;
   currentSemesters: string[];
   onSave: (semesters: string[]) => void;
+  filterMode?: 'semesters' | 'subjects' | 'faculty';
+  currentSubjects?: string[];
+  currentFaculty?: string[];
+  onSaveDiscovery?: (mode: 'semesters' | 'subjects' | 'faculty', values: string[]) => void;
 }
 
 const SemesterManager: React.FC<SemesterManagerProps> = ({
@@ -15,27 +19,38 @@ const SemesterManager: React.FC<SemesterManagerProps> = ({
   onClose,
   currentSemesters = [],
   onSave,
+  filterMode = 'semesters',
+  currentSubjects = [],
+  currentFaculty = [],
+  onSaveDiscovery,
 }) => {
   const [semesters, setSemesters] = useState<string[]>(currentSemesters);
+  const [subjects, setSubjects] = useState<string[]>(currentSubjects);
+  const [faculty, setFaculty] = useState<string[]>(currentFaculty);
+  const [mode, setMode] = useState<'semesters' | 'subjects' | 'faculty'>(filterMode);
   const [newSemester, setNewSemester] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   React.useEffect(() => {
     setSemesters(currentSemesters);
-  }, [currentSemesters]);
+    setSubjects(currentSubjects);
+    setFaculty(currentFaculty);
+    setMode(filterMode);
+  }, [currentSemesters, currentSubjects, currentFaculty, filterMode]);
 
   useBodyScrollLock(isOpen);
 
   const trimmedSemester = newSemester.trim();
+  const activeValues = mode === 'subjects' ? subjects : mode === 'faculty' ? faculty : semesters;
   const alreadyExists = useMemo(
-    () => semesters.some((semester) => semester.toLowerCase() === trimmedSemester.toLowerCase()),
-    [semesters, trimmedSemester],
+    () => activeValues.some((value) => value.toLowerCase() === trimmedSemester.toLowerCase()),
+    [activeValues, trimmedSemester],
   );
   const canAdd = trimmedSemester.length > 0 && !alreadyExists;
   const styles = createSemesterManagerStyles({
     alreadyExists,
     canAdd,
-    hasSemesters: semesters.length > 0,
+    hasSemesters: activeValues.length > 0,
     isSaving,
   });
 
@@ -44,18 +59,23 @@ const SemesterManager: React.FC<SemesterManagerProps> = ({
       return;
     }
 
-    setSemesters((previous) => [...previous, trimmedSemester]);
+    if (mode === 'subjects') setSubjects((previous) => [...previous, trimmedSemester]);
+    else if (mode === 'faculty') setFaculty((previous) => [...previous, trimmedSemester]);
+    else setSemesters((previous) => [...previous, trimmedSemester]);
     setNewSemester('');
   };
 
   const removeSemester = (index: number) => {
-    setSemesters((previous) => previous.filter((_, currentIndex) => currentIndex !== index));
+    if (mode === 'subjects') setSubjects((previous) => previous.filter((_, currentIndex) => currentIndex !== index));
+    else if (mode === 'faculty') setFaculty((previous) => previous.filter((_, currentIndex) => currentIndex !== index));
+    else setSemesters((previous) => previous.filter((_, currentIndex) => currentIndex !== index));
   };
 
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      await onSave(semesters);
+      if (onSaveDiscovery) await onSaveDiscovery(mode, activeValues);
+      else await onSave(semesters);
       onClose();
     } finally {
       setIsSaving(false);
@@ -84,12 +104,12 @@ const SemesterManager: React.FC<SemesterManagerProps> = ({
       <div style={styles.modal} className="semester-modal">
         <div style={styles.header} className="semester-header">
           <div style={styles.titleBlock}>
-            <p style={styles.eyebrow}>Semester setup</p>
+            <p style={styles.eyebrow}>Discovery setup</p>
             <h3 style={styles.title} className="semester-title">
-              Manage semesters
+              Choose what to find
             </h3>
             <p style={styles.subtitle} className="semester-subtitle">
-              Choose which semesters appear in timetable filters.
+              Search by semester, or find every section of specific subjects.
             </p>
           </div>
 
@@ -106,10 +126,15 @@ const SemesterManager: React.FC<SemesterManagerProps> = ({
         </div>
 
         <div style={styles.body} className="semester-body">
+          <div className="discovery-mode" role="tablist" aria-label="Timetable discovery mode">
+            <button type="button" role="tab" aria-selected={mode === 'semesters'} className={mode === 'semesters' ? 'is-active' : ''} onClick={() => { setMode('semesters'); setNewSemester(''); }}>By semester</button>
+            <button type="button" role="tab" aria-selected={mode === 'subjects'} className={mode === 'subjects' ? 'is-active' : ''} onClick={() => { setMode('subjects'); setNewSemester(''); }}>By subject</button>
+            <button type="button" role="tab" aria-selected={mode === 'faculty'} className={mode === 'faculty' ? 'is-active' : ''} onClick={() => { setMode('faculty'); setNewSemester(''); }}>By faculty</button>
+          </div>
           <div style={styles.section}>
             <div style={styles.labelRow}>
               <label htmlFor="semester-input" style={styles.label}>
-                Add semester
+                {mode === 'subjects' ? 'Add subject search' : mode === 'faculty' ? 'Add faculty search' : 'Add semester'}
               </label>
             </div>
 
@@ -120,7 +145,7 @@ const SemesterManager: React.FC<SemesterManagerProps> = ({
                 value={newSemester}
                 onChange={(event) => setNewSemester(event.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Example: BS (SE) - 5C"
+                placeholder={mode === 'subjects' ? 'Example: SEC 3603 or Software Engineering' : mode === 'faculty' ? 'Example: Muhammad Qasim or Qasim' : 'Example: BS (SE) - 5C'}
                 style={styles.input}
                 className="semester-input"
               />
@@ -139,25 +164,25 @@ const SemesterManager: React.FC<SemesterManagerProps> = ({
             </div>
 
             <p style={styles.hint}>
-              {alreadyExists ? 'Already added.' : 'Examples: BS (SE) - 5C, MS (CS) - 1A, 7A'}
+              {alreadyExists ? 'Already added.' : mode === 'subjects' ? 'Partial names and codes work. Spaces, punctuation, and letter case are ignored.' : mode === 'faculty' ? 'Name fragments work. Spaces, punctuation, and letter case are ignored.' : 'Examples: BS (SE) - 5C, MS (CS) - 1A, 7A'}
             </p>
           </div>
 
           <div style={{ ...styles.section, marginBottom: 0 }}>
             <div style={styles.labelRow}>
-              <label style={styles.label}>Current semesters</label>
-              <span style={styles.countBadge}>{semesters.length}</span>
+              <label style={styles.label}>{mode === 'subjects' ? 'Subject filters' : mode === 'faculty' ? 'Faculty filters' : 'Current semesters'}</label>
+              <span style={styles.countBadge}>{activeValues.length}</span>
             </div>
 
             <div style={styles.listBox}>
               <div style={styles.listScroll} className="semester-list-scroll">
-                {semesters.length === 0 ? (
+                {activeValues.length === 0 ? (
                   <div style={styles.emptyState}>
-                    <p style={styles.emptyTitle}>No semesters added</p>
-                    <p style={styles.emptyText}>Add one semester above to start.</p>
+                    <p style={styles.emptyTitle}>No {mode === 'subjects' ? 'subjects' : mode === 'faculty' ? 'faculty' : 'semesters'} added</p>
+                    <p style={styles.emptyText}>Add one above to start.</p>
                   </div>
                 ) : (
-                  semesters.map((semester, index) => (
+                  activeValues.map((semester, index) => (
                     <div
                       key={`${semester}-${index}`}
                       style={styles.semesterItem}

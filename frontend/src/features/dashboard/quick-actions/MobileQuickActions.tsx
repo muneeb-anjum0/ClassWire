@@ -127,7 +127,7 @@ export default function MobileQuickActions(props: QuickActionsPanelProps) {
           <button onClick={onShowSemesterManager}
             className={`mobile-action mobile-action--neutral ${noSemestersConfigured ? 'mobile-action--attention' : ''}`}>
             <span className="mobile-action__icon" aria-hidden="true"><Settings2 /></span>
-            <span className="mobile-action__text">Semesters</span>
+            <span className="mobile-action__text">Filters</span>
             <span className="mobile-action__count">{semesterCount}</span>
           </button>
 

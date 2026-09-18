@@ -186,6 +186,16 @@ export const apiService = {
     return response.data;
   },
 
+  updateDiscovery: async (filterMode: 'semesters' | 'subjects' | 'faculty', semesters: string[], subjects: string[], faculty: string[]): Promise<ApiResponse> => {
+    const response: AxiosResponse<ApiResponse> = await api.post('/api/config/discovery', {
+      filter_mode: filterMode,
+      semesters,
+      subjects,
+      faculty,
+    });
+    return response.data;
+  },
+
   updateTimetableDay: async (timetableDay: string): Promise<ApiResponse<{ timetable_day: string }>> => {
     const response: AxiosResponse<ApiResponse<{ timetable_day: string }>> = await api.post('/api/config/timetable-day', {
       timetable_day: timetableDay,

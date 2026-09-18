@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import sys
+import re
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 
@@ -18,6 +19,32 @@ from .timetable_parser import parse_html_with_advanced_pandas
 LOGGER = logging.getLogger(__name__)
 
 WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+def _normalize_subject(value: object) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+def _filter_subject_items(items, subject_filters):
+    needles = [_normalize_subject(value) for value in subject_filters]
+    needles = [value for value in needles if value]
+    if not needles:
+        return items
+    matched = []
+    for item in items:
+        fields = [item.get("course_code"), item.get("course_title"), item.get("course")]
+        normalized_fields = [_normalize_subject(value) for value in fields if value]
+        if any(needle in field or field in needle for needle in needles for field in normalized_fields):
+            matched.append(item)
+    return matched
+
+def _filter_faculty_items(items, faculty_filters):
+    needles = [_normalize_subject(value) for value in faculty_filters]
+    needles = [value for value in needles if value]
+    if not needles:
+        return items
+    return [
+        item for item in items
+        if any(needle in _normalize_subject(item.get("faculty")) for needle in needles)
+    ]
 
 def _target_day_name(now_local: datetime, next_day_available_hour: int = 17) -> str:
     """
@@ -100,6 +127,10 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
     
     try:
         allowed_semesters = user_settings.get('allowed_semesters', settings.allowed_semesters) if user_settings else settings.allowed_semesters
+        filter_mode = user_settings.get('filter_mode', 'semesters') if user_settings else 'semesters'
+        subject_filters = user_settings.get('subject_filters', []) if user_settings else []
+        faculty_filters = user_settings.get('faculty_filters', []) if user_settings else []
+        parser_semesters = allowed_semesters if filter_mode == 'semesters' else None
         gmail_query_base = user_settings.get('gmail_query_base', settings.gmail_query_base) if user_settings else settings.gmail_query_base
         newer_than_days = user_settings.get('newer_than_days', settings.newer_than_days) if user_settings else settings.newer_than_days
         timezone = user_settings.get('timezone', settings.tz) if user_settings else settings.tz
@@ -145,13 +176,30 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
                         expiry=expiry
                     )
                 else:
-                    creds = get_credentials()
-            except Exception:
-                creds = get_credentials()
+                    raise RuntimeError(
+                        f"Gmail authorization is missing for {user_email}. "
+                        "Sign out, then sign in with that Google account again."
+                    )
+            except RuntimeError:
+                raise
+            except Exception as error:
+                raise RuntimeError(
+                    f"Could not load Gmail authorization for {user_email}. "
+                    "Sign out, then reconnect that Google account."
+                ) from error
         else:
             creds = get_credentials()
 
         service = build_service(creds)
+        if user_id and user_email and user_email != "me":
+            profile = service.users().getProfile(userId="me").execute()
+            authorized_email = str(profile.get("emailAddress") or "").strip().lower()
+            expected_email = str(user_email).strip().lower()
+            if authorized_email != expected_email:
+                raise RuntimeError(
+                    f"Gmail authorization belongs to {authorized_email or 'another account'}, "
+                    f"not {expected_email}. Sign out and reconnect {expected_email}."
+                )
         if timetable_day == 'Entire Week':
             items = []
             message_ids = []
@@ -164,7 +212,11 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
                 message_id = day_messages[0]["id"]
                 message_ids.append(message_id)
                 html = get_message_html(service, user_id=user_email, msg_id=message_id) or ""
-                day_items = parse_html_with_advanced_pandas(html, allowed_semesters)
+                day_items = parse_html_with_advanced_pandas(html, parser_semesters)
+                if filter_mode == 'subjects':
+                    day_items = _filter_subject_items(day_items, subject_filters)
+                elif filter_mode == 'faculty':
+                    day_items = _filter_faculty_items(day_items, faculty_filters)
                 for item in day_items:
                     item["schedule_day"] = day_name
                 items.extend(day_items)
@@ -219,7 +271,11 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
         msg_id = msgs[0]["id"]
         html = get_message_html(service, user_id=user_email, msg_id=msg_id) or ""
         
-        items = parse_html_with_advanced_pandas(html, allowed_semesters)
+        items = parse_html_with_advanced_pandas(html, parser_semesters)
+        if filter_mode == 'subjects':
+            items = _filter_subject_items(items, subject_filters)
+        elif filter_mode == 'faculty':
+            items = _filter_faculty_items(items, faculty_filters)
 
         # Create summary statistics
         semester_counts = {}

@@ -88,11 +88,10 @@ export const getSemesterLabel = (item: TimetableItem): string =>
   normalizeSemesterLabel(item.semester_display || item.semester || item.semester_key);
 
 export const getDisplayCourseTitle = (item: TimetableItem): string => {
-  if (validateData(item.course_title)) {
-    return item.course_title!;
-  }
-
-  return generateTitle(item);
+  const title = validateData(item.course_title) ? item.course_title! : generateTitle(item);
+  const courseIdentity = `${item.course || ''} ${item.course_code || ''}`;
+  const isLab = /\blab\s*:/i.test(courseIdentity) || /\blab\b/i.test(String(item.course_type || ''));
+  return isLab && !/\blab\s*$/i.test(title) ? `${title} Lab` : title;
 };
 
 export const getCourseCode = (item: TimetableItem): string => item.course || item.course_code || '-';

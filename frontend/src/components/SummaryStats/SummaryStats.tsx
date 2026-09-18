@@ -65,8 +65,6 @@ const SummaryStats: React.FC<SummaryStatsProps> = ({ data, config, filteredItems
   };
 
   const displaySummary = calculateFilteredSummary();
-  const semesterCount = Object.keys(displaySummary.semester_breakdown).length;
-
   const stats = [
     {
       label: 'Total Classes',
@@ -95,83 +93,22 @@ const SummaryStats: React.FC<SummaryStatsProps> = ({ data, config, filteredItems
   ];
 
   return (
-    <>
-<div className="summary-stats-grid">
-        {stats.map((stat) => (
-          <div key={stat.label} className="summary-stat-card">
-            <div className="summary-stat-inner">
-              <div className="summary-stat-icon">
-                <img src={stat.icon} alt={stat.alt} className="theme-card-icon" />
-              </div>
-
-              <div className="summary-stat-text">
-                <p className="summary-stat-label">{stat.label}</p>
-                <p className="summary-stat-value">{stat.value}</p>
-              </div>
-            </div>
+    <section className="summary-ribbon" aria-label="Timetable summary">
+      <div className="summary-ribbon__metrics">
+        {stats.map((stat, index) => (
+          <div key={stat.label} className={`summary-ribbon__metric summary-ribbon__metric--${index + 1}`}>
+            <span className="summary-ribbon__icon">
+              <img src={stat.icon} alt="" className="theme-card-icon" />
+            </span>
+            <span className="summary-ribbon__copy">
+              <span className="summary-ribbon__label">{stat.label}</span>
+              <strong className="summary-ribbon__value">{stat.value}</strong>
+            </span>
           </div>
         ))}
-
-        <div className="summary-breakdown-card">
-          <div className="summary-breakdown-inner">
-            <div className="summary-breakdown-header">
-              <div className="summary-breakdown-title-row">
-                <div className="summary-breakdown-icon">
-                  <svg
-                    width="17"
-                    height="17"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                    />
-                  </svg>
-                </div>
-
-                <div>
-                  <p className="summary-breakdown-title">Semester Breakdown</p>
-                  <p className="summary-breakdown-subtitle">
-                    Compact class totals by semester.
-                  </p>
-                </div>
-              </div>
-
-              <span className="summary-breakdown-count">
-                {semesterCount} semesters
-              </span>
-            </div>
-
-            <div className="summary-semester-grid">
-              {Object.entries(displaySummary.semester_breakdown).length > 0 ? (
-                Object.entries(displaySummary.semester_breakdown).map(([semester, count]) => (
-                  <div key={semester} className="summary-semester-card">
-                    <div style={{ minWidth: 0 }}>
-                      <p className="summary-semester-name" title={semester}>
-                        {semester}
-                      </p>
-                      <p className="summary-semester-caption">Scheduled classes</p>
-                    </div>
-
-                    <span className="summary-semester-pill">
-                      {count} classes
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <div className="summary-empty-state">
-                  No semester data available. Configure your semester filters or refresh the timetable.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
       </div>
-    </>
+
+    </section>
   );
 };
 

@@ -37,6 +37,9 @@ export interface ApiResponse<T = any> {
 export interface ConfigData {
   gmail_query: string;
   semester_filter: string[];
+  filter_mode?: 'semesters' | 'subjects' | 'faculty';
+  subject_filters?: string[];
+  faculty_filters?: string[];
   timetable_day?: string;
   personal_email?: string;
   daily_email_enabled?: boolean;

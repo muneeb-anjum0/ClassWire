@@ -212,6 +212,26 @@ export const getFilteredTimetableItems = (
     ? expandSocialSciencesSemesterItems(timetableData.items)
     : [];
 
+  if (config?.filter_mode === 'subjects') {
+    const normalizeSubject = (value: unknown) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const needles = (config.subject_filters || []).map(normalizeSubject).filter(Boolean);
+    if (needles.length === 0) return sourceItems;
+    return sourceItems.filter((item) => {
+      const fields = [item.course_code, item.course_title, item.course].map(normalizeSubject).filter(Boolean);
+      return needles.some((needle) => fields.some((field) => field.includes(needle) || needle.includes(field)));
+    });
+  }
+
+  if (config?.filter_mode === 'faculty') {
+    const normalizeFaculty = (value: unknown) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const needles = (config.faculty_filters || []).map(normalizeFaculty).filter(Boolean);
+    if (needles.length === 0) return sourceItems;
+    return sourceItems.filter((item) => {
+      const faculty = normalizeFaculty(item.faculty);
+      return needles.some((needle) => faculty.includes(needle));
+    });
+  }
+
   if (!timetableData?.items || !config?.semester_filter || config.semester_filter.length === 0) {
     return sourceItems;
   }

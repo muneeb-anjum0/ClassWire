@@ -172,7 +172,7 @@ export default function DesktopQuickActions({
               className={`btn-pill btn-pill--neutral ${noSemestersConfigured ? 'btn-pill--attention' : ''}`}
             >
               <img src="/setting.svg" alt="" className="theme-button-icon h-4 w-4 mr-2" />
-              Semesters
+              Filters
               <span className="count-pill">{semesterCount}</span>
             </button>
           </div>
