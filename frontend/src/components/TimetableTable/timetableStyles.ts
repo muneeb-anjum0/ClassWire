@@ -462,6 +462,153 @@ export const timetableStyles = `
     }
   }
 
+  .tw-cell--semester .tw-table-chip--semester {
+    border-color: color-mix(in srgb, #aaa2c7 42%, var(--theme-border-soft));
+    background: color-mix(in srgb, #eeeaf7 76%, var(--theme-surface) 24%);
+    color: #5f5875;
+  }
+
+  .tw-cell--course .tw-table-course-title,
+  .tw-course-block h4 {
+    color: color-mix(in srgb, #526b88 72%, var(--theme-text-primary) 28%);
+  }
+
+  .tw-cell--course .tw-table-course-code,
+  .tw-course-code {
+    color: color-mix(in srgb, #7890aa 68%, var(--theme-text-secondary) 32%);
+  }
+
+  .tw-cell--faculty .tw-muted-text,
+  .tw-detail-row--faculty .tw-detail-value {
+    color: color-mix(in srgb, #55766f 72%, var(--theme-text-primary) 28%);
+    font-weight: 750;
+  }
+
+  .tw-cell--room .tw-table-chip--room,
+  .tw-room-pill {
+    border-color: color-mix(in srgb, #c3aa82 38%, var(--theme-border-soft));
+    background: color-mix(in srgb, #f5eddf 72%, var(--theme-surface) 28%);
+    color: #756348;
+  }
+
+  .tw-cell--time .tw-table-chip--time,
+  .tw-detail-row--time {
+    border-color: color-mix(in srgb, #c9a2aa 38%, var(--theme-border-soft));
+    background: color-mix(in srgb, #f5e9eb 72%, var(--theme-surface) 28%);
+    color: #795b62;
+  }
+
+  .tw-detail-row--time .tw-detail-label,
+  .tw-detail-row--time .tw-detail-value {
+    color: inherit;
+  }
+
+  .tw-cell--campus .tw-campus-chip,
+  .tw-detail-row--campus {
+    border-color: color-mix(in srgb, #9ab6a2 38%, var(--theme-border-soft));
+    background: color-mix(in srgb, #e7f0e9 72%, var(--theme-surface) 28%);
+    color: #526c59;
+  }
+
+  .tw-detail-row--campus .tw-detail-label,
+  .tw-detail-row--campus .tw-detail-value {
+    color: inherit;
+  }
+
+  html[data-theme='dark'] .tw-cell--semester .tw-table-chip--semester { color: #d2cbe4; background: rgba(170, 162, 199, 0.14); }
+  html[data-theme='dark'] .tw-cell--course .tw-table-course-title,
+  html[data-theme='dark'] .tw-course-block h4 { color: #b6c7d9; }
+  html[data-theme='dark'] .tw-cell--course .tw-table-course-code,
+  html[data-theme='dark'] .tw-course-code { color: #91a8bf; }
+  html[data-theme='dark'] .tw-cell--faculty .tw-muted-text,
+  html[data-theme='dark'] .tw-detail-row--faculty .tw-detail-value { color: #a8c9c1; }
+  html[data-theme='dark'] .tw-cell--room .tw-table-chip--room,
+  html[data-theme='dark'] .tw-room-pill { color: #d8c29f; background: rgba(195, 170, 130, 0.13); }
+  html[data-theme='dark'] .tw-cell--time .tw-table-chip--time,
+  html[data-theme='dark'] .tw-detail-row--time { color: #d9b8be; background: rgba(201, 162, 170, 0.12); }
+  html[data-theme='dark'] .tw-cell--campus .tw-campus-chip,
+  html[data-theme='dark'] .tw-detail-row--campus { color: #b2cbb8; background: rgba(154, 182, 162, 0.12); }
+
+  .tw-day-row,
+  .tw-mobile-day { --tw-day-accent: #7f98b2; --tw-day-soft: #e8eef4; }
+  .tw-day-row--tuesday,
+  .tw-mobile-day--tuesday { --tw-day-accent: #9b91b5; --tw-day-soft: #efedf5; }
+  .tw-day-row--wednesday,
+  .tw-mobile-day--wednesday { --tw-day-accent: #789f97; --tw-day-soft: #e7f0ee; }
+  .tw-day-row--thursday,
+  .tw-mobile-day--thursday { --tw-day-accent: #b39a78; --tw-day-soft: #f2ede5; }
+  .tw-day-row--friday,
+  .tw-mobile-day--friday { --tw-day-accent: #b18d95; --tw-day-soft: #f3eaec; }
+  .tw-day-row--saturday,
+  .tw-mobile-day--saturday { --tw-day-accent: #91a27d; --tw-day-soft: #edf1e8; }
+
+  .tw-day-row td {
+    padding: 14px 16px;
+    border-top: 2px solid var(--theme-border);
+    border-left: 5px solid var(--tw-day-accent);
+    background: color-mix(in srgb, var(--tw-day-soft) 68%, var(--theme-surface) 32%);
+  }
+
+  .tw-day-heading,
+  .tw-mobile-day-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .tw-day-heading > span:first-child,
+  .tw-mobile-day-head h2 {
+    color: color-mix(in srgb, var(--tw-day-accent) 82%, var(--theme-text-primary) 18%);
+    font-size: 16px;
+    font-weight: 950;
+    letter-spacing: -0.02em;
+  }
+
+  .tw-day-heading > span:last-child {
+    color: var(--theme-text-secondary);
+    font-size: 11px;
+    font-weight: 850;
+    text-transform: uppercase;
+  }
+
+  .tw-semester-row--within-day td {
+    background: var(--theme-surface-soft);
+  }
+
+  .tw-mobile-day {
+    overflow: hidden;
+    border: 1px solid var(--theme-border);
+    border-radius: 22px;
+    background: var(--theme-surface);
+  }
+
+  .tw-mobile-day + .tw-mobile-day {
+    margin-top: 14px;
+  }
+
+  .tw-mobile-day-head {
+    padding: 13px 14px;
+    border-bottom: 1px solid var(--theme-border-soft);
+    border-left: 5px solid var(--tw-day-accent);
+    background: color-mix(in srgb, var(--tw-day-soft) 68%, var(--theme-surface) 32%);
+  }
+
+  .tw-mobile-day-head h2,
+  .tw-mobile-day-head p {
+    margin: 0;
+  }
+
+  .tw-mobile-day .tw-mobile-semester {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .tw-mobile-day .tw-mobile-semester + .tw-mobile-semester {
+    border-top: 1px solid var(--theme-border);
+  }
+
   @media (max-width: 420px) {
     .tw-mobile-semester-head {
       padding: 13px 12px 9px;

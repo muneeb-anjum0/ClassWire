@@ -56,6 +56,21 @@ export const useDashboardController = ({
     : isSemesterUpdateRunning
       ? 'Updating...'
       : 'Run Scraper';
+  const timetableDay = config?.timetable_day || 'Auto';
+
+  const handleTimetableDayChange = async (day: string) => {
+    const previousDay = timetableDay;
+    setConfig((current) => current ? { ...current, timetable_day: day } : current);
+    try {
+      const response = await apiService.updateTimetableDay(day);
+      if (!response.success) throw new Error(response.error || 'Failed to save timetable day');
+      setTimetableData(null);
+      showStatus('success', day === 'Auto' ? 'Timetable day set to automatic' : `Timetable search set to ${day}`);
+    } catch (error) {
+      setConfig((current) => current ? { ...current, timetable_day: previousDay } : current);
+      showStatus('error', error instanceof Error ? error.message : 'Failed to save timetable day');
+    }
+  };
 
   const loadConfig = async (): Promise<ConfigData | null> => {
     try {
@@ -287,6 +302,7 @@ export const useDashboardController = ({
     handleSaveSemesters,
     handleSendTestEmail,
     handleToggleDailyEmail,
+    handleTimetableDayChange,
     isBackendWaking: statusToast.isBackendWaking,
     isDailyEmailToggleSaving,
     isMobileQuickActions: ui.isMobileQuickActions,
@@ -315,6 +331,7 @@ export const useDashboardController = ({
     status: statusToast.status,
     theme: ui.theme,
     timetableData,
+    timetableDay,
     userEmail: user?.email,
   };
 };

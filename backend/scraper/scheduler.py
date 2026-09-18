@@ -58,6 +58,10 @@ def _target_date(now_local: datetime, next_day_available_hour: int = 17) -> date
 def _build_query(base: str, day_name: str, newer_than_days: int) -> str:
     return f'{base} "for {day_name}" newer_than:{newer_than_days}d -in:trash'
 
+def _next_date_for_day(now_local: datetime, day_name: str) -> datetime:
+    target_weekday = WEEKDAY_NAMES.index(day_name)
+    return now_local + timedelta(days=(target_weekday - now_local.weekday()) % 7)
+
 def _save_json(doc: Dict, folder: str = "data/cache") -> str:
     """Legacy function - still used for backward compatibility"""
     os.makedirs(folder, exist_ok=True)
@@ -100,13 +104,19 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
         newer_than_days = user_settings.get('newer_than_days', settings.newer_than_days) if user_settings else settings.newer_than_days
         timezone = user_settings.get('timezone', settings.tz) if user_settings else settings.tz
         next_day_available_hour = user_settings.get('next_day_available_hour', settings.next_day_available_hour) if user_settings else settings.next_day_available_hour
+        timetable_day = user_settings.get('timetable_day', 'Auto') if user_settings else 'Auto'
         
         local_tz = tz.gettz(timezone)
         now_local = datetime.now(tz=local_tz)
-        for_day_name = _target_day_name(now_local, next_day_available_hour)
-        target_date = _target_date(now_local, next_day_available_hour)
+        automatic_day = _target_day_name(now_local, next_day_available_hour)
+        for_day_name = automatic_day if timetable_day == 'Auto' else timetable_day
+        target_date = _target_date(now_local, next_day_available_hour) if timetable_day == 'Auto' else now_local
+        if timetable_day not in ('Auto', 'Entire Week'):
+            target_date = _next_date_for_day(now_local, timetable_day)
 
-        query = _build_query(gmail_query_base, for_day_name, newer_than_days)
+        query = (_build_query(gmail_query_base, for_day_name, newer_than_days)
+                 if timetable_day != 'Entire Week' else
+                 f'{gmail_query_base} {{' + ' '.join(f'"for {day}"' for day in WEEKDAY_NAMES[:6]) + f'}} newer_than:{newer_than_days}d -in:trash')
 
         LOGGER.info("Looking for: %s  (local: %s)", for_day_name, now_local.strftime("%Y-%m-%d %H:%M"))
         LOGGER.info("Gmail query: %s", query)
@@ -142,6 +152,42 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
             creds = get_credentials()
 
         service = build_service(creds)
+        if timetable_day == 'Entire Week':
+            items = []
+            message_ids = []
+            week_lookback_days = max(newer_than_days, 7)
+            for day_name in WEEKDAY_NAMES[:6]:
+                day_query = _build_query(gmail_query_base, day_name, week_lookback_days)
+                day_messages = list_messages(service, user_id=user_email, query=day_query, max_results=5)
+                if not day_messages:
+                    continue
+                message_id = day_messages[0]["id"]
+                message_ids.append(message_id)
+                html = get_message_html(service, user_id=user_email, msg_id=message_id) or ""
+                day_items = parse_html_with_advanced_pandas(html, allowed_semesters)
+                for item in day_items:
+                    item["schedule_day"] = day_name
+                items.extend(day_items)
+
+            semester_counts = {}
+            for item in items:
+                sem = item.get('semester', 'Unknown')
+                semester_counts[sem] = semester_counts.get(sem, 0) + 1
+            doc = {
+                "for_day": "Entire Week", "for_date": now_local.date().isoformat(),
+                "query": query, "message_id": message_ids[0] if message_ids else None,
+                "message_ids": message_ids, "items": items, "semesters": allowed_semesters,
+                "summary": {"total_items": len(items), "semester_breakdown": semester_counts,
+                            "unique_courses": len(set(item.get('course') for item in items if item.get('course'))),
+                            "unique_faculty": len(set(item.get('faculty') for item in items if item.get('faculty')))},
+            }
+            if user_id:
+                from database.firestore_store import data_store
+                data_store.save_timetable_cache(user_id, doc)
+            else:
+                _save_json(doc)
+            return {"success": True, "data": doc, "message": f"Successfully found {len(items)} items for the week"}
+
         msgs = list_messages(service, user_id=user_email, query=query, max_results=5)
         
         if not msgs:

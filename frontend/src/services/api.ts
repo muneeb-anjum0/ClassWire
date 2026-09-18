@@ -186,6 +186,13 @@ export const apiService = {
     return response.data;
   },
 
+  updateTimetableDay: async (timetableDay: string): Promise<ApiResponse<{ timetable_day: string }>> => {
+    const response: AxiosResponse<ApiResponse<{ timetable_day: string }>> = await api.post('/api/config/timetable-day', {
+      timetable_day: timetableDay,
+    });
+    return response.data;
+  },
+
   updatePersonalEmail: async (personalEmail: string): Promise<ApiResponse<{ personal_email: string; daily_email_enabled: boolean }>> => {
     if (rateLimiter.shouldBlock('/api/config/personal-email')) {
       throw new Error('Please wait before updating your email again');
