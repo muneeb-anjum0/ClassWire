@@ -1,6 +1,9 @@
 import React from 'react';
 
 export const semesterManagerInlineCss = `
+  .discovery-mode { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin-bottom:16px; padding:4px; border:1px solid var(--theme-border-soft); border-radius:14px; background:var(--theme-surface-soft); }
+  .discovery-mode button { min-height:38px; border-radius:10px; color:var(--theme-text-muted); font-size:12px; font-weight:800; transition:all 150ms ease; }
+  .discovery-mode button.is-active { background:var(--theme-surface); color:var(--theme-text-primary); box-shadow:var(--theme-button-shadow); }
   @keyframes semesterOverlayIn {
     from {
       opacity: 0;

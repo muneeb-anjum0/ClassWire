@@ -42,7 +42,12 @@ export const useDashboardController = ({
     () => getFilteredTimetableItems(timetableData, config),
     [config, timetableData],
   );
-  const noSemestersConfigured = detectedSemesters.length === 0;
+  const activeFilterCount = config?.filter_mode === 'subjects'
+    ? (config.subject_filters || []).length
+    : config?.filter_mode === 'faculty'
+      ? (config.faculty_filters || []).length
+      : configuredSemesters.length;
+  const noSemestersConfigured = activeFilterCount === 0;
   const lastUpdateDisplay = formatLastUpdate(lastUpdate);
   const loggedInLabel = ui.isMobileQuickActions
     ? user?.email?.split('@')[0] || 'User'
@@ -50,7 +55,7 @@ export const useDashboardController = ({
   const quickActionsToggleLabel = ui.isQuickActionsExpanded
     ? 'Collapse quick actions'
     : 'Expand quick actions';
-  const semesterCount = detectedSemesters.length;
+  const semesterCount = activeFilterCount;
   const runButtonText = isScraperRunning
     ? 'Scraping...'
     : isSemesterUpdateRunning
@@ -171,10 +176,10 @@ export const useDashboardController = ({
       return;
     }
 
-    if (!skipSemesterValidation && (!config?.semester_filter || config.semester_filter.length === 0)) {
+    if (!skipSemesterValidation && activeFilterCount === 0) {
       showStatus(
         'error',
-        'No semesters configured. Please add semesters before running the parser.',
+        'No filters configured. Add semesters or subjects before running the parser.',
       );
       return;
     }
@@ -265,6 +270,35 @@ export const useDashboardController = ({
     }
   };
 
+  const handleSaveDiscovery = async (mode: 'semesters' | 'subjects' | 'faculty', values: string[]) => {
+    if (isSemesterUpdateRunning || operationInProgress) return;
+    try {
+      setIsSemesterUpdateRunning(true);
+      setIsLoading(true);
+      setOperationInProgress(true);
+      showStatus('loading', 'Updating discovery filters...');
+      const semesters = mode === 'semesters' ? values : (config?.semester_filter || []);
+      const subjects = mode === 'subjects' ? values : (config?.subject_filters || []);
+      const faculty = mode === 'faculty' ? values : (config?.faculty_filters || []);
+      const response = await apiService.updateDiscovery(mode, semesters, subjects, faculty);
+      if (!response.success) throw new Error(response.error || 'Failed to update filters');
+      setConfig((current) => current ? { ...current, filter_mode: mode, semester_filter: semesters, subject_filters: subjects, faculty_filters: faculty } : current);
+      setTimetableData(null);
+      if (values.length === 0) {
+        showStatus('warning', `Add at least one ${mode === 'subjects' ? 'subject' : mode === 'faculty' ? 'faculty' : 'semester'} filter.`);
+        return;
+      }
+      showStatus('success', `Saved ${values.length} ${mode === 'subjects' ? 'subject' : mode === 'faculty' ? 'faculty' : 'semester'} filter(s). Running parser...`);
+      window.setTimeout(() => runScraper({ skipSemesterValidation: true }), 500);
+    } catch (error) {
+      showStatus('error', error instanceof Error ? error.message : 'Failed to update filters');
+    } finally {
+      setIsSemesterUpdateRunning(false);
+      setIsLoading(false);
+      setOperationInProgress(false);
+    }
+  };
+
   useEffect(() => {
     if (!isAuthenticated) {
       return;
@@ -300,6 +334,7 @@ export const useDashboardController = ({
     handleLogoutClick: ui.handleLogoutClick,
     handleSavePersonalEmail,
     handleSaveSemesters,
+    handleSaveDiscovery,
     handleSendTestEmail,
     handleToggleDailyEmail,
     handleTimetableDayChange,

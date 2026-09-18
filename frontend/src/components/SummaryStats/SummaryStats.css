@@ -244,6 +244,107 @@
   .summary-stats-grid {
     gap: 10px;
   }
+}
+
+/* Connected compact summary ribbon */
+.summary-ribbon {
+  overflow: hidden;
+  border: 1px solid var(--theme-border, #d8dde7);
+  border-radius: 20px;
+  background: var(--theme-surface, #fff);
+  box-shadow: var(--theme-shadow-soft, 0 12px 28px rgba(15, 23, 42, .07));
+  animation: summaryCardIn 220ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+.summary-ribbon__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.summary-ribbon__metric {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 68px;
+  padding: 11px 16px;
+  transition: background 160ms ease;
+}
+
+.summary-ribbon__metric:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 14px;
+  right: 0;
+  bottom: 14px;
+  width: 1px;
+  background: var(--theme-border-soft, #e8ebf0);
+}
+
+.summary-ribbon__metric:hover { background: var(--theme-surface-soft, #f8fafc); }
+
+.summary-ribbon__icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+}
+
+.summary-ribbon__metric--1 .summary-ribbon__icon { background: #eef2ff; }
+.summary-ribbon__metric--2 .summary-ribbon__icon { background: #ecf8f4; }
+.summary-ribbon__metric--3 .summary-ribbon__icon { background: #fff4e8; }
+.summary-ribbon__metric--4 .summary-ribbon__icon { background: #f6edff; }
+.summary-ribbon__icon img { width: 16px; height: 16px; }
+.summary-ribbon__copy { min-width: 0; display: grid; gap: 3px; }
+.summary-ribbon__label { overflow: hidden; color: var(--theme-text-muted, #778196); font-size: 9px; line-height: 1; font-weight: 850; letter-spacing: .09em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.summary-ribbon__value { overflow: hidden; color: var(--theme-text-primary, #111827); font-size: 21px; line-height: 1; font-weight: 850; letter-spacing: -.04em; text-overflow: ellipsis; white-space: nowrap; }
+
+.summary-ribbon__semesters {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--theme-border-soft, #e8ebf0);
+  background: var(--theme-surface-soft, #f8fafc);
+}
+
+.summary-ribbon__semester-title { display: flex; align-items: center; gap: 8px; padding: 0 5px; }
+.summary-ribbon__semester-title > span:last-child { display: grid; gap: 1px; }
+.summary-ribbon__semester-title strong { color: var(--theme-text-primary, #111827); font-size: 10px; line-height: 1; }
+.summary-ribbon__semester-title small { color: var(--theme-text-muted, #778196); font-size: 8px; line-height: 1; }
+.summary-ribbon__bars { width: 21px; height: 21px; display: flex; align-items: flex-end; justify-content: center; gap: 2px; padding: 5px; border-radius: 7px; background: var(--theme-accent-soft, #eef2ff); }
+.summary-ribbon__bars i { width: 2px; border-radius: 2px; background: var(--theme-accent, #4f46e5); }
+.summary-ribbon__bars i:nth-child(1) { height: 5px; }.summary-ribbon__bars i:nth-child(2) { height: 9px; }.summary-ribbon__bars i:nth-child(3) { height: 7px; }
+.summary-ribbon__semester-list { min-width: 0; display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.summary-ribbon__semester-list::-webkit-scrollbar { display: none; }
+.summary-ribbon__semester { min-width: 0; flex: 1 1 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 30px; padding: 0 7px 0 10px; border: 1px solid var(--theme-border-soft, #e4e8ef); border-radius: 10px; background: var(--theme-surface, #fff); transition: transform 150ms ease, border-color 150ms ease; }
+.summary-ribbon__semester:hover { z-index: 1; transform: translateY(-2px); border-color: var(--theme-border, #cdd3df); }
+.summary-ribbon__semester span { overflow: hidden; color: var(--theme-text-secondary, #465166); font-size: 9px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.summary-ribbon__semester strong { min-width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; background: var(--theme-accent-soft, #eef2ff); color: var(--theme-accent, #4f46e5); font-size: 9px; }
+.summary-ribbon__empty { color: var(--theme-text-muted, #778196); font-size: 10px; }
+
+@media (max-width: 700px) {
+  .summary-ribbon { border-radius: 17px; }
+  .summary-ribbon__metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .summary-ribbon__metric { min-height: 55px; padding: 9px 11px; }
+  .summary-ribbon__metric:nth-child(2)::after { display: none; }
+  .summary-ribbon__metric:nth-child(-n+2) { border-bottom: 1px solid var(--theme-border-soft, #e8ebf0); }
+  .summary-ribbon__metric:not(:last-child)::after { top: 10px; bottom: 10px; }
+  .summary-ribbon__icon { width: 29px; height: 29px; flex-basis: 29px; border-radius: 9px; }
+  .summary-ribbon__icon img { width: 14px; height: 14px; }
+  .summary-ribbon__label { font-size: 8px; }
+  .summary-ribbon__value { font-size: 18px; }
+  .summary-ribbon__semesters { grid-template-columns: auto minmax(0, 1fr); gap: 8px; padding: 7px; }
+  .summary-ribbon__semester-title strong { display: none; }
+  .summary-ribbon__semester-title small { font-size: 8px; white-space: nowrap; }
+  .summary-ribbon__semester { flex: 0 0 auto; min-width: 88px; }
+}
+  @media (max-width: 640px) {
     .summary-stat-card {
     border-radius: 20px;
   }

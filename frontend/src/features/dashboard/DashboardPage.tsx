@@ -131,10 +131,10 @@ export default function DashboardPage() {
             <section className="surface-card surface-card--compact surface-card--callout animate-timetable-enter">
               <div className="compact-callout compact-callout--stacked">
                 <div className="compact-callout__content">
-                  <p className="compact-callout__eyebrow">Schedule setup</p>
+                  <p className="compact-callout__eyebrow">Filter setup</p>
                   <h3 className="compact-callout__title">Ready when you are</h3>
                   <p className="compact-callout__text">
-                    Configure your semesters in Semester Manager, then run the scraper from Quick Actions to populate and organize your timetable.
+                    Add semester or subject filters, then run the scraper to populate your timetable.
                   </p>
                 </div>
               </div>
@@ -155,6 +155,10 @@ export default function DashboardPage() {
           onClose={() => controller.setShowSemesterManager(false)}
           currentSemesters={controller.detectedSemesters}
           onSave={controller.handleSaveSemesters}
+          filterMode={controller.config?.filter_mode || 'semesters'}
+          currentSubjects={controller.config?.subject_filters || []}
+          currentFaculty={controller.config?.faculty_filters || []}
+          onSaveDiscovery={controller.handleSaveDiscovery}
         />
       </div>
     </div>

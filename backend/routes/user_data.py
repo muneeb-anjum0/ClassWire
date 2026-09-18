@@ -45,6 +45,9 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
                 {
                     "gmail_query": user_settings.get("gmail_query_base", settings.gmail_query_base),
                     "semester_filter": user_settings.get("allowed_semesters", settings.allowed_semesters),
+                    "filter_mode": user_settings.get("filter_mode", "semesters"),
+                    "subject_filters": user_settings.get("subject_filters", []),
+                    "faculty_filters": user_settings.get("faculty_filters", []),
                     "timetable_day": user_settings.get("timetable_day", "Auto"),
                     "personal_email": user_settings.get("personal_email", ""),
                     "daily_email_enabled": user_settings.get(
@@ -177,6 +180,48 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
             )
         except Exception as error:
             logger.error("Error updating semesters: %s", error, exc_info=True)
+            return jsonify({"success": False, "error": str(error)}), 500
+
+    @blueprint.route("/api/config/discovery", methods=["POST", "OPTIONS"])
+    def update_discovery():
+        if request.method == "OPTIONS":
+            return "", 200
+        try:
+            user, error_response, status_code = get_user_from_request()
+            if error_response:
+                return error_response, status_code
+            payload = request.get_json(silent=True) or {}
+            mode = payload.get("filter_mode", "semesters")
+            semesters = payload.get("semesters", [])
+            subjects = payload.get("subjects", [])
+            faculty = payload.get("faculty", [])
+            if mode not in {"semesters", "subjects", "faculty"}:
+                return jsonify({"success": False, "error": "Invalid discovery mode"}), 400
+            if not isinstance(semesters, list) or not isinstance(subjects, list) or not isinstance(faculty, list):
+                return jsonify({"success": False, "error": "Filters must be lists"}), 400
+            cleaned_semesters = [str(value).strip() for value in semesters if str(value).strip()]
+            cleaned_subjects = [str(value).strip() for value in subjects if str(value).strip()]
+            cleaned_faculty = [str(value).strip() for value in faculty if str(value).strip()]
+            store = get_store()
+            current_settings = store.get_user_settings(user["id"])
+            current_settings.update({
+                "filter_mode": mode,
+                "allowed_semesters": cleaned_semesters,
+                "subject_filters": cleaned_subjects,
+                "faculty_filters": cleaned_faculty,
+            })
+            if not store.save_user_settings(user["id"], current_settings):
+                return jsonify({"success": False, "error": "Failed to save discovery settings"}), 500
+            return jsonify({
+                "success": True,
+                "filter_mode": mode,
+                "semesters": cleaned_semesters,
+                "subjects": cleaned_subjects,
+                "faculty": cleaned_faculty,
+                "message": f"Updated {len(cleaned_subjects if mode == 'subjects' else cleaned_faculty if mode == 'faculty' else cleaned_semesters)} filters",
+            })
+        except Exception as error:
+            logger.error("Error updating discovery settings: %s", error, exc_info=True)
             return jsonify({"success": False, "error": str(error)}), 500
 
     @blueprint.route("/api/config/timetable-day", methods=["POST", "OPTIONS"])
