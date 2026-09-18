@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import threading
+import time
 import uuid
 
 from flask import Blueprint, jsonify, request
@@ -24,6 +25,9 @@ EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
 def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store):
     blueprint = Blueprint("user_data", __name__)
+    search_source_cache = {}
+    search_source_lock = threading.Lock()
+    search_source_ttl_seconds = 300
 
     def current_timestamp():
         return timestamp_now()
@@ -268,6 +272,8 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
             )
 
             if result and result.get("success"):
+                with search_source_lock:
+                    search_source_cache.pop(user["id"], None)
                 return jsonify(
                     {
                         "success": True,
@@ -294,6 +300,69 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
                     "timestamp": current_timestamp(),
                 }
             ), 500
+
+    @blueprint.route("/api/search", methods=["POST"])
+    def smart_search():
+        try:
+            user, error_response, status_code = get_user_from_request()
+            if error_response:
+                return error_response, status_code
+            query = str((request.get_json(silent=True) or {}).get("query") or "").strip()
+            if len(query) < 2:
+                return jsonify({"success": False, "error": "Enter a longer timetable question"}), 400
+
+            store = get_store()
+            force_source_refresh = any(word in query.lower() for word in ("refresh", "latest", "update"))
+            with search_source_lock:
+                cached_source = search_source_cache.get(user["id"])
+            source_is_fresh = cached_source and time.monotonic() - cached_source["saved_at"] < search_source_ttl_seconds
+            if source_is_fresh and not force_source_refresh:
+                source = cached_source["data"]
+            else:
+                search_settings = dict(store.get_user_settings(user["id"]))
+                search_settings.update({
+                    "filter_mode": "subjects",
+                    "subject_filters": [],
+                    "timetable_day": "Entire Week",
+                    "_save_cache": False,
+                })
+                scrape_result = get_run_once()(
+                    user_email=user["email"], user_id=user["id"],
+                    user_settings=search_settings, show_table=False,
+                )
+                if not scrape_result or not scrape_result.get("success"):
+                    return jsonify({"success": False, "error": (scrape_result or {}).get("error", "Search failed")}), 400
+                source = scrape_result.get("data") or {}
+                with search_source_lock:
+                    search_source_cache[user["id"]] = {"saved_at": time.monotonic(), "data": source}
+
+            from scraper.smart_search import search_timetable
+            search_result = search_timetable(query, source.get("items") or [])
+            search_result["query"] = query
+            search_result["saved_at"] = current_timestamp()
+            matched_items = search_result["items"]
+            semesters = {}
+            for item in matched_items:
+                semester = item.get("semester_display") or item.get("semester") or "Unknown"
+                semesters[semester] = semesters.get(semester, 0) + 1
+            data = {
+                **source,
+                "items": matched_items,
+                "for_day": "Entire Week" if len(search_result["days"]) == 6 else " / ".join(search_result["days"]),
+                "search": search_result,
+                "summary": {
+                    "total_items": len(matched_items),
+                    "semester_breakdown": semesters,
+                    "unique_courses": len({item.get("course_code") or item.get("course") for item in matched_items}),
+                    "unique_faculty": len({item.get("faculty") for item in matched_items if item.get("faculty")}),
+                },
+            }
+            if not store.save_timetable_cache(user["id"], data):
+                logger.warning("Could not persist the latest search for user %s", user["id"])
+            return jsonify({"success": True, "data": data, "message": search_result["answer"], "timestamp": current_timestamp()})
+        except Exception as error:
+            logger.error("Smart timetable search failed: %s", error, exc_info=True)
+            return jsonify({"success": False, "error": str(error), "timestamp": current_timestamp()}), 500
 
     @blueprint.route("/api/cache/clear", methods=["POST"])
     def clear_cache():

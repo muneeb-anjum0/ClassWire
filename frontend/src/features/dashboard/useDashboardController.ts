@@ -32,6 +32,28 @@ export const useDashboardController = ({
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const [showSemesterManager, setShowSemesterManager] = useState(false);
   const [operationInProgress, setOperationInProgress] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSmartResult, setIsSmartResult] = useState(false);
+  const searchStorageKey = `classwire:last-search:${user?.email || 'anonymous'}`;
+
+  const readSavedSearch = (): TimetableData | null => {
+    try {
+      const saved = window.localStorage.getItem(searchStorageKey);
+      if (!saved) return null;
+      const parsed = JSON.parse(saved) as TimetableData;
+      return parsed?.search?.query ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const saveSearchLocally = (data: TimetableData) => {
+    try {
+      window.localStorage.setItem(searchStorageKey, JSON.stringify(data));
+    } catch (error) {
+      console.warn('Could not save the latest search locally:', error);
+    }
+  };
 
   const configuredSemesters = useMemo(() => config?.semester_filter ?? [], [config]);
   const detectedSemesters = useMemo(
@@ -39,8 +61,8 @@ export const useDashboardController = ({
     [configuredSemesters, timetableData],
   );
   const filteredItems = useMemo(
-    () => getFilteredTimetableItems(timetableData, config),
-    [config, timetableData],
+    () => isSmartResult ? (timetableData?.items || []) : getFilteredTimetableItems(timetableData, config),
+    [config, isSmartResult, timetableData],
   );
   const activeFilterCount = config?.filter_mode === 'subjects'
     ? (config.subject_filters || []).length
@@ -134,10 +156,15 @@ export const useDashboardController = ({
       );
 
       if (response.success && response.data) {
+        const locallySavedSearch = readSavedSearch();
+        const restoredData = response.data.search ? response.data : (locallySavedSearch || response.data);
+        const restoredSearchQuery = restoredData.search?.query?.trim() || '';
+        setIsSmartResult(Boolean(restoredData.search));
+        setSearchQuery(restoredSearchQuery);
         applySuccessfulTimetable(
-          response.data,
+          restoredData,
           response.timestamp,
-          response.cached ? 'Loaded cached data' : 'Data loaded successfully',
+          restoredData.search ? 'Restored your last search' : response.cached ? 'Loaded cached data' : 'Data loaded successfully',
         );
         return;
       }
@@ -154,9 +181,33 @@ export const useDashboardController = ({
     }
   };
 
+  const runSmartSearch = async (query = searchQuery) => {
+    const cleaned = query.trim();
+    if (cleaned.length < 2 || operationInProgress) return;
+    try {
+      setSearchQuery(cleaned);
+      setIsScraperRunning(true);
+      setOperationInProgress(true);
+      showStatus('loading', 'Understanding your question and checking Gmail...');
+      const response = await apiService.searchTimetable(cleaned);
+      if (!response.success || !response.data) throw new Error(response.error || 'Search failed');
+      setIsSmartResult(true);
+      saveSearchLocally(response.data);
+      applySuccessfulTimetable(response.data, response.timestamp, response.message);
+    } catch (error) {
+      showStatus('error', error instanceof Error ? error.message : 'Search failed');
+    } finally {
+      setIsScraperRunning(false);
+      setOperationInProgress(false);
+    }
+  };
+
   const executeScraper = async () => {
     const response = await apiService.runScraper();
     if (response.success && response.data) {
+      window.localStorage.removeItem(searchStorageKey);
+      setIsSmartResult(false);
+      setSearchQuery('');
       applySuccessfulTimetable(
         response.data,
         response.timestamp,
@@ -357,6 +408,9 @@ export const useDashboardController = ({
     quickActionsToggleLabel,
     runButtonText,
     runScraper,
+    runSmartSearch,
+    searchQuery,
+    setSearchQuery,
     semesterCount,
     setIsQuickActionsExpanded: ui.setIsQuickActionsExpanded,
     setPersonalEmail,
