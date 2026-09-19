@@ -8,7 +8,7 @@
 
 ## Backend
 
-- [backend/app.py](D:/Desktop/Inbox2table/backend/app.py)
+- [`backend/app.py`](../backend/app.py)
   Flask entrypoint, Gmail OAuth flow, health checks, and blueprint registration.
 - `backend/core/`
   Shared Flask/bootstrap helpers such as CORS, client-secret loading, temp OAuth state, and public URL resolution.
@@ -25,17 +25,17 @@
 
 ## Frontend
 
-- [frontend/src/App.tsx](D:/Desktop/Inbox2table/frontend/src/App.tsx)
+- [`frontend/src/App.tsx`](../frontend/src/App.tsx)
   Small router shell for legal pages and the authenticated dashboard.
 - `frontend/src/features/dashboard/`
   Dashboard state hooks, email actions, quick-actions UI, and filtering helpers.
 - `frontend/src/components/`
   Reusable UI pieces such as login, semester manager, status toast, summary cards, and timetable table.
-- [frontend/src/context/AuthContext.tsx](D:/Desktop/Inbox2table/frontend/src/context/AuthContext.tsx)
+- [`frontend/src/context/AuthContext.tsx`](../frontend/src/context/AuthContext.tsx)
   Server-session restoration and Gmail popup/mobile auth flow.
-- [frontend/src/services/api.ts](D:/Desktop/Inbox2table/frontend/src/services/api.ts)
+- [`frontend/src/services/api.ts`](../frontend/src/services/api.ts)
   API client and backend wake/autodetect logic.
 - `frontend/src/utils/`
   Semester normalization and course correction helpers.
-- [frontend/vite.config.ts](D:/Desktop/Inbox2table/frontend/vite.config.ts)
+- [`frontend/vite.config.ts`](../frontend/vite.config.ts)
   Vite build and Vitest configuration.

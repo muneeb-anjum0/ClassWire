@@ -1,6 +1,5 @@
 import React from 'react';
 import StatusIndicator from '../../components/StatusIndicator/StatusIndicator';
-import SummaryStats from '../../components/SummaryStats/SummaryStats';
 import TimetableTable from '../../components/TimetableTable/TimetableTable';
 import LoginScreen from '../../components/LoginScreen/LoginScreen';
 import { useAuth } from '../../context/AuthContext';
@@ -35,7 +34,7 @@ export default function DashboardPage() {
           <div className="layout-shell px-4 sm:px-6 lg:px-8 py-2" />
         </header>
 
-        <main className="layout-shell px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-5 sm:space-y-6">
+        <main className="layout-shell dashboard-main px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-5 sm:space-y-6">
           <SmartSearch
             query={controller.searchQuery}
             setQuery={controller.setSearchQuery}
@@ -72,26 +71,18 @@ export default function DashboardPage() {
             />
           )}
 
-          {controller.timetableData && !controller.isScraperRunning && (
-            <section className="animate-timetable-enter">
-              <SummaryStats
-                data={controller.timetableData}
-                filteredItems={controller.filteredItems}
-              />
-            </section>
-          )}
-
           {controller.timetableData &&
             !controller.isScraperRunning &&
             controller.timetableData.items &&
             controller.timetableData.items.length > 0 && (
-              <section className="surface-card overflow-hidden animate-timetable-enter">
+              <section className="surface-card chat-schedule overflow-hidden animate-timetable-enter">
                 <div className="surface-card__header">
                   <h3 className="text-lg font-semibold theme-text-primary tracking-tight">Class Schedule</h3>
-                  <div className="flex items-center gap-2 timetable-count-pill rounded-full px-3 py-1 border">
-                    <img src="/pulse.svg" alt="Pulse" className="theme-button-icon h-4 w-4" />
-                    <span className="text-sm font-medium">{controller.filteredItems.length} classes</span>
-                  </div>
+                  <p className="schedule-context">
+                    <span>{controller.timetableData.for_day || 'Today'}</span>
+                    <i aria-hidden="true" />
+                    <span>{controller.filteredItems.length} {controller.filteredItems.length === 1 ? 'class' : 'classes'}</span>
+                  </p>
                 </div>
                 <div className="p-0 timetable-container">
                   <TimetableTable items={controller.filteredItems} />

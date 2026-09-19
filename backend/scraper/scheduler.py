@@ -12,13 +12,42 @@ if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
 from dateutil import tz
+from google.auth.transport.requests import Request as GoogleAuthRequest
 
-from .gmail_client import get_credentials, build_service, list_messages, get_message_html
+from core.ttl_cache import TTLCache
+
+from .gmail_client import (
+    build_service,
+    get_credentials,
+    get_message_html,
+    get_message_html_from_message,
+    get_messages_batch,
+    list_latest_messages_batch,
+    list_messages,
+)
 from .timetable_parser import parse_html_with_advanced_pandas
 
 LOGGER = logging.getLogger(__name__)
 
 WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+_GMAIL_IDENTITY_CACHE = TTLCache[str, str](ttl_seconds=3600, max_entries=256)
+PUBLIC_ITEM_FIELDS = (
+    "row_number",
+    "semester",
+    "semester_key",
+    "semester_display",
+    "section",
+    "class_section",
+    "course",
+    "course_title",
+    "course_code",
+    "course_type",
+    "faculty",
+    "room",
+    "time",
+    "campus",
+    "schedule_day",
+)
 
 def _normalize_subject(value: object) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
@@ -45,6 +74,41 @@ def _filter_faculty_items(items, faculty_filters):
         item for item in items
         if any(needle in _normalize_subject(item.get("faculty")) for needle in needles)
     ]
+
+
+def _apply_item_filters(items, filter_mode, subject_filters, faculty_filters):
+    if filter_mode == "subjects":
+        return _filter_subject_items(items, subject_filters)
+    if filter_mode == "faculty":
+        return _filter_faculty_items(items, faculty_filters)
+    return items
+
+
+def _compact_items(items):
+    """Strip parser-only diagnostics before network and Firestore persistence."""
+    return [
+        {
+            field: item[field]
+            for field in PUBLIC_ITEM_FIELDS
+            if item.get(field) not in (None, "", [])
+        }
+        for item in items
+    ]
+
+
+def _summarize(items):
+    semester_counts = {}
+    for item in items:
+        semester = item.get("semester_display") or item.get("semester") or "Unknown"
+        semester_counts[semester] = semester_counts.get(semester, 0) + 1
+    return {
+        "total_items": len(items),
+        "semester_breakdown": semester_counts,
+        "unique_courses": len(
+            {item.get("course_code") or item.get("course") for item in items if item.get("course_code") or item.get("course")}
+        ),
+        "unique_faculty": len({item.get("faculty") for item in items if item.get("faculty")}),
+    }
 
 def _target_day_name(now_local: datetime, next_day_available_hour: int = 17) -> str:
     """
@@ -83,7 +147,22 @@ def _target_date(now_local: datetime, next_day_available_hour: int = 17) -> date
         return now_local
 
 def _build_query(base: str, day_name: str, newer_than_days: int) -> str:
-    return f'{base} "for {day_name}" newer_than:{newer_than_days}d -in:trash'
+    # Some schedule emails visually contain "for Tuesday", but Gmail's index
+    # splits that phrase across HTML nodes. Match the weekday in the subject as
+    # the reliable path and retain the body phrase as a fallback.
+    return f'{base} {{subject:{day_name} "for {day_name}"}} newer_than:{newer_than_days}d -in:trash'
+
+
+def _build_week_query(base: str, newer_than_days: int) -> str:
+    alternatives = " ".join(
+        [*(f"subject:{day}" for day in WEEKDAY_NAMES[:6]), *(f'"for {day}"' for day in WEEKDAY_NAMES[:6])]
+    )
+    return f"{base} {{{alternatives}}} newer_than:{newer_than_days}d -in:trash"
+
+
+def _day_from_subject(subject: str) -> Optional[str]:
+    lowered = subject.casefold()
+    return next((day for day in WEEKDAY_NAMES[:6] if re.search(rf"\b{day.casefold()}\b", lowered)), None)
 
 def _next_date_for_day(now_local: datetime, day_name: str) -> datetime:
     target_weekday = WEEKDAY_NAMES.index(day_name)
@@ -148,7 +227,7 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
 
         query = (_build_query(gmail_query_base, for_day_name, newer_than_days)
                  if timetable_day != 'Entire Week' else
-                 f'{gmail_query_base} {{' + ' '.join(f'"for {day}"' for day in WEEKDAY_NAMES[:6]) + f'}} newer_than:{newer_than_days}d -in:trash')
+                 _build_week_query(gmail_query_base, max(newer_than_days, 7)))
 
         LOGGER.info("Looking for: %s  (local: %s)", for_day_name, now_local.strftime("%Y-%m-%d %H:%M"))
         LOGGER.info("Gmail query: %s", query)
@@ -176,6 +255,23 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
                         scopes=token_data.get('scopes'),
                         expiry=expiry
                     )
+                    # google-api-python-client refreshes expired access tokens
+                    # in memory, but does not persist the replacement. Without
+                    # this, every later scrape refreshes the same stale token.
+                    if creds.expired and creds.refresh_token:
+                        creds.refresh(GoogleAuthRequest())
+                        data_store.save_user_tokens(
+                            user_id,
+                            {
+                                "token": creds.token,
+                                "refresh_token": creds.refresh_token,
+                                "token_uri": creds.token_uri,
+                                "client_id": creds.client_id,
+                                "client_secret": creds.client_secret,
+                                "scopes": creds.scopes,
+                                "expiry": creds.expiry.isoformat() if creds.expiry else None,
+                            },
+                        )
                 else:
                     raise RuntimeError(
                         f"Gmail authorization is missing for {user_email}. "
@@ -193,8 +289,11 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
 
         service = build_service(creds)
         if user_id and user_email and user_email != "me":
-            profile = service.users().getProfile(userId="me").execute()
-            authorized_email = str(profile.get("emailAddress") or "").strip().lower()
+            authorized_email = _GMAIL_IDENTITY_CACHE.get(user_id)
+            if authorized_email is None:
+                profile = service.users().getProfile(userId="me").execute()
+                authorized_email = str(profile.get("emailAddress") or "").strip().lower()
+                _GMAIL_IDENTITY_CACHE.set(user_id, authorized_email)
             expected_email = str(user_email).strip().lower()
             if authorized_email != expected_email:
                 raise RuntimeError(
@@ -205,34 +304,38 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
             items = []
             message_ids = []
             week_lookback_days = max(newer_than_days, 7)
+            day_queries = {
+                day_name: _build_query(gmail_query_base, day_name, week_lookback_days)
+                for day_name in WEEKDAY_NAMES[:6]
+            }
+            latest_by_day = list_latest_messages_batch(service, user_email, day_queries)
+            candidate_ids = [
+                message.get("id")
+                for message in latest_by_day.values()
+                if message.get("id")
+            ]
+            fetched = get_messages_batch(service, user_email, candidate_ids)
+
             for day_name in WEEKDAY_NAMES[:6]:
-                day_query = _build_query(gmail_query_base, day_name, week_lookback_days)
-                day_messages = list_messages(service, user_id=user_email, query=day_query, max_results=5)
-                if not day_messages:
+                selected = latest_by_day.get(day_name) or {}
+                message_id = selected.get("id")
+                message = fetched.get(message_id) if message_id else None
+                if not message_id or not message:
                     continue
-                message_id = day_messages[0]["id"]
                 message_ids.append(message_id)
-                html = get_message_html(service, user_id=user_email, msg_id=message_id) or ""
+                html = get_message_html_from_message(message) or ""
                 day_items = parse_html_with_advanced_pandas(html, parser_semesters)
-                if filter_mode == 'subjects':
-                    day_items = _filter_subject_items(day_items, subject_filters)
-                elif filter_mode == 'faculty':
-                    day_items = _filter_faculty_items(day_items, faculty_filters)
+                day_items = _apply_item_filters(day_items, filter_mode, subject_filters, faculty_filters)
                 for item in day_items:
                     item["schedule_day"] = day_name
                 items.extend(day_items)
 
-            semester_counts = {}
-            for item in items:
-                sem = item.get('semester', 'Unknown')
-                semester_counts[sem] = semester_counts.get(sem, 0) + 1
+            items = _compact_items(items)
             doc = {
                 "for_day": "Entire Week", "for_date": now_local.date().isoformat(),
                 "query": query, "message_id": message_ids[0] if message_ids else None,
                 "message_ids": message_ids, "items": items, "semesters": allowed_semesters,
-                "summary": {"total_items": len(items), "semester_breakdown": semester_counts,
-                            "unique_courses": len(set(item.get('course') for item in items if item.get('course'))),
-                            "unique_faculty": len(set(item.get('faculty') for item in items if item.get('faculty')))},
+                "summary": _summarize(items),
             }
             if user_id and should_save_cache:
                 from database.firestore_store import data_store
@@ -272,17 +375,14 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
         msg_id = msgs[0]["id"]
         html = get_message_html(service, user_id=user_email, msg_id=msg_id) or ""
         
-        items = parse_html_with_advanced_pandas(html, parser_semesters)
-        if filter_mode == 'subjects':
-            items = _filter_subject_items(items, subject_filters)
-        elif filter_mode == 'faculty':
-            items = _filter_faculty_items(items, faculty_filters)
-
-        # Create summary statistics
-        semester_counts = {}
-        for item in items:
-            sem = item.get('semester', 'Unknown')
-            semester_counts[sem] = semester_counts.get(sem, 0) + 1
+        items = _compact_items(
+            _apply_item_filters(
+                parse_html_with_advanced_pandas(html, parser_semesters),
+                filter_mode,
+                subject_filters,
+                faculty_filters,
+            )
+        )
 
         doc = {
             "for_day": for_day_name,
@@ -291,17 +391,14 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
             "message_id": msg_id,
             "items": items,
             "semesters": allowed_semesters,
-            "summary": {
-                "total_items": len(items),
-                "semester_breakdown": semester_counts,
-                "unique_courses": len(set(item.get('course') for item in items if item.get('course'))),
-                "unique_faculty": len(set(item.get('faculty') for item in items if item.get('faculty'))),
-            }
+            "summary": _summarize(items),
         }
         
-        if should_save_cache:
+        if user_id and should_save_cache:
             from database.firestore_store import data_store
             data_store.save_timetable_cache(user_id, doc)
+        elif not user_id and should_save_cache:
+            _save_json(doc)
         
         summary = doc.get("summary", {})
         LOGGER.info(f"Successfully parsed {summary['total_items']} items for date {target_date.date()}")

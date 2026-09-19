@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import gzip
 import json
+import hashlib
 import logging
 import os
 import uuid
@@ -11,11 +13,15 @@ from typing import Any, Dict, List, Optional
 
 import firebase_admin
 from firebase_admin import credentials, firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
+
+from core.ttl_cache import TTLCache
 
 from .defaults import build_default_user_settings
 from .token_crypto import decrypt_token_data, encrypt_token_data
 
 logger = logging.getLogger(__name__)
+MAX_FIRESTORE_PAYLOAD_BYTES = 900_000
 
 
 def _utc_now() -> datetime:
@@ -33,6 +39,32 @@ def _serialize_timestamp(value: Any) -> Optional[str]:
         except Exception:
             return str(value)
     return str(value)
+
+
+def _encode_json_payload(value: Dict[str, Any]) -> bytes:
+    serialized = json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
+    return gzip.compress(serialized, compresslevel=6)
+
+
+def _decode_json_payload(value: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(value, (bytes, bytearray)):
+        return None
+    try:
+        decoded = json.loads(gzip.decompress(bytes(value)).decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        logger.warning("Ignoring an invalid compressed Firestore payload", exc_info=True)
+        return None
+    return decoded if isinstance(decoded, dict) else None
+
+
+def _cache_content_hash(cache_data: Dict[str, Any]) -> str:
+    stable_payload = dict(cache_data)
+    search = stable_payload.get("search")
+    if isinstance(search, dict):
+        stable_payload["search"] = {key: value for key, value in search.items() if key != "saved_at"}
+    return hashlib.sha256(
+        json.dumps(stable_payload, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
 def _load_firebase_credentials():
@@ -79,15 +111,25 @@ class FirestoreStore:
         self.tokens = self.client.collection("gmail_tokens")
         self.settings = self.client.collection("user_settings")
         self.cache = self.client.collection("timetable_cache")
+        self.source_cache = self.client.collection("timetable_source_cache")
+        self._settings_cache = TTLCache[str, Dict[str, Any]](ttl_seconds=300, max_entries=512)
+        self._token_cache = TTLCache[str, Dict[str, Any]](ttl_seconds=300, max_entries=512)
+        self._timetable_cache = TTLCache[str, tuple[Dict[str, Any], str]](ttl_seconds=60, max_entries=256)
+        self._timetable_hashes = TTLCache[str, str](ttl_seconds=86400, max_entries=512)
+        self._health_cache = TTLCache[str, bool](ttl_seconds=60, max_entries=1)
         logger.info("Firestore client initialized")
 
     def is_healthy(self) -> bool:
+        cached = self._health_cache.get("firestore")
+        if cached is not None:
+            return cached
         self.users.limit(1).get()
+        self._health_cache.set("firestore", True)
         return True
 
     def get_or_create_user(self, email: str) -> Dict[str, Any]:
         normalized_email = email.strip().lower()
-        matches = list(self.users.where("email", "==", normalized_email).limit(1).stream())
+        matches = list(self.users.where(filter=FieldFilter("email", "==", normalized_email)).limit(1).stream())
 
         if matches:
             payload = matches[0].to_dict() or {}
@@ -113,16 +155,22 @@ class FirestoreStore:
                 "updated_at": _utc_now(),
             }
         )
+        self._token_cache.set(user_id, dict(token_data))
         return True
 
     def get_user_tokens(self, user_id: str) -> Optional[Dict[str, Any]]:
+        cached = self._token_cache.get(user_id)
+        if cached is not None:
+            return dict(cached)
         snapshot = self.tokens.document(user_id).get()
         if not snapshot.exists:
             return None
         payload = snapshot.to_dict() or {}
         encrypted = payload.get("encrypted_token_data")
         if encrypted:
-            return decrypt_token_data(encrypted)
+            token_data = decrypt_token_data(encrypted)
+            self._token_cache.set(user_id, dict(token_data))
+            return token_data
 
         legacy = payload.get("token_data")
         if legacy:
@@ -131,28 +179,91 @@ class FirestoreStore:
         return None
 
     def save_timetable_cache(self, user_id: str, cache_data: Dict[str, Any]) -> bool:
+        content_hash = _cache_content_hash(cache_data)
+        if self._timetable_hashes.get(user_id) == content_hash:
+            return True
+        compressed = _encode_json_payload(cache_data)
+        if len(compressed) > MAX_FIRESTORE_PAYLOAD_BYTES:
+            logger.error("Timetable cache is too large to persist safely: %s compressed bytes", len(compressed))
+            return False
         now = _utc_now()
         self.cache.document(user_id).set(
             {
                 "user_id": user_id,
-                "cache_data": cache_data,
+                "cache_gzip": compressed,
+                "cache_version": 2,
                 "updated_at": now,
+            }
+        )
+        self._timetable_hashes.set(user_id, content_hash)
+        self._timetable_cache.set(user_id, (cache_data, _serialize_timestamp(now) or ""))
+        return True
+
+    def get_latest_timetable_cache(self, user_id: str) -> Optional[Dict[str, Any]]:
+        cached = self._timetable_cache.get(user_id)
+        if cached is not None:
+            return cached[0]
+        snapshot = self.cache.document(user_id).get()
+        if not snapshot.exists:
+            return None
+        payload = snapshot.to_dict() or {}
+        cache_data = _decode_json_payload(payload.get("cache_gzip")) or payload.get("cache_data")
+        if cache_data:
+            self._timetable_hashes.set(user_id, _cache_content_hash(cache_data))
+            self._timetable_cache.set(
+                user_id,
+                (cache_data, _serialize_timestamp(payload.get("updated_at")) or ""),
+            )
+        return cache_data
+
+    def clear_user_cache(self, user_id: str) -> bool:
+        self.cache.document(user_id).delete()
+        self.source_cache.document(user_id).delete()
+        self._timetable_hashes.pop(user_id)
+        self._timetable_cache.pop(user_id)
+        return True
+
+    def save_search_source_cache(self, user_id: str, source_data: Dict[str, Any]) -> bool:
+        """Persist the compact weekly source so process restarts do not rescrape Gmail."""
+        compressed = _encode_json_payload(source_data)
+        if len(compressed) > MAX_FIRESTORE_PAYLOAD_BYTES:
+            logger.error("Search source is too large to persist safely: %s compressed bytes", len(compressed))
+            return False
+        self.source_cache.document(user_id).set(
+            {
+                "user_id": user_id,
+                "source_gzip": compressed,
+                "cache_version": 2,
+                "updated_at": _utc_now(),
             }
         )
         return True
 
-    def get_latest_timetable_cache(self, user_id: str) -> Optional[Dict[str, Any]]:
-        snapshot = self.cache.document(user_id).get()
+    def get_search_source_cache(
+        self,
+        user_id: str,
+        *,
+        max_age_seconds: int = 1800,
+    ) -> Optional[Dict[str, Any]]:
+        snapshot = self.source_cache.document(user_id).get()
         if not snapshot.exists:
             return None
-        return (snapshot.to_dict() or {}).get("cache_data")
-
-    def clear_user_cache(self, user_id: str) -> bool:
-        self.cache.document(user_id).delete()
-        return True
+        payload = snapshot.to_dict() or {}
+        updated_at = payload.get("updated_at")
+        if not isinstance(updated_at, datetime):
+            return None
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        if (_utc_now() - updated_at).total_seconds() > max_age_seconds:
+            return None
+        source_data = _decode_json_payload(payload.get("source_gzip")) or payload.get("source_data")
+        return source_data if isinstance(source_data, dict) else None
 
     def get_latest_timetable_timestamp(self, user_id: str | None = None) -> Optional[str]:
         if user_id:
+            cached = self._timetable_cache.get(user_id)
+            if cached is not None:
+                return cached[1] or None
             snapshot = self.cache.document(user_id).get()
             if not snapshot.exists:
                 return None
@@ -172,17 +283,24 @@ class FirestoreStore:
                 "updated_at": _utc_now(),
             }
         )
+        self._settings_cache.set(user_id, dict(merged))
         return True
 
     def get_user_settings(self, user_id: str) -> Dict[str, Any]:
+        cached = self._settings_cache.get(user_id)
+        if cached is not None:
+            return dict(cached)
         snapshot = self.settings.document(user_id).get()
         if not snapshot.exists:
-            return build_default_user_settings()
-        payload = snapshot.to_dict() or {}
-        return build_default_user_settings(payload.get("settings") or {})
+            settings = build_default_user_settings()
+        else:
+            payload = snapshot.to_dict() or {}
+            settings = build_default_user_settings(payload.get("settings") or {})
+        self._settings_cache.set(user_id, dict(settings))
+        return settings
 
     def list_users_with_daily_email(self) -> List[Dict[str, Any]]:
-        configured_users: List[Dict[str, Any]] = []
+        configured_settings: Dict[str, tuple[Dict[str, Any], str]] = {}
 
         for settings_doc in self.settings.stream():
             payload = settings_doc.to_dict() or {}
@@ -192,13 +310,22 @@ class FirestoreStore:
                 continue
 
             user_id = payload.get("user_id") or settings_doc.id
-            user_doc = self.users.document(user_id).get()
-            if not user_doc.exists:
-                logger.warning("Daily email configured for missing user_id=%s", user_id)
-                continue
+            configured_settings[user_id] = (settings, personal_email)
 
+        if not configured_settings:
+            return []
+
+        configured_users: List[Dict[str, Any]] = []
+        user_refs = [self.users.document(user_id) for user_id in configured_settings]
+        found_user_ids = set()
+        for user_doc in self.client.get_all(user_refs):
+            if not user_doc.exists:
+                continue
+            user_id = user_doc.id
+            found_user_ids.add(user_id)
+            settings, personal_email = configured_settings[user_id]
             user_data = user_doc.to_dict() or {}
-            user_data["id"] = user_doc.id
+            user_data["id"] = user_id
             configured_users.append(
                 {
                     "user": user_data,
@@ -207,14 +334,26 @@ class FirestoreStore:
                 }
             )
 
+        for missing_user_id in configured_settings.keys() - found_user_ids:
+            logger.warning("Daily email configured for missing user_id=%s", missing_user_id)
+
         return configured_users
 
     def cleanup_old_cache(self) -> bool:
         cutoff = _utc_now() - timedelta(days=7)
-        for cache_doc in self.cache.stream():
-            updated_at = (cache_doc.to_dict() or {}).get("updated_at")
-            if isinstance(updated_at, datetime) and updated_at < cutoff:
-                cache_doc.reference.delete()
+        batch = self.client.batch()
+        pending = 0
+        for collection in (self.cache, self.source_cache):
+            stale_docs = collection.where(filter=FieldFilter("updated_at", "<", cutoff)).stream()
+            for cache_doc in stale_docs:
+                batch.delete(cache_doc.reference)
+                pending += 1
+                if pending == 450:
+                    batch.commit()
+                    batch = self.client.batch()
+                    pending = 0
+        if pending:
+            batch.commit()
         return True
 
 

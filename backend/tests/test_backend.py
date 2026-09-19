@@ -1,6 +1,7 @@
 """Backend tests for ClassWire."""
 
 import json
+import gzip
 import os
 import sys
 from datetime import datetime
@@ -11,6 +12,7 @@ import pytest
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from app import app, get_user_from_request
+from core.app_support import compress_large_json_response
 
 
 @pytest.fixture
@@ -45,6 +47,16 @@ class TestHealthEndpoint:
         assert data['status'] == 'healthy'
         assert 'timestamp' in data
         assert 'firestore_connected' in data
+
+    def test_large_json_responses_are_gzipped_when_supported(self):
+        with app.test_request_context('/', headers={'Accept-Encoding': 'gzip, deflate'}):
+            response = app.json.response({'payload': 'x' * 5000})
+            original_size = len(response.get_data())
+            compressed = compress_large_json_response(response)
+
+        assert compressed.headers['Content-Encoding'] == 'gzip'
+        assert len(compressed.get_data()) < original_size
+        assert json.loads(gzip.decompress(compressed.get_data()))['payload'] == 'x' * 5000
 
 
 class TestAuthentication:
@@ -197,6 +209,63 @@ class TestScrapeEndpoint:
         response = client.post('/api/scrape', headers={'X-User-Email': 'test@example.com'})
         assert response.status_code == 400
         assert response.get_json()['success'] is False
+
+
+class TestSearchEndpoint:
+    @patch('app.run_once')
+    def test_search_persists_compact_source_and_does_not_duplicate_items(self, mock_run_once, client, mock_store, mock_user):
+        item = {
+            'schedule_day': 'Monday',
+            'semester_display': 'BS(SE)-7A',
+            'course': 'SEC 3603 Software Project Management (3,0)',
+            'course_code': 'SEC 3603',
+            'course_title': 'Software Project Management',
+            'faculty': 'Ada Lovelace',
+            'room': '204',
+            'time': '02:00 PM - 03:30 PM',
+            'campus': 'Main Campus',
+        }
+        source = {
+            'for_day': 'Entire Week',
+            'for_date': '2026-09-19',
+            'query': 'gmail query',
+            'message_id': 'message-1',
+            'message_ids': ['message-1'],
+            'items': [item],
+            'semesters': [],
+            'summary': {},
+        }
+        mock_store.get_or_create_user.return_value = mock_user
+        mock_store.get_user_settings.return_value = {}
+        mock_store.get_search_source_cache.return_value = None
+        mock_store.save_search_source_cache.return_value = True
+        mock_store.save_timetable_cache.return_value = True
+        mock_run_once.return_value = {'success': True, 'data': source}
+
+        response = client.post(
+            '/api/search',
+            json={'query': 'When does Ada Lovelace have classes?', 'force_refresh': True},
+            headers={'X-User-Email': 'test@example.com'},
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()['data']
+        assert data['items'] == [item]
+        assert 'items' not in data['search']
+        mock_store.save_search_source_cache.assert_called_once_with(mock_user['id'], source)
+        mock_store.save_timetable_cache.assert_called_once()
+
+    def test_search_rejects_unbounded_query_input(self, client, mock_store, mock_user):
+        mock_store.get_or_create_user.return_value = mock_user
+
+        response = client.post(
+            '/api/search',
+            json={'query': 'x' * 501},
+            headers={'X-User-Email': 'test@example.com'},
+        )
+
+        assert response.status_code == 400
+        assert '500 characters' in response.get_json()['error']
 
 
 class TestErrorHandling:

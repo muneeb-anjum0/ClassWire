@@ -1,24 +1,30 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { TimetableItem } from '../../types/api';
 import EmptyTimetableState from './EmptyTimetableState';
 import TimetableDesktopTable from './TimetableDesktopTable';
 import TimetableMobileSection from './TimetableMobileSection';
+import './TimetableTable.css';
 import { groupAndSortData } from './timetableTableUtils';
-import { timetableStyles } from './timetableStyles';
 
 interface TimetableTableProps {
   items: TimetableItem[];
 }
 
+const EMPTY_ITEMS: TimetableItem[] = [];
+
 const TimetableTable: React.FC<TimetableTableProps> = ({ items }) => {
-  const safeItems = items || [];
-  const { grouped, sortedSemesters } = groupAndSortData(safeItems);
-  const showDay = safeItems.some((item) => Boolean(item.schedule_day));
+  const safeItems = items || EMPTY_ITEMS;
+  const { grouped, sortedSemesters } = useMemo(
+    () => groupAndSortData(safeItems),
+    [safeItems],
+  );
+  const showDay = useMemo(
+    () => safeItems.some((item) => Boolean(item.schedule_day)),
+    [safeItems],
+  );
 
   return (
     <>
-      <style>{timetableStyles}</style>
-
       {safeItems.length === 0 ? (
         <EmptyTimetableState />
       ) : (
@@ -31,4 +37,4 @@ const TimetableTable: React.FC<TimetableTableProps> = ({ items }) => {
   );
 };
 
-export default TimetableTable;
+export default React.memo(TimetableTable);

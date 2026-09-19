@@ -16,7 +16,7 @@ html {
 }
 
 html[data-theme='light'] {
-  --theme-page-bg: #f3f4f6;
+  --theme-page-bg: #ffffff;
   --theme-surface: #ffffff;
   --theme-surface-elevated: #fcfcfd;
   --theme-surface-muted: #e7e9ee;
@@ -82,24 +82,18 @@ body {
   min-height: 100vh;
   position: relative;
   overflow-x: hidden;
-  background:
-    radial-gradient(circle at 14% 10%, var(--theme-page-radial-1) 0%, transparent 28%),
-    radial-gradient(circle at 90% 8%, var(--theme-page-radial-2) 0%, transparent 30%),
-    var(--theme-page-bg);
+  background: var(--theme-page-bg);
 }
 
 .app-shell__overlay {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background-image:
-    radial-gradient(circle, rgba(99, 115, 129, 0.12) 1px, transparent 1px);
-  background-size: 26px 26px;
-  opacity: 0.28;
+  background: none;
 }
 
 .layout-shell {
-  width: min(96vw, 1540px);
+  width: min(96vw, 1180px);
   margin-left: auto;
   margin-right: auto;
 }
@@ -191,10 +185,10 @@ body {
 
 .surface-card {
   overflow: hidden;
-  border-radius: 1.6rem;
-  border: 1px solid var(--theme-border);
+  border-radius: 1.25rem;
+  border: 1px solid var(--theme-border-soft);
   background: var(--theme-surface);
-  box-shadow: var(--theme-shadow);
+  box-shadow: none;
 }
 
 .surface-card--compact {
@@ -278,8 +272,61 @@ html[data-theme='dark'] .compact-callout__icon {
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.25rem;
-  border-bottom: 3px solid var(--theme-border-soft);
-  background: var(--theme-surface-soft);
+  border-bottom: 1px solid var(--theme-border-soft);
+  background: var(--theme-surface);
+}
+
+.dashboard-main {
+  padding-bottom: 4rem;
+}
+
+.chat-schedule {
+  position: relative;
+  left: 50%;
+  width: min(1380px, calc(100vw - 64px));
+  max-width: none;
+  margin: 0;
+  translate: -50% 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.chat-schedule .surface-card__header {
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px 24px 14px;
+  border-bottom: 0;
+}
+
+.chat-schedule .surface-card__header h3 {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -.03em;
+}
+
+.schedule-context {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: #8a8a8a;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.schedule-context i {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #b5b5b5;
+}
+
+.chat-schedule .timetable-count-pill {
+  border: 0 !important;
+  background: #f4f4f4 !important;
+  box-shadow: none;
 }
 
 .theme-text-primary,

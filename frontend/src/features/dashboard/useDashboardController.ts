@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiService } from '../../services/api';
 import { ConfigData, TimetableData } from '../../types/api';
 import {
@@ -21,6 +21,7 @@ export const useDashboardController = ({
   logout,
   user,
 }: DashboardAuthState) => {
+  const SEARCH_PARSER_VERSION = 2;
   const ui = useDashboardUiState(logout);
   const statusToast = useDashboardStatusToast();
   const showStatus = statusToast.showStatus;
@@ -34,25 +35,44 @@ export const useDashboardController = ({
   const [operationInProgress, setOperationInProgress] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSmartResult, setIsSmartResult] = useState(false);
-  const searchStorageKey = `classwire:last-search:${user?.email || 'anonymous'}`;
+  const searchStorageKey = `classwire:v2:last-search:${user?.email || 'anonymous'}`;
+  const timetableStorageKey = `classwire:v2:last-timetable:${user?.email || 'anonymous'}`;
+  const bootstrapStarted = useRef(false);
+
+  const readCachedTimetable = (): TimetableData | null => {
+    try {
+      const raw = window.localStorage.getItem(timetableStorageKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as TimetableData;
+      if (!parsed || !Array.isArray(parsed.items)) return null;
+      if (parsed.search && parsed.search.parser_version !== SEARCH_PARSER_VERSION) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
+  const cacheTimetableLocally = (data: TimetableData) => {
+    try {
+      window.localStorage.setItem(timetableStorageKey, JSON.stringify(data));
+    } catch (error) {
+      console.warn('Could not cache timetable locally:', error);
+    }
+  };
 
   const readSavedSearch = (): TimetableData | null => {
     try {
-      const saved = window.localStorage.getItem(searchStorageKey);
+      const saved = window.localStorage.getItem(timetableStorageKey);
       if (!saved) return null;
       const parsed = JSON.parse(saved) as TimetableData;
-      return parsed?.search?.query ? parsed : null;
+      return parsed?.search?.query && parsed.search.parser_version === SEARCH_PARSER_VERSION ? parsed : null;
     } catch {
       return null;
     }
   };
 
   const saveSearchLocally = (data: TimetableData) => {
-    try {
-      window.localStorage.setItem(searchStorageKey, JSON.stringify(data));
-    } catch (error) {
-      console.warn('Could not save the latest search locally:', error);
-    }
+    cacheTimetableLocally(data);
   };
 
   const configuredSemesters = useMemo(() => config?.semester_filter ?? [], [config]);
@@ -129,24 +149,24 @@ export const useDashboardController = ({
     }
   };
 
-  const applySuccessfulTimetable = (data: TimetableData, timestamp?: string, message?: string) => {
+  const applySuccessfulTimetable = (data: TimetableData, timestamp?: string, message?: string, silent = false) => {
     setTimetableData(data);
+    cacheTimetableLocally(data);
     if (timestamp) {
       setLastUpdate(timestamp);
     }
-    showStatus('success', message || 'Data loaded successfully');
+    if (!silent) showStatus('success', message || 'Data loaded successfully');
   };
 
-  const loadLatestTimetable = async (force = false) => {
+  const loadLatestTimetable = async (force = false, silent = false) => {
     if (operationInProgress && !force) {
       return;
     }
 
     try {
-      showStatus(
-        'warning',
-        lastUpdate ? 'Loading cached data...' : 'Loading previous data...',
-      );
+      if (!silent) {
+        showStatus('warning', lastUpdate ? 'Loading cached data...' : 'Loading previous data...');
+      }
       setIsLoading(true);
       setOperationInProgress(true);
 
@@ -156,6 +176,17 @@ export const useDashboardController = ({
       );
 
       if (response.success && response.data) {
+        if (response.data.search?.query && response.data.search.parser_version !== SEARCH_PARSER_VERSION) {
+          const staleQuery = response.data.search.query.trim();
+          const refreshed = await apiService.searchTimetable(staleQuery, true);
+          if (refreshed.success && refreshed.data) {
+            setIsSmartResult(true);
+            setSearchQuery(staleQuery);
+            saveSearchLocally(refreshed.data);
+            applySuccessfulTimetable(refreshed.data, refreshed.timestamp, 'Updated your saved search', silent);
+            return;
+          }
+        }
         const locallySavedSearch = readSavedSearch();
         const restoredData = response.data.search ? response.data : (locallySavedSearch || response.data);
         const restoredSearchQuery = restoredData.search?.query?.trim() || '';
@@ -165,6 +196,7 @@ export const useDashboardController = ({
           restoredData,
           response.timestamp,
           restoredData.search ? 'Restored your last search' : response.cached ? 'Loaded cached data' : 'Data loaded successfully',
+          silent,
         );
         return;
       }
@@ -351,14 +383,23 @@ export const useDashboardController = ({
   };
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || bootstrapStarted.current) {
       return;
+    }
+    bootstrapStarted.current = true;
+
+    const cached = readCachedTimetable();
+    if (cached) {
+      setTimetableData(cached);
+      setIsSmartResult(Boolean(cached.search));
+      setSearchQuery(cached.search?.query?.trim() || '');
     }
 
     const bootstrap = async () => {
-      await loadConfig();
-      await checkStatus();
-      await loadLatestTimetable();
+      await Promise.allSettled([
+        loadConfig(),
+        loadLatestTimetable(true, Boolean(cached)),
+      ]);
     };
 
     bootstrap();

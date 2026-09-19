@@ -24,8 +24,16 @@ def authenticated_user(store, logger) -> tuple[dict[str, Any] | None, Any, int |
     if not isinstance(email, str) or not email.strip():
         return None, jsonify({"success": False, "error": "Authentication required"}), 401
 
+    normalized_email = email.strip().lower()
+    # Both values are written only after a successful OAuth callback and live
+    # inside Flask's signed session cookie. Re-querying Firestore on every API
+    # call adds latency and a billable read without adding authentication
+    # value. The test-only header fallback still resolves through the store.
+    if isinstance(user_id, str) and user_id.strip():
+        return {"id": user_id, "email": normalized_email}, None, None
+
     try:
-        user = store.get_or_create_user(email)
+        user = store.get_or_create_user(normalized_email)
     except Exception as error:
         logger.error("Could not resolve authenticated user: %s", error)
         return None, jsonify({"success": False, "error": "User lookup failed"}), 500

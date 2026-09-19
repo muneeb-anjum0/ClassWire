@@ -41,8 +41,8 @@ Add these to [backend/.env](D:/Desktop/Inbox2table/backend/.env):
 ```env
 FLASK_SECRET_KEY=replace-me
 TOKEN_ENCRYPTION_KEY=replace-me-with-a-different-long-random-value
-PUBLIC_BACKEND_URL=http://localhost:5000
-FRONTEND_ORIGINS=http://localhost:5173
+PUBLIC_BACKEND_URL=http://localhost:5001
+FRONTEND_ORIGINS=http://localhost:5174
 FIREBASE_PROJECT_ID=your-project-id
 FIREBASE_SERVICE_ACCOUNT_PATH=C:\path\to\service-account.json
 CLIENT_SECRET_JSON={"web":{...}}
