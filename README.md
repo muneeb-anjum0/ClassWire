@@ -1,66 +1,196 @@
 # ClassWire
 
-I built ClassWire because my university timetable arrived as a messy Gmail message. I wanted to sign in once, extract only my semesters, and see a clean schedule without rebuilding it by hand every time.
+ClassWire converts university timetable emails into a searchable, structured class schedule. It connects to Gmail with read-only OAuth access, parses inconsistent HTML timetable formats, and presents the results through a responsive React interface.
 
-## Ideology
+## Features
 
-My rule for this project is simple: automation should remove boring work without hiding how it works. I prefer a small, readable system with explicit security boundaries over clever code that becomes difficult to trust or maintain.
+- Natural-language timetable search for sections, courses, faculty, weekdays, and course codes
+- Faculty availability calculation across university hours
+- Theory, lab, and final-year-project classification from credit-hour notation
+- Header-aware HTML parsing with fallback heuristics for inconsistent email layouts
+- Gmail OAuth with read-only access and encrypted token storage
+- Per-user semester, subject, and faculty filters
+- Persistent restoration of the latest timetable or search result
+- Optional daily timetable delivery by email
+- In-memory and compressed Firestore caching to reduce API calls, latency, and storage costs
+- Responsive light and dark interfaces for desktop and mobile
 
-## Process
+## Technology stack
 
-I began with an email scraper and a table. The real work appeared when timetable emails changed shape, section labels became inconsistent, and Google OAuth behaved differently on localhost and production. I handled that with structured and fallback parsing, moved persistence from Supabase to Firestore, replaced browser-trusted identity with signed server sessions, and encrypted stored Gmail credentials.
+| Layer | Technology |
+| --- | --- |
+| Frontend | React 19, TypeScript, Vite, Axios |
+| Backend | Python, Flask, Gunicorn |
+| Data | Cloud Firestore |
+| Integrations | Gmail API, Google OAuth 2.0, SMTP |
+| Parsing | Beautiful Soup, lxml, deterministic parsing heuristics |
+| Testing | Pytest, Vitest, Testing Library |
 
-The biggest barriers were OAuth consent and redirect rules, safely separating each user's data, and reducing an overgrown frontend without changing its behavior. Those problems pushed the project toward the modular structure it has now rather than becoming a pile of one-off fixes.
+## Architecture
 
-ClassWire now provides:
+The React client communicates exclusively with the Flask API. The backend owns authentication, Gmail access, parsing, search, caching, Firestore persistence, and optional email delivery. Browser clients never receive Gmail credentials or connect directly to Firestore.
 
-- Gmail OAuth and read-only timetable discovery
-- Per-user semester filters and cached schedules
-- A responsive light/dark dashboard
-- Optional SMTP delivery to a personal inbox
-- Encrypted OAuth credentials in Firestore
+Timetable retrieval follows this path:
 
-## Run locally
+1. The user signs in through Google OAuth with Gmail read-only permission.
+2. The backend locates the newest timetable email for each weekday using batched Gmail requests.
+3. Structured table parsing extracts canonical timetable rows; guarded heuristics handle nonstandard layouts.
+4. Parsed source data is cached in memory and as compressed Firestore payloads.
+5. Natural-language queries run against the cached weekly source without repeatedly accessing Gmail.
+
+## Prerequisites
+
+- Python 3.12 or newer
+- Node.js 22 or newer
+- A Firebase project with Cloud Firestore enabled
+- Google OAuth web-application credentials with Gmail API access
+- Optional SMTP credentials for daily email delivery
+
+## Local installation
+
+Clone the repository and install the backend:
+
+```bash
+git clone https://github.com/muneeb-anjum0/ClassWire.git
+cd ClassWire
+
+python -m venv backend/.venv
+source backend/.venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r backend/requirements.txt
+cp backend/.env.example backend/.env
+```
+
+On Windows PowerShell, activate the environment with:
 
 ```powershell
-# Backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r backend\requirements.txt
+backend\.venv\Scripts\Activate.ps1
 Copy-Item backend\.env.example backend\.env
-python backend\app.py
+```
 
-# Frontend, in another terminal
+Install the frontend:
+
+```bash
 cd frontend
 npm ci
-Copy-Item .env.example .env
+cp .env.example .env
+cd ..
+```
+
+## Service configuration
+
+### Firebase
+
+Create a service account for a Firebase project with Cloud Firestore enabled. Configure either:
+
+- `FIREBASE_SERVICE_ACCOUNT_JSON` with the complete service-account JSON, or
+- `FIREBASE_SERVICE_ACCOUNT_PATH` with an absolute path to the JSON file.
+
+Set `FIREBASE_PROJECT_ID` to the Firebase project ID. Required collections are created automatically as the application stores users, encrypted Gmail tokens, settings, and caches.
+
+### Google OAuth
+
+Create OAuth 2.0 credentials for a Web application and enable the Gmail API. For local development, configure:
+
+- Authorized JavaScript origin: `http://localhost:5174`
+- Authorized redirect URI: `http://localhost:5001/api/auth/gmail/callback`
+
+Provide the OAuth client JSON through `CLIENT_SECRET_JSON`, or place it at `backend/credentials/client_secret.json`. Never commit the credential file.
+
+### Environment variables
+
+Use [`backend/.env.example`](backend/.env.example) and [`frontend/.env.example`](frontend/.env.example) as templates.
+
+| Variable | Purpose |
+| --- | --- |
+| `FLASK_SECRET_KEY` | Signs server-side session cookies |
+| `TOKEN_ENCRYPTION_KEY` | Encrypts Gmail OAuth credentials before persistence |
+| `PUBLIC_BACKEND_URL` | Public backend origin used for OAuth callbacks |
+| `FRONTEND_ORIGINS` | Comma-separated browser origins allowed by CORS |
+| `FIREBASE_PROJECT_ID` | Firebase project identifier |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Inline Firebase service-account JSON |
+| `CLIENT_SECRET_JSON` | Inline Google OAuth client JSON |
+| `AUTOMATION_SECRET` | Protects scheduled automation endpoints |
+| `GMAIL_QUERY_BASE` | Base Gmail query used to discover timetable messages |
+| `GMAIL_API_TIMEOUT_SECONDS` | Timeout applied to Gmail API requests |
+| `SMTP_*` | Optional SMTP delivery configuration |
+| `VITE_API_URL` | Backend URL used by the React client |
+
+Generate long, independent values for `FLASK_SECRET_KEY`, `TOKEN_ENCRYPTION_KEY`, and `AUTOMATION_SECRET` in production.
+
+## Running locally
+
+Start the backend from the repository root:
+
+```bash
+backend/.venv/bin/python backend/app.py
+```
+
+Start the frontend in another terminal:
+
+```bash
+cd frontend
 npm run dev
 ```
 
-The frontend runs at `http://localhost:5174` and the API at `http://localhost:5001`. Add the frontend URL to `FRONTEND_ORIGINS` and to the Google OAuth client configuration.
+Open `http://localhost:5174`. The Flask API runs at `http://localhost:5001`.
 
-## Configuration
+## Quality checks
 
-Use [backend/.env.example](backend/.env.example) and [frontend/.env.example](frontend/.env.example) as the source of truth. Never commit `.env`, Firebase service-account JSON, OAuth client JSON, app passwords, or refresh tokens.
+Run the complete backend verification:
 
-Setup details:
-
-- [Firebase and Firestore](docs/firebase-setup.md)
-- [Google OAuth](docs/google-oauth-localhost.md)
-- [Project layout](docs/project-structure.md)
-
-## Verify
-
-```powershell
-.\.venv\Scripts\python.exe tools\repository_guard.py
-.\.venv\Scripts\python.exe -m pytest backend\tests
-.\.venv\Scripts\pip-audit.exe --local
-cd frontend
-npm test
-npm run build
-npm audit
+```bash
+PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/tests
+backend/.venv/bin/python -m pip_audit --local
+backend/.venv/bin/python tools/repository_guard.py
 ```
 
-I intentionally keep the frontend away from Firestore. All database access goes through Flask, authenticated requests use signed HTTP-only sessions, and stored Gmail tokens are encrypted before being written to Firestore. CI also rejects unexpected root files, tracked credentials, private keys, symlinks, executables, and vulnerable dependencies before deployment.
+Run frontend tests, dependency auditing, and the production build:
 
-For that protection to be enforceable, the GitHub `main` branch should require the **Security and quality** check and a CODEOWNER review. Render should use `backend` as its root directory and the checked-in `Procfile` as its start command.
+```bash
+cd frontend
+npm test -- --run
+npm audit --audit-level=high
+npm run build
+```
+
+GitHub Actions runs the same security, backend, frontend, and build checks for pull requests and updates to `main`.
+
+## Deployment
+
+The backend is production-ready through the checked-in [`backend/Procfile`](backend/Procfile). Configure the deployment service to use `backend` as its root directory and provide all secrets through environment variables.
+
+Build the frontend with:
+
+```bash
+cd frontend
+npm ci
+npm run build
+```
+
+Deploy `frontend/dist` to a static hosting provider and set `VITE_API_URL` to the public backend URL before building. Add the deployed frontend origin and backend OAuth callback URL to the Google OAuth client configuration.
+
+## Security
+
+- Gmail access is read-only.
+- OAuth tokens are encrypted before being written to Firestore.
+- Authentication uses signed, HTTP-only session cookies.
+- State-changing browser requests are restricted by origin checks and CORS.
+- Expensive endpoints use bounded per-user rate limiting.
+- Repository checks reject tracked credentials, private keys, and common secret formats.
+- `.env`, OAuth client files, Firebase service accounts, app passwords, and refresh tokens must never be committed.
+
+## Repository layout
+
+```text
+ClassWire/
+├── backend/          Flask API, Gmail integration, parser, search, and persistence
+├── frontend/         React application and UI tests
+├── tools/            Repository security checks
+├── .github/          Continuous integration workflow
+└── README.md         Project documentation
+```
+
+## License
+
+No license is currently provided. All rights are reserved unless a license is added to the repository.
