@@ -26,15 +26,9 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="app-shell min-h-screen">
-      <div className="app-shell__overlay" />
-
-      <div className="relative z-10">
-        <header className="topbar sticky top-0 z-40">
-          <div className="layout-shell px-4 sm:px-6 lg:px-8 py-2" />
-        </header>
-
-        <main className="layout-shell dashboard-main px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-5 sm:space-y-6">
+    <div className="app-shell">
+      <div className="app-shell__content">
+        <main className="dashboard-main">
           <SmartSearch
             query={controller.searchQuery}
             setQuery={controller.setSearchQuery}
@@ -43,6 +37,9 @@ export default function DashboardPage() {
             data={controller.timetableData}
             userEmail={controller.userEmail}
             onLogout={controller.handleLogoutClick}
+            logoutConfirmArmed={controller.logoutConfirmArmed}
+            theme={controller.theme}
+            onThemeChange={controller.setTheme}
           />
 
           {(controller.status !== 'idle' || controller.isBackendWaking || controller.isStatusToastClosing) && (
@@ -75,16 +72,16 @@ export default function DashboardPage() {
             !controller.isScraperRunning &&
             controller.timetableData.items &&
             controller.timetableData.items.length > 0 && (
-              <section className="surface-card chat-schedule overflow-hidden animate-timetable-enter">
-                <div className="surface-card__header">
-                  <h3 className="text-lg font-semibold theme-text-primary tracking-tight">Class Schedule</h3>
-                  <p className="schedule-context">
+              <section className="schedule-panel" aria-labelledby="schedule-heading">
+                <div className="schedule-panel__header">
+                  <h2 id="schedule-heading">Class schedule</h2>
+                  <p className="schedule-panel__meta">
                     <span>{controller.timetableData.for_day || 'Today'}</span>
                     <i aria-hidden="true" />
                     <span>{controller.filteredItems.length} {controller.filteredItems.length === 1 ? 'class' : 'classes'}</span>
                   </p>
                 </div>
-                <div className="p-0 timetable-container">
+                <div className="timetable-container">
                   <TimetableTable items={controller.filteredItems} />
                 </div>
               </section>
@@ -92,7 +89,7 @@ export default function DashboardPage() {
 
         </main>
 
-        <footer className="bg-transparent border-0">
+        <footer>
           <div className="app-footer">
             <span>&copy; {new Date().getFullYear()} ClassWire</span>
             <a href="/privacy">Privacy Policy</a>
