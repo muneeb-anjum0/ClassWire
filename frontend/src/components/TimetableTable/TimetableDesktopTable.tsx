@@ -23,6 +23,9 @@ const sectionColor = (index: number): React.CSSProperties => {
     '--section-bg': `hsl(${hue} 70% 92%)`,
     '--section-border': `hsl(${hue} 58% 67%)`,
     '--section-text': `hsl(${hue} 52% 29%)`,
+    '--section-dark-bg': `hsl(${hue} 28% 23%)`,
+    '--section-dark-border': `hsl(${hue} 34% 42%)`,
+    '--section-dark-text': `hsl(${hue} 65% 84%)`,
   } as React.CSSProperties;
 };
 

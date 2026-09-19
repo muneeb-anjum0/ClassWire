@@ -62,7 +62,7 @@ def test_short_honorific_name_is_not_renamed_or_merged_with_full_name():
         {"schedule_day": "Monday", "semester_display": "BSSE 8B", "course_title": "Data Science", "faculty": "Muhammad Qasim", "time": "02:00 PM - 03:30 PM"},
     ]
     exact = search_timetable("When is Muhammad Qasim free on Monday?", items)
-    assert exact["parser_version"] == 2
+    assert exact["parser_version"] == 4
     assert exact["entities"]["faculty"] == ["Muhammad Qasim"]
     assert {item["faculty"] for item in exact["items"]} == {"Muhammad Qasim"}
 
@@ -179,6 +179,99 @@ def test_course_type_credit_rules_cover_theory_lab_and_fyp():
     assert len(search_timetable("Capstone theory entire week", items)["items"]) == 2
     assert len(search_timetable("Capstone lab entire week", items)["items"]) == 1
     assert len(search_timetable("Capstone FYP entire week", items)["items"]) == 1
+
+
+def test_credit_hour_query_matches_total_course_credits_and_explains_result():
+    items = [
+        {"schedule_day": "Monday", "course_code": "SEC 1", "course_title": "Theory A", "course": "SEC 1 Theory A (3,0)", "time": "08:00 AM - 09:30 AM"},
+        {"schedule_day": "Tuesday", "course_code": "SEC 1", "course_title": "Theory A", "course": "SEC 1 Theory A (3,0)", "time": "08:00 AM - 09:30 AM"},
+        {"schedule_day": "Wednesday", "course_code": "SEC 2", "course_title": "FYP", "course": "SEC 2 FYP (0,3)", "time": "08:00 AM - 09:30 AM"},
+        {"schedule_day": "Thursday", "course_code": "SEC 3", "course_title": "Theory B", "course": "SEC 3 Theory B (2,0)", "time": "08:00 AM - 09:30 AM"},
+        {"schedule_day": "Friday", "course_code": "SEC 4", "course_title": "Lab", "course": "SEC 4 Lab (0,1)", "time": "08:00 AM - 09:30 AM"},
+    ]
+
+    result = search_timetable("show all 3 credit hour courses", items)
+
+    assert result["entities"]["credit_hours"] == ["3"]
+    assert [item["course_code"] for item in result["items"]] == ["SEC 1", "SEC 1", "SEC 2"]
+    assert result["answer"] == "Found 3 scheduled classes across 2 3-credit-hour courses — 2 theory classes, 1 FYP class."
+
+
+def test_credit_hour_phrasings_and_explicit_credit_field_are_supported():
+    items = [
+        {"schedule_day": "Monday", "course_code": "SEC 1001", "course_title": "Alpha", "course": "SEC 1001 Alpha (3,0)", "time": "08:00 AM - 09:30 AM"},
+        {"schedule_day": "Monday", "course_code": "SEC 1002", "course_title": "Beta", "credit_hours": 3, "time": "09:30 AM - 11:00 AM"},
+        {"schedule_day": "Monday", "course_code": "SEC 1003", "course_title": "Gamma", "course": "SEC 1003 Gamma (2,0)", "time": "11:00 AM - 12:30 PM"},
+    ]
+
+    for query in ("three credit-hour courses", "courses with 3 credit hours", "show 3 CH courses", "credit hours: 3", "show 3cr/hr courses"):
+        result = search_timetable(query, items)
+        assert [item["course_code"] for item in result["items"]] == ["SEC 1001", "SEC 1002"], query
+
+
+def test_credit_hours_can_be_combined_with_class_type_and_day():
+    items = [
+        {"schedule_day": "Monday", "course_code": "A", "course_title": "A", "course": "A (3,0)", "time": "08:00 AM - 09:30 AM"},
+        {"schedule_day": "Monday", "course_code": "B", "course_title": "B", "course": "B (0,3)", "time": "09:30 AM - 11:00 AM"},
+        {"schedule_day": "Tuesday", "course_code": "C", "course_title": "C", "course": "C (3,0)", "time": "11:00 AM - 12:30 PM"},
+    ]
+
+    result = search_timetable("show all 3 credit hour theory courses on Monday", items)
+
+    assert [item["course_code"] for item in result["items"]] == ["A"]
+
+
+def test_credit_query_does_not_mistake_a_numeric_section_for_the_credit_value():
+    items = [
+        {"schedule_day": "Monday", "semester_display": "2", "course_code": "NOPE", "course_title": "Three Credits", "course": "NOPE Three Credits (3,0)", "time": "08:00 AM - 09:30 AM"},
+        {"schedule_day": "Monday", "semester_display": "BS(CS)-1A", "course_code": "CSC 1108", "course_title": "Computer Science", "course": "CSC 1108 Computer Science (2,0)", "time": "09:30 AM - 11:00 AM"},
+    ]
+
+    result = search_timetable("show all 2 cr/hr courses for Monday", items)
+
+    assert result["entities"]["sections"] == []
+    assert result["entities"]["credit_hours"] == ["2"]
+    assert [item["course_code"] for item in result["items"]] == ["CSC 1108"]
+
+
+def test_one_credit_query_keeps_theory_and_labs_distinct():
+    items = [
+        {"schedule_day": "Monday", "course_code": "MD 1120", "course_title": "Holy Quran", "course": "MD 1120 Holy Quran (1,0)", "time": "08:00 AM - 09:30 AM"},
+        {"schedule_day": "Monday", "course_code": "CSCL 1103", "course_title": "Programming Lab", "course": "CSCL 1103 Programming Lab (0,1)", "time": "09:30 AM - 11:00 AM"},
+    ]
+
+    result = search_timetable("show all 1 cr/hr courses", items)
+
+    assert len(result["items"]) == 2
+    assert result["answer"].endswith("1 theory class, 1 lab class.")
+
+
+def test_multiple_credit_values_are_supported_in_one_query():
+    items = [
+        {"schedule_day": "Monday", "course_code": "SEC 2001", "course_title": "Alpha", "course": "SEC 2001 Alpha (2,0)", "time": "08:00 AM - 09:30 AM"},
+        {"schedule_day": "Monday", "course_code": "SEC 3001", "course_title": "Beta", "course": "SEC 3001 Beta (3,0)", "time": "09:30 AM - 11:00 AM"},
+        {"schedule_day": "Monday", "course_code": "SECL 1001", "course_title": "Gamma", "course": "SECL 1001 Gamma (0,1)", "time": "11:00 AM - 12:30 PM"},
+    ]
+
+    result = search_timetable("show 2 and 3 cr/hr courses", items)
+
+    assert result["entities"]["credit_hours"] == ["3", "2"]
+    assert [item["course_code"] for item in result["items"]] == ["SEC 2001", "SEC 3001"]
+
+
+def test_broad_schedule_requests_return_the_selected_schedule_instead_of_nothing():
+    result = search_timetable("show all classes on Monday", ITEMS)
+    assert len(result["items"]) == 2
+    assert {item["schedule_day"] for item in result["items"]} == {"Monday"}
+
+    entire_week = search_timetable("show my entire timetable", ITEMS)
+    assert len(entire_week["items"]) == len(ITEMS)
+
+
+def test_unrecognized_question_gives_an_interpretation_message():
+    result = search_timetable("please solve something mysterious", ITEMS)
+    assert result["items"] == []
+    assert "couldn't identify" in result["answer"]
 
 
 def test_explicit_faculty_ignores_names_embedded_in_noisy_course_text():

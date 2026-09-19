@@ -9,19 +9,24 @@ from functools import lru_cache
 from typing import Dict, List, Tuple
 
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-PARSER_VERSION = 2
+PARSER_VERSION = 4
 DAY_START = 8 * 60
 DAY_END = 21 * 60 + 30
 NOISE = {
     "schedule", "timetable", "time", "table", "class", "classes", "course", "courses",
     "when", "where", "what", "does", "have", "has", "their", "there", "entire", "week",
     "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "free", "office",
-    "next", "this", "following",
+    "next", "this", "following", "all", "every", "my",
     "is", "are", "was", "were", "be", "in", "on", "at", "for", "show", "find", "give", "tell",
     "me", "the", "a", "an", "of", "and", "or", "to", "from", "with", "without", "please",
     "theory", "lab", "laboratory", "fyp", "final", "year", "project", "sir", "madam",
+    "credit", "credits", "hour", "hours", "hr", "hrs", "ch",
 }
 HONORIFICS = {"mr", "mrs", "ms", "miss", "dr", "prof", "professor", "engr", "eng"}
+NUMBER_WORDS = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
+    "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+}
 
 
 @lru_cache(maxsize=16384)
@@ -65,19 +70,86 @@ def _item_section(item: Dict) -> str:
     return str(item.get("semester_display") or item.get("semester") or item.get("section") or "")
 
 
-def _class_type(item: Dict) -> str | None:
+def _credit_components(item: Dict) -> Tuple[float, float] | None:
     text = " ".join(str(item.get(field) or "") for field in ("course", "course_title", "full_text"))
-    match = re.search(r"\(\s*(\d+)\s*,\s*(\d+)\s*\)", text)
+    match = re.search(r"\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\)", text)
     if not match:
         return None
-    credits = (int(match.group(1)), int(match.group(2)))
-    if credits in {(3, 0), (2, 0)}:
+    return float(match.group(1)), float(match.group(2))
+
+
+def _class_type(item: Dict) -> str | None:
+    credits = _credit_components(item)
+    if not credits:
+        return None
+    theory, practical = credits
+    if theory > 0 and practical == 0:
         return "theory"
-    if credits == (0, 1):
+    if theory == 0 and practical == 1:
         return "lab"
-    if credits == (0, 3):
+    if theory == 0 and practical == 3:
         return "fyp"
     return None
+
+
+def _credit_hours(item: Dict) -> float | None:
+    """Return the total credits represented by a parsed timetable row."""
+    for field in ("credit_hours", "credits", "credit"):
+        value = item.get(field)
+        if isinstance(value, (int, float)) and value >= 0:
+            return float(value)
+        if value is not None:
+            match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*", str(value))
+            if match:
+                return float(match.group(1))
+
+    components = _credit_components(item)
+    return sum(components) if components else None
+
+
+def _requested_credit_hours(query: str) -> List[str]:
+    """Extract credit-hour constraints from natural language without reading course codes as credits."""
+    lowered = query.lower()
+    number = r"(?:\d+(?:\.\d+)?|zero|one|two|three|four|five|six|seven|eight|nine)"
+    suffix = r"(?:credit(?:\s*|-)*(?:hours?|hrs?)|credits?|cr(?:edit)?\.?\s*(?:/\s*)?(?:hours?|hrs?)|crhrs?|ch)"
+    prefix = r"(?:credit(?:\s*|-)*(?:hours?|hrs?)|credits?|ch)"
+    values = re.findall(rf"\b({number})\s*(?:-|\s)*{suffix}\b", lowered)
+    values.extend(re.findall(rf"\b{prefix}\s*(?:of|=|:)?\s*({number})\b", lowered))
+    for first, second in re.findall(
+        rf"\b({number})\s*(?:,|/|&|and|or|\s)\s*({number})\s*(?:-|\s)*{suffix}\b",
+        lowered,
+    ):
+        values.extend((first, second))
+
+    parsed: List[str] = []
+    for value in values:
+        numeric = float(NUMBER_WORDS[value]) if value in NUMBER_WORDS else float(value)
+        if 0 <= numeric <= 12:
+            label = str(int(numeric)) if numeric.is_integer() else str(numeric)
+            if label not in parsed:
+                parsed.append(label)
+    return parsed
+
+
+def _is_broad_schedule_request(query: str) -> bool:
+    """Recognize requests whose intended constraint is only their selected day scope."""
+    lowered = query.lower()
+    if re.search(r"\b(?:all|every|my)\s+(?:scheduled\s+)?(?:classes|courses)\b", lowered):
+        return True
+    if re.search(r"\b(?:full|whole|entire|my)\s+(?:class\s+)?(?:schedule|timetable)\b", lowered):
+        return True
+    if re.search(r"\b(?:show|list|give)\s+(?:me\s+)?(?:the\s+)?(?:schedule|timetable)\b", lowered):
+        return True
+    return bool(re.search(r"\bwhat\s+classes\s+(?:do\s+i\s+have|are\s+scheduled)\b", lowered))
+
+
+def _format_credit_hours(values: List[str]) -> str:
+    if not values:
+        return ""
+    labels = [f"{value}-credit-hour" for value in values]
+    if len(labels) == 1:
+        return labels[0]
+    return ", ".join(labels[:-1]) + f" or {labels[-1]}"
 
 
 def _requested_class_types(query: str, named_courses: List[str] | None = None) -> List[str]:
@@ -159,7 +231,12 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
     courses = sorted({str(item.get("course_title") or item.get("course")) for item in items if item.get("course_title") or item.get("course")})
     codes = sorted({str(item.get("course_code")) for item in items if item.get("course_code")})
 
-    matched_sections = [value for value in sections if normalize(value) and normalize(value) in compact_query]
+    matched_sections = [
+        value for value in sections
+        if len(normalize(value)) >= 2
+        and bool(re.search(r"[a-z]", normalize(value)))
+        and normalize(value) in compact_query
+    ]
     # Prefer the most specific section when one label contains another
     # (for example "BSSS 2" and "BSSS 2 - Section A").
     matched_sections = [
@@ -220,6 +297,7 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
             "courses": [value for value in explicitly_named_courses if ("course", value) not in dominated],
             "codes": [value for value in matched_codes if ("code", value) not in dominated],
             "class_types": _requested_class_types(query, explicitly_named_courses),
+            "credit_hours": _requested_credit_hours(query),
         }
 
     faculty_scores = []
@@ -304,6 +382,7 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
         "courses": matched_courses,
         "codes": matched_codes,
         "class_types": _requested_class_types(query, matched_courses),
+        "credit_hours": _requested_credit_hours(query),
     }
 
 
@@ -319,6 +398,9 @@ def _matches(item: Dict, entities: Dict[str, List[str]]) -> bool:
         checks.append(any(normalize(value) == normalize(item.get("course_code")) for value in entities["codes"]))
     if entities["class_types"]:
         checks.append(_class_type(item) in entities["class_types"])
+    if entities["credit_hours"]:
+        requested = {float(value) for value in entities["credit_hours"]}
+        checks.append(_credit_hours(item) in requested)
     return all(checks) if checks else False
 
 
@@ -383,6 +465,8 @@ def search_timetable(query: str, items: List[Dict]) -> Dict:
             item for item in items
             if any(normalize(faculty) == normalize(item.get("faculty")) for faculty in entities["faculty"])
         ]
+    elif _is_broad_schedule_request(query) and not any(entities.values()):
+        all_entity_matches = list(items)
     else:
         all_entity_matches = [item for item in items if _matches(item, entities)]
     day_items = [item for item in items if item.get("schedule_day") in days]
@@ -391,6 +475,8 @@ def search_timetable(query: str, items: List[Dict]) -> Dict:
     # from removing otherwise valid rows.
     if wants_free and entities["faculty"]:
         matched = [item for item in all_entity_matches if item.get("schedule_day") in days]
+    elif _is_broad_schedule_request(query) and not any(entities.values()):
+        matched = day_items
     else:
         matched = [item for item in day_items if _matches(item, entities)]
     day_rank = {day: index for index, day in enumerate(DAYS)}
@@ -415,9 +501,41 @@ def search_timetable(query: str, items: List[Dict]) -> Dict:
         answer = "Faculty availability"
     else:
         class_type = entities["class_types"][0] if len(entities["class_types"]) == 1 else ""
+        credit_label = _format_credit_hours(entities["credit_hours"])
         kind = f"{class_type} class" if class_type else "class"
-        if matched:
+        if credit_label and matched:
+            course_keys = {
+                normalize(item.get("course_code") or item.get("course_title") or item.get("course"))
+                for item in matched
+                if item.get("course_code") or item.get("course_title") or item.get("course")
+            }
+            course_count = len(course_keys)
+            qualifier = f" {class_type}" if class_type else ""
+            type_counts = Counter(_class_type(item) or "other" for item in matched)
+            type_parts = []
+            for class_kind, type_label in (("theory", "theory"), ("lab", "lab"), ("fyp", "FYP"), ("other", "other")):
+                count = type_counts.get(class_kind, 0)
+                if count:
+                    type_parts.append(f"{count} {type_label} {'class' if count == 1 else 'classes'}")
+            breakdown = f" — {', '.join(type_parts)}" if len(type_parts) > 1 else ""
+            answer = (
+                f"Found {len(matched)} scheduled {'class' if len(matched) == 1 else 'classes'} "
+                f"across {course_count} {credit_label}{qualifier} "
+                f"{'course' if course_count == 1 else 'courses'}{breakdown}."
+            )
+        elif credit_label:
+            qualifier = f" {class_type}" if class_type else ""
+            answer = f"No scheduled classes found for {credit_label}{qualifier} courses."
+        elif matched and _is_broad_schedule_request(query):
+            scope = days[0] if len(days) == 1 else "the selected week"
+            answer = f"Found {len(matched)} scheduled {'class' if len(matched) == 1 else 'classes'} for {scope}."
+        elif matched:
             answer = f"Found {len(matched)} {kind if len(matched) == 1 else kind + 'es'} for {subject}."
+        elif not any(entities.values()) and not _is_broad_schedule_request(query):
+            answer = (
+                "I couldn't identify a section, faculty member, course, class type, "
+                "credit-hour value, or schedule scope in that question."
+            )
         else:
             answer = f"No {kind + 'es'} found for {subject}."
     return {"parser_version": PARSER_VERSION, "items": matched, "days": days, "entities": entities, "free_slots": free_slots, "faculty_availability": faculty_availability, "answer": answer, "intent": "free_time" if wants_free else "schedule"}

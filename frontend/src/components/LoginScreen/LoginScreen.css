@@ -3,83 +3,97 @@
   display: grid;
   place-items: center;
   padding: 32px 20px;
-  background: #fff;
-  color: #202123;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--page-bg);
+  color: var(--text-primary);
 }
 
 .login-card {
-  width: min(460px, 100%);
-  padding: 0;
-  border: 0;
-  background: transparent;
+  width: min(440px, 100%);
 }
 
 .login-card__header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
   text-align: center;
 }
 
 .login-card h1 {
   margin: 0;
-  color: #202123;
-  font-size: 38px;
-  font-weight: 650;
-  line-height: 1.2;
-  letter-spacing: -.035em;
+  color: var(--text-primary);
+  font-size: clamp(32px, 6vw, 40px);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -.04em;
 }
 
 .login-copy {
-  max-width: 410px;
-  margin: 14px 0 0;
-  color: #6f6f6f;
-  font-size: 17px;
-  line-height: 1.5;
+  max-width: 390px;
+  margin: 13px auto 0;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1.55;
 }
 
 .gmail-btn {
   width: 100%;
-  min-height: 56px;
-  margin-top: 34px;
+  min-height: 54px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 11px;
+  margin-top: 32px;
   padding: 0 18px;
-  border: 1px solid #cfcfcf;
-  border-radius: 8px;
-  background: #fff;
-  color: #2d2d2d;
-  font: inherit;
-  font-size: 16px;
-  font-weight: 550;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
   cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease;
 }
 
-.gmail-btn:hover:not(:disabled) { border-color: #a9a9a9; background: #f7f7f7; }
-.gmail-btn:active:not(:disabled) { background: #efefef; }
-.gmail-btn:focus-visible { outline: 2px solid #202123; outline-offset: 2px; }
-.gmail-btn:disabled { color: #9a9a9a; background: #f6f6f6; cursor: not-allowed; }
+.gmail-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
 
-.gmail-icon-wrap { display: grid; width: 22px; height: 22px; place-items: center; }
-.gmail-mark { width: 19px; height: 19px; }
+.gmail-btn:active:not(:disabled) {
+  background: var(--surface-active);
+}
+
+.gmail-btn:disabled {
+  border-color: var(--border);
+  color: var(--text-muted);
+  background: var(--surface-secondary);
+  cursor: not-allowed;
+}
+
+.gmail-icon-wrap {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+}
+
+.gmail-mark {
+  width: 19px;
+  height: 19px;
+}
+
 .spinner,
-.status-icon--spin { animation: spin 760ms linear infinite; }
+.status-icon--spin {
+  animation: login-spin 760ms linear infinite;
+}
+
 .spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid #d1d1d1;
-  border-top-color: #555;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--text-primary);
   border-radius: 50%;
 }
 
 .legal-consent {
   display: grid;
   gap: 11px;
-  margin-top: 22px;
+  margin-top: 21px;
   padding: 0 2px;
 }
 
@@ -87,7 +101,7 @@
   display: flex;
   align-items: flex-start;
   gap: 9px;
-  color: #666;
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -95,41 +109,77 @@
 .legal-consent__check input {
   width: 15px;
   height: 15px;
+  flex: 0 0 auto;
   margin: 1px 0 0;
-  accent-color: #202123;
+  accent-color: var(--text-primary);
 }
 
 .legal-consent a,
-.legal-links a { color: #383838; font-weight: 500; text-underline-offset: 2px; }
+.legal-links a {
+  color: var(--text-primary);
+  font-weight: 500;
+  text-underline-offset: 3px;
+}
 
 .status-box {
   display: flex;
   gap: 10px;
   margin-top: 20px;
   padding: 12px 13px;
-  border: 1px solid #e5e5e5;
-  border-radius: 8px;
-  color: #555;
-  background: #f7f7f7;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  background: var(--surface-secondary);
 }
-.status-box--error { border-color: #efcece; color: #8f3434; background: #fff7f7; }
-.status-icon { width: 17px; height: 17px; flex: 0 0 auto; margin-top: 1px; }
-.status-title { margin: 0; color: inherit; font-size: 13px; font-weight: 600; }
-.status-copy { margin: 3px 0 0; font-size: 12px; line-height: 1.5; }
+
+.status-box--error {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 7%, var(--surface));
+}
+
+.status-icon {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.status-title {
+  margin: 0;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.status-copy {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.5;
+}
 
 .login-footer {
-  margin-top: 26px;
-  color: #8a8a8a;
+  margin-top: 25px;
+  color: var(--text-muted);
   font-size: 12px;
   text-align: center;
 }
-.legal-links { display: flex; justify-content: center; gap: 8px; margin-top: 9px; }
 
-@keyframes spin { to { transform: rotate(360deg); } }
+.legal-links {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+@keyframes login-spin {
+  to { transform: rotate(360deg); }
+}
 
 @media (max-width: 480px) {
   .login-page { padding: 28px 22px; }
   .login-card { width: 100%; }
-  .login-card h1 { font-size: 34px; }
-  .login-copy { font-size: 16px; }
+  .login-card h1 { font-size: 33px; }
+  .login-copy { font-size: 15px; }
 }
