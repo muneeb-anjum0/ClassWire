@@ -37,7 +37,7 @@ Copy-Item .env.example .env
 npm run dev
 ```
 
-The frontend runs at `http://localhost:5173` and the API at `http://localhost:5000`. Add the frontend URL to `FRONTEND_ORIGINS` and to the Google OAuth client configuration.
+The frontend runs at `http://localhost:5174` and the API at `http://localhost:5001`. Add the frontend URL to `FRONTEND_ORIGINS` and to the Google OAuth client configuration.
 
 ## Configuration
 
@@ -63,4 +63,4 @@ npm audit
 
 I intentionally keep the frontend away from Firestore. All database access goes through Flask, authenticated requests use signed HTTP-only sessions, and stored Gmail tokens are encrypted before being written to Firestore. CI also rejects unexpected root files, tracked credentials, private keys, symlinks, executables, and vulnerable dependencies before deployment.
 
-For that protection to be enforceable, the GitHub `main` branch should require the **Security and quality** check and a CODEOWNER review. Render should use `backend` as its root directory and `gunicorn app:app` as its start command.
+For that protection to be enforceable, the GitHub `main` branch should require the **Security and quality** check and a CODEOWNER review. Render should use `backend` as its root directory and the checked-in `Procfile` as its start command.

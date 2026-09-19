@@ -3,7 +3,7 @@ from __future__ import annotations
 import html as html_module
 import logging
 import re
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from bs4 import BeautifulSoup
 
@@ -38,21 +38,81 @@ def html_to_text(value: str) -> str:
     return cleaned
 
 
+def _canonical_header(value: str) -> Optional[str]:
+    compact = re.sub(r"[^a-z0-9#]+", "", value.casefold())
+    if not compact:
+        return None
+    if compact in {"#", "no", "sno", "srno", "serial", "serialno", "serialnumber"}:
+        return "serial"
+    if "department" in compact or compact == "dept":
+        return "department"
+    if compact in {"program", "programme", "degree"}:
+        return "program"
+    if "section" in compact or compact in {"semester", "class", "classsection"}:
+        return "section"
+    if "course" in compact or compact in {"subject", "subjectname"}:
+        return "course"
+    if any(token in compact for token in ("faculty", "teacher", "instructor")):
+        return "faculty"
+    if "time" in compact or "timing" in compact:
+        return "time"
+    if "campus" in compact or compact in {"building", "branch"}:
+        return "campus"
+    if compact in {"room", "roomno", "venue", "location"}:
+        return "room"
+    return None
+
+
+def _table_header_map(rows) -> Tuple[int, Dict[str, int]]:
+    best_index = -1
+    best_map: Dict[str, int] = {}
+    for row_index, tr in enumerate(rows[:12]):
+        cells = tr.find_all(["td", "th"], recursive=False)
+        if not cells:
+            continue
+        mapping: Dict[str, int] = {}
+        for cell_index, cell in enumerate(cells):
+            canonical = _canonical_header(collapse_whitespace(cell.get_text(" ")))
+            if canonical and canonical not in mapping:
+                mapping[canonical] = cell_index
+        if len(mapping) > len(best_map):
+            best_index, best_map = row_index, mapping
+    return best_index, best_map
+
+
 def parse_html_table_rows(html: str) -> List[Tuple[int, str]]:
-    """Extract rows from the first timetable-like HTML table as tab-separated text."""
+    """Extract and normalize timetable rows from one or more HTML tables.
+
+    Source emails are not consistent about column order, serial-number columns,
+    or whether a day is split over multiple tables. Header-driven extraction
+    converts those variants into the parser's canonical eight-column layout.
+    """
     try:
         soup = BeautifulSoup(html, "html.parser")
     except Exception:
         return []
 
-    for table in soup.find_all("table"):
-        text = table.get_text(" ")
-        if "Sr No" not in text and "sr no" not in text.lower():
-            continue
+    parsed_rows: List[Tuple[int, str]] = []
+    seen_rows = set()
+    generated_serial = 1
+    canonical_fields = ("department", "program", "section", "course", "faculty", "room", "time", "campus")
 
-        rows: List[Tuple[int, str]] = []
-        serial = 1
-        for tr in table.find_all("tr"):
+    for table in soup.find_all("table"):
+        table_rows = table.find_all("tr")
+        header_index, header_map = _table_header_map(table_rows)
+        has_core_headers = {"section", "course", "time"}.issubset(header_map)
+
+        if has_core_headers:
+            candidates = table_rows[header_index + 1:]
+        else:
+            # Preserve support for older bulletins that have the expected
+            # positional columns but slightly unusual header labels.
+            header_text = collapse_whitespace(table.get_text(" "))
+            if not re.search(r"\b(?:sr\s*\.?\s*no|s\s*\.?\s*no|serial\s*(?:no|number))\b", header_text, re.I):
+                continue
+            candidates = table_rows
+
+        for tr in candidates:
             cells = [
                 collapse_whitespace(cell.get_text(" "))
                 for cell in tr.find_all(["td", "th"], recursive=False)
@@ -60,26 +120,33 @@ def parse_html_table_rows(html: str) -> List[Tuple[int, str]]:
             if not cells:
                 continue
 
-            first = cells[0]
-            if re.fullmatch(r"\d{1,4}", first):
-                try:
-                    serial = int(first)
-                except Exception:
-                    pass
-                row_text = "\t".join(cells[1:])
+            if has_core_headers:
+                values = {
+                    field: cells[index] if index < len(cells) else ""
+                    for field, index in header_map.items()
+                }
+                # Headings, slot banners, and footer rows do not satisfy this
+                # invariant even when they use a full-width colspan.
+                if not values.get("section") or not values.get("course") or not TIME_RE.search(values.get("time", "")):
+                    continue
+                serial_text = values.get("serial", "")
+                serial = int(serial_text) if re.fullmatch(r"\d{1,4}", serial_text) else generated_serial
+                row_text = "\t".join(values.get(field, "") for field in canonical_fields)
             else:
-                row_text = "\t".join(cells)
+                first = cells[0]
+                if not re.fullmatch(r"\d{1,4}", first):
+                    continue
+                serial = int(first)
+                row_text = "\t".join(cells[1:])
 
-            if re.fullmatch(r"(?i)sr\s*no|department|program|section|course|venue|time|campus", first.strip()):
+            identity = collapse_whitespace(row_text).casefold()
+            if identity in seen_rows:
                 continue
+            seen_rows.add(identity)
+            parsed_rows.append((serial, row_text))
+            generated_serial += 1
 
-            rows.append((serial, row_text))
-            serial += 1
-
-        if rows:
-            return rows
-
-    return []
+    return parsed_rows
 
 
 def iter_row_blocks(text: str) -> List[Tuple[int, str]]:

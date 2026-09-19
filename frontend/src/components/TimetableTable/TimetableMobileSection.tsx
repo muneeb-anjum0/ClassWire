@@ -5,10 +5,9 @@ import { GroupedTimetable, getCourseCode, getDisplayCampus, getDisplayCourseTitl
 type Props = { grouped: GroupedTimetable; sortedSemesters: string[]; showDay: boolean };
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-function ClassCard({ item, itemIndex }: { item: TimetableItem; itemIndex: number }) {
+function ClassCard({ item }: { item: TimetableItem }) {
   const room = getDisplayRoom(item);
-  return <article className={`tw-class-card ${shouldHighlightRow(item) ? 'tw-class-card--cancelled' : ''}`}
-    style={{ animationDelay: `${itemIndex * 45}ms` }}>
+  return <article className={`tw-class-card ${shouldHighlightRow(item) ? 'tw-class-card--cancelled' : ''}`}>
     <div className="tw-card-top"><div className="tw-course-block">
       <span className="tw-course-code">{renderHighlightedText(getCourseCode(item))}</span>
       <h4>{renderHighlightedText(getDisplayCourseTitle(item))}</h4>
@@ -25,7 +24,7 @@ export default function TimetableMobileSection({ grouped, sortedSemesters, showD
   const renderSemester = (semester: string, items: TimetableItem[], key: string) => (
     <section key={key} className="tw-mobile-semester">
       <div className="tw-mobile-semester-head"><div><p className="tw-section-kicker">Semester</p><h3>{semester}</h3></div><span className="tw-count-pill">{items.length} classes</span></div>
-      <div className="tw-mobile-card-list">{items.map((item, index) => <ClassCard key={`${key}-${index}`} item={item} itemIndex={index} />)}</div>
+      <div className="tw-mobile-card-list">{items.map((item, index) => <ClassCard key={`${key}-${item.course_code || item.course_title || item.course}-${item.time}-${index}`} item={item} />)}</div>
     </section>
   );
 

@@ -5,12 +5,13 @@ from __future__ import annotations
 import os
 import re
 import threading
-import time
 import uuid
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from core.authentication import authenticated_user
+from core.rate_limit import TokenBucketRateLimiter
+from core.ttl_cache import TTLCache
 
 from .user_data_support import (
     build_manual_email_message,
@@ -25,9 +26,22 @@ EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
 def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store):
     blueprint = Blueprint("user_data", __name__)
-    search_source_cache = {}
-    search_source_lock = threading.Lock()
-    search_source_ttl_seconds = 300
+    # The timetable emails change at most daily. Reuse the fully parsed weekly
+    # source for normal searches; users can include "refresh", "latest", or
+    # "update" to bypass this cache explicitly.
+    search_source_cache = TTLCache[str, dict](ttl_seconds=1800, max_entries=128)
+    refresh_locks = TTLCache[str, threading.Lock](ttl_seconds=3600, max_entries=256)
+    refresh_locks_guard = threading.Lock()
+    search_limiter = TokenBucketRateLimiter(capacity=10, refill_per_second=2)
+    refresh_limiter = TokenBucketRateLimiter(capacity=2, refill_per_second=1 / 15)
+
+    def refresh_lock_for(user_id: str) -> threading.Lock:
+        with refresh_locks_guard:
+            lock = refresh_locks.get(user_id)
+            if lock is None:
+                lock = threading.Lock()
+                refresh_locks.set(user_id, lock)
+            return lock
 
     def current_timestamp():
         return timestamp_now()
@@ -257,6 +271,9 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
             if error_response:
                 return error_response, status_code
 
+            if not current_app.testing and not refresh_limiter.allow(f"scrape:{user['id']}"):
+                return jsonify({"success": False, "error": "Please wait before refreshing Gmail again"}), 429
+
             logger.info("Starting manual scrape for user %s", user["email"])
 
             force_refresh = request.json.get("force_refresh", False) if request.is_json else False
@@ -272,8 +289,7 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
             )
 
             if result and result.get("success"):
-                with search_source_lock:
-                    search_source_cache.pop(user["id"], None)
+                search_source_cache.pop(user["id"])
                 return jsonify(
                     {
                         "success": True,
@@ -307,40 +323,65 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
             user, error_response, status_code = get_user_from_request()
             if error_response:
                 return error_response, status_code
-            query = str((request.get_json(silent=True) or {}).get("query") or "").strip()
+            payload = request.get_json(silent=True) or {}
+            query = str(payload.get("query") or "").strip()
             if len(query) < 2:
                 return jsonify({"success": False, "error": "Enter a longer timetable question"}), 400
+            if len(query) > 500:
+                return jsonify({"success": False, "error": "Keep timetable questions under 500 characters"}), 400
+            if not current_app.testing and not search_limiter.allow(f"search:{user['id']}"):
+                return jsonify({"success": False, "error": "Too many searches; please wait a moment"}), 429
 
             store = get_store()
-            force_source_refresh = any(word in query.lower() for word in ("refresh", "latest", "update"))
-            with search_source_lock:
-                cached_source = search_source_cache.get(user["id"])
-            source_is_fresh = cached_source and time.monotonic() - cached_source["saved_at"] < search_source_ttl_seconds
-            if source_is_fresh and not force_source_refresh:
-                source = cached_source["data"]
+            force_source_refresh = bool(payload.get("force_refresh")) or bool(
+                re.search(r"\b(?:refresh|latest|update)\b", query, re.IGNORECASE)
+            )
+            if force_source_refresh and not current_app.testing and not refresh_limiter.allow(f"search-refresh:{user['id']}"):
+                return jsonify({"success": False, "error": "Please wait before refreshing Gmail again"}), 429
+            cached_source = search_source_cache.get(user["id"])
+            if cached_source is not None and not force_source_refresh:
+                source = cached_source
             else:
-                search_settings = dict(store.get_user_settings(user["id"]))
-                search_settings.update({
-                    "filter_mode": "subjects",
-                    "subject_filters": [],
-                    "timetable_day": "Entire Week",
-                    "_save_cache": False,
-                })
-                scrape_result = get_run_once()(
-                    user_email=user["email"], user_id=user["id"],
-                    user_settings=search_settings, show_table=False,
-                )
-                if not scrape_result or not scrape_result.get("success"):
-                    return jsonify({"success": False, "error": (scrape_result or {}).get("error", "Search failed")}), 400
-                source = scrape_result.get("data") or {}
-                with search_source_lock:
-                    search_source_cache[user["id"]] = {"saved_at": time.monotonic(), "data": source}
+                # Collapse simultaneous searches for the same user into one
+                # Gmail scrape. Waiters reuse the source produced by the first.
+                with refresh_lock_for(user["id"]):
+                    cached_source = search_source_cache.get(user["id"])
+                    if cached_source is not None and not force_source_refresh:
+                        source = cached_source
+                    else:
+                        persisted_source = None
+                        if not force_source_refresh:
+                            persisted_source = store.get_search_source_cache(
+                                user["id"],
+                                max_age_seconds=1800,
+                            )
+                        if isinstance(persisted_source, dict):
+                            source = persisted_source
+                            search_source_cache.set(user["id"], source)
+                        else:
+                            search_settings = dict(store.get_user_settings(user["id"]))
+                            search_settings.update({
+                                "filter_mode": "subjects",
+                                "subject_filters": [],
+                                "timetable_day": "Entire Week",
+                                "_save_cache": False,
+                            })
+                            scrape_result = get_run_once()(
+                                user_email=user["email"], user_id=user["id"],
+                                user_settings=search_settings, show_table=False,
+                            )
+                            if not scrape_result or not scrape_result.get("success"):
+                                return jsonify({"success": False, "error": (scrape_result or {}).get("error", "Search failed")}), 400
+                            source = scrape_result.get("data") or {}
+                            search_source_cache.set(user["id"], source)
+                            if not store.save_search_source_cache(user["id"], source):
+                                logger.warning("Could not persist search source for user %s", user["id"])
 
             from scraper.smart_search import search_timetable
             search_result = search_timetable(query, source.get("items") or [])
             search_result["query"] = query
             search_result["saved_at"] = current_timestamp()
-            matched_items = search_result["items"]
+            matched_items = search_result.pop("items")
             semesters = {}
             for item in matched_items:
                 semester = item.get("semester_display") or item.get("semester") or "Unknown"
@@ -373,6 +414,7 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
 
             if not get_store().clear_user_cache(user["id"]):
                 return jsonify({"success": False, "message": "Failed to clear cache"}), 500
+            search_source_cache.pop(user["id"])
 
             return jsonify(
                 {

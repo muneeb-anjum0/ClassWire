@@ -22,6 +22,44 @@ def test_parser_avoids_department_noise_in_semester_display():
     assert item['room'] == '201'
 
 
+def test_parser_uses_headers_when_columns_are_reordered_and_serial_is_missing():
+    html = """
+    <table>
+      <tr><th>Class Time</th><th>Teacher</th><th>Course Name</th><th>Section</th><th>Venue</th><th>Campus</th></tr>
+      <tr><td>08:00 AM - 09:30 AM</td><td>Dr. Ada Lovelace</td><td>CSC 1001 Programming (3,0)</td><td>BS(CS)-1A</td><td>101</td><td>Main Campus</td></tr>
+    </table>
+    """
+
+    items = parse_html_with_advanced_pandas(html)
+
+    assert len(items) == 1
+    assert items[0]["semester_display"] == "BS(CS)-1A"
+    assert items[0]["course_code"] == "CSC 1001"
+    assert items[0]["faculty"] == "Dr. Ada Lovelace"
+    assert items[0]["room"] == "101"
+    assert items[0]["time"] == "08:00 AM - 09:30 AM"
+
+
+def test_parser_combines_multiple_timetable_tables_without_duplicate_nested_rows():
+    html = """
+    <div>
+      <table>
+        <tr><th>Sr.No</th><th>Department</th><th>Program</th><th>Section</th><th>Course Name</th><th>Faculty Name</th><th>Room</th><th>Class Time</th><th>Campus</th></tr>
+        <tr><td>1</td><td>Computing</td><td>BSCS</td><td>BS(CS)-1A</td><td>CSC 1001 Programming (3,0)</td><td>Teacher One</td><td>101</td><td>08:00 AM - 09:30 AM</td><td>Main Campus</td></tr>
+      </table>
+      <table>
+        <tr><th>S.No</th><th>Department</th><th>Program</th><th>Section</th><th>Course</th><th>Instructor</th><th>Location</th><th>Timing</th><th>Building</th></tr>
+        <tr><td>1</td><td>Computing</td><td>BSCS</td><td>BS(CS)-2A</td><td>CSC 2001 Databases (3,0)</td><td>Teacher Two</td><td>202</td><td>09:30 AM - 11:00 AM</td><td>North Campus</td></tr>
+      </table>
+    </div>
+    """
+
+    items = parse_html_with_advanced_pandas(html)
+
+    assert len(items) == 2
+    assert {item["course_title"] for item in items} == {"Programming", "Databases"}
+
+
 def test_parser_extracts_meeting_room_and_keeps_faculty_clean():
     email_body = (
         '58 Management Sciences PhDMS PhD-1 MS 6325 Seminars in Finance '
@@ -298,3 +336,39 @@ def test_parser_normalizes_split_semester_variants_listed_by_user():
     assert by_row[4]['course_title'] == 'Mathematics and Statistics'
     assert by_row[5]['course_title'] == 'Philosphy'
     assert by_row[13]['course_title'] == 'Statistical Inferences'
+
+
+def test_html_table_preserves_empty_faculty_column_without_shifting_fields():
+    html = '''
+    <table>
+      <tr><th>Sr No</th><th>Department</th><th>Program</th><th>Section</th><th>Course</th><th>Faculty Name</th><th>Room</th><th>Class Time</th><th>Campus</th></tr>
+      <tr><td>1</td><td>Computing</td><td>BSSE</td><td>BS(SE)-2A</td><td>CSC 1201 Programming (3,0)</td><td></td><td>201</td><td>08:00 AM - 09:30 AM</td><td>SZABIST University Campus</td></tr>
+    </table>
+    '''
+    items = parse_html_with_advanced_pandas(html)
+    assert len(items) == 1
+    assert items[0]['faculty'] == 'TBD'
+    assert items[0]['room'] == '201'
+    assert items[0]['time'] == '08:00 AM - 09:30 AM'
+
+
+def test_html_table_ignores_slot_headers_addresses_and_incomplete_rows():
+    html = '''
+    <table>
+      <tr><th>Sr No</th><th>Department</th><th>Program</th><th>Section</th><th>Course</th><th>Faculty Name</th><th>Room</th><th>Class Time</th><th>Campus</th></tr>
+      <tr><td colspan="9">SLOT 1 (08:00 AM - 11:00 AM)</td></tr>
+      <tr><td>Address</td><td colspan="8">HMB Plaza, I-8 Markaz, Islamabad</td></tr>
+      <tr><td>1</td><td>Computing</td><td>BSSE</td><td>BS(SE)-2A</td><td>CSC 1201 Programming (3,0)</td><td>Ayesha Khan</td><td>201</td><td>08:00 AM - 09:30 AM</td><td>SZABIST University Campus</td></tr>
+      <tr><td>2</td><td>Computing</td><td>BSSE</td><td>BS(SE)-2B</td><td></td><td>Ayesha Khan</td><td>202</td><td></td><td>SZABIST University Campus</td></tr>
+    </table>
+    '''
+    items = parse_html_with_advanced_pandas(html)
+    assert len(items) == 1
+    assert items[0]['course_title'] == 'Programming'
+
+
+def test_parser_removes_exact_duplicate_classes():
+    row = ('1\tComputer Sciences\tBSSE\tBS(SE)-2A\tCSC 1201 Programming (3,0)\t'
+           'Ayesha Khan\t201\t08:00 AM - 09:30 AM\tSZABIST University Campus')
+    items = parse_html_with_advanced_pandas(f'{row}\n{row.replace("1\\t", "2\\t", 1)}')
+    assert len(items) == 1

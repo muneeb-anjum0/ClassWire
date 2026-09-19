@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
+import gzip
 import logging
 import os
 import re
 import socket
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 from urllib.parse import urlparse
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
+
+from core.ttl_cache import TTLCache
 
 LOCAL_ORIGIN_PATTERNS = (
     re.compile(r"^http://localhost:\d+$"),
@@ -23,6 +26,31 @@ LOCAL_ORIGIN_PATTERNS = (
 
 LOGGER = logging.getLogger(__name__)
 PLACEHOLDER_SECRETS = {"change-me", "change-me-too", "replace-me", "local-development-only"}
+MIN_GZIP_RESPONSE_BYTES = 1024
+
+
+def compress_large_json_response(response):
+    """Gzip sizeable API JSON responses without another runtime dependency."""
+    if (
+        response.direct_passthrough
+        or response.status_code < 200
+        or response.status_code in {204, 304}
+        or response.headers.get("Content-Encoding")
+        or "gzip" not in request.headers.get("Accept-Encoding", "").casefold()
+        or not (response.content_type or "").startswith("application/json")
+    ):
+        return response
+
+    payload = response.get_data()
+    if len(payload) < MIN_GZIP_RESPONSE_BYTES:
+        return response
+    compressed = gzip.compress(payload, compresslevel=5)
+    if len(compressed) >= len(payload):
+        return response
+    response.set_data(compressed)
+    response.headers["Content-Encoding"] = "gzip"
+    response.vary.add("Accept-Encoding")
+    return response
 
 
 def _validate_production_config(is_https: bool, secret_key: str) -> None:
@@ -101,6 +129,7 @@ def configure_app(app: Flask) -> None:
         )
         if request.path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
+            response = compress_large_json_response(response)
         return response
 
 
@@ -197,30 +226,19 @@ def get_google_client_secrets_file() -> str:
 @dataclass
 class TemporaryStateStore:
     ttl_seconds: int = 600
-    entries: dict[str, dict[str, Any]] = field(default_factory=dict)
+    max_entries: int = 512
+    entries: TTLCache[str, dict[str, Any]] = field(init=False)
 
-    def cleanup(self) -> None:
-        now_ts = datetime.now().timestamp()
-        expired = [
-            state
-            for state, payload in self.entries.items()
-            if now_ts - payload.get("created_at", 0) > self.ttl_seconds
-        ]
-        for state in expired:
-            self.entries.pop(state, None)
+    def __post_init__(self) -> None:
+        self.entries = TTLCache(ttl_seconds=self.ttl_seconds, max_entries=self.max_entries)
 
     def store(self, state: str, **payload: Any) -> None:
-        self.cleanup()
-        self.entries[state] = {
-            **payload,
-            "created_at": datetime.now().timestamp(),
-        }
+        self.entries.set(state, dict(payload))
 
     def pop(self, state: str | None) -> dict[str, Any] | None:
-        self.cleanup()
         if not state:
             return None
-        return self.entries.pop(state, None)
+        return self.entries.pop(state)
 
 
 def get_public_origin() -> str:

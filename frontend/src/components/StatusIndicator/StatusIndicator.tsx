@@ -77,22 +77,9 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({
 
   const theme = getStatusTheme();
 
-  const statusLabel =
-    status === 'loading' && message.toLowerCase().includes('backend is waking')
-      ? 'Starting backend'
-      : status === 'loading'
-      ? 'Running scraper'
-      : status === 'success'
-      ? 'Ready'
-      : status === 'warning'
-      ? 'Attention needed'
-      : status === 'error'
-      ? 'Action required'
-      : 'Status';
-
   return (
     <>
-<div className={`status-toast ${closing ? 'status-toast--closing' : ''}`}>
+<div className={`status-toast status-toast--${status} ${closing ? 'status-toast--closing' : ''}`}>
         <div
           className={`status-indicator status-indicator-glass ${theme.glass} border shadow-sm overflow-hidden ${theme.accent}`}
         >
@@ -106,22 +93,8 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({
           </div>
 
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-1.5">
               <p
-                className={`status-indicator__title-clean text-[0.82rem] font-semibold leading-tight ${theme.title}`}
-              >
-                {statusLabel}
-              </p>
-
-              <span
-                className={`status-indicator__badge status-indicator__badge-clean ${theme.badge} px-1.5 py-0.5 text-[0.64rem]`}
-              >
-                {status.toUpperCase()}
-              </span>
-            </div>
-
-              <p
-                className={`status-indicator__message-clean mt-0.5 text-[0.78rem] leading-snug ${theme.subtitle} truncate`}
+                className={`status-indicator__message-clean mt-0.5 text-[0.78rem] leading-snug ${theme.subtitle}`}
                 title={message}
               >
                 {message}

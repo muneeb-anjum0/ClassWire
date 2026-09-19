@@ -38,15 +38,15 @@ store = data_store
 oauth_state_store = TemporaryStateStore()
 
 LOCAL_IP = get_local_ip()
-FRONTEND_PORT = int(os.environ.get("FRONTEND_PORT", 3000))
+FRONTEND_PORT = int(os.environ.get("FRONTEND_PORT", 5174))
 
 
 def build_popup_message_page(*, frontend_origin: str, payload: dict, close_delay_ms: int, body_text: str) -> str:
     target_origins = json.dumps(
         [
             frontend_origin,
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
+            f"http://localhost:{FRONTEND_PORT}",
+            f"http://127.0.0.1:{FRONTEND_PORT}",
             f"http://{LOCAL_IP}:{FRONTEND_PORT}",
         ]
     )
@@ -110,7 +110,7 @@ def resolve_frontend_origin(state_data: dict | None = None) -> str:
     referer = request.headers.get("Referer", "")
     if LOCAL_IP in referer:
         return f"http://{LOCAL_IP}:{FRONTEND_PORT}"
-    if "localhost:3000" in referer or "127.0.0.1:3000" in referer:
+    if f"localhost:{FRONTEND_PORT}" in referer or f"127.0.0.1:{FRONTEND_PORT}" in referer:
         return f"http://localhost:{FRONTEND_PORT}"
 
     return f"http://{LOCAL_IP}:{FRONTEND_PORT}"
@@ -323,7 +323,7 @@ app.register_blueprint(
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 5001))
     print(f"Starting server on 0.0.0.0:{port}")
     print("Access URLs:")
     print(f"  Local: http://localhost:{port}")

@@ -1,8 +1,10 @@
 import pytest
 from flask import Flask
+from unittest.mock import MagicMock
 
 from app import app
 from core.app_support import configure_app, is_allowed_cors_origin
+from core.authentication import authenticated_user
 from database.token_crypto import decrypt_token_data, encrypt_token_data
 
 
@@ -66,3 +68,18 @@ def test_production_token_encryption_requires_dedicated_key(monkeypatch):
 
     with pytest.raises(RuntimeError, match="TOKEN_ENCRYPTION_KEY is required"):
         encrypt_token_data({"refresh_token": "secret"})
+
+
+def test_signed_session_identity_avoids_redundant_firestore_user_read():
+    store = MagicMock()
+    with app.test_request_context("/"):
+        from flask import session
+
+        session["user_id"] = "existing-user-id"
+        session["user_email"] = "User@Example.com"
+        user, error, status = authenticated_user(store, app.logger)
+
+    assert user == {"id": "existing-user-id", "email": "user@example.com"}
+    assert error is None
+    assert status is None
+    store.get_or_create_user.assert_not_called()

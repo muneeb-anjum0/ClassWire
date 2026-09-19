@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertCircle, Loader, ShieldCheck, Sparkles } from 'lucide-react';
+import { AlertCircle, Loader } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BACKEND_WAKE_EVENT } from '../../services/api';
 import './LoginScreen.css';
@@ -63,21 +63,9 @@ const LoginScreen: React.FC = () => {
     <main className="login-page">
       <section className="login-card">
         <div className="login-card__header">
-          <div className="login-doodle" aria-hidden="true">
-            <span className="login-doodle__bubble login-doodle__bubble--big" />
-            <span className="login-doodle__bubble login-doodle__bubble--small" />
-            <div className="login-doodle__face">
-              <Sparkles size={24} />
-            </div>
-          </div>
-          <div className="login-badge">
-            <ShieldCheck size={16} />
-            <span>Secure Gmail sync</span>
-          </div>
-          <p className="login-brand">ClassWire</p>
-          <h1>Turn timetable emails into a clean daily schedule.</h1>
+          <h1>Welcome to ClassWire</h1>
           <p className="login-copy">
-            Sign in with Gmail to import your latest class timetable, keep your semesters organized, and optionally send the formatted schedule to your personal inbox.
+            Sign in with Google to search and organize your class timetable.
           </p>
         </div>
 
@@ -95,7 +83,7 @@ const LoginScreen: React.FC = () => {
               <img src="/gmail.svg" alt="" className="gmail-mark" />
             )}
           </span>
-          <span>{wakeMessage ? 'Waking backend...' : isLoading ? 'Connecting...' : 'Continue with Gmail'}</span>
+          <span>{wakeMessage ? 'Waking backend...' : isLoading ? 'Connecting...' : 'Continue with Google'}</span>
         </button>
 
         <div className="legal-consent" role="group" aria-label="Privacy and terms agreement">

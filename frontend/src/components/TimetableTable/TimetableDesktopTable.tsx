@@ -1,56 +1,91 @@
 import React from 'react';
-import { GroupedTimetable, getCourseCode, getDisplayCampus, getDisplayCourseTitle, getDisplayFaculty, getDisplayRoom, getDisplayTime, getSemesterLabel, renderHighlightedText, shouldHighlightRow } from './timetableTableUtils';
 import { TimetableItem } from '../../types/api';
+import {
+  GroupedTimetable,
+  getCourseCode,
+  getDisplayCampus,
+  getDisplayCourseTitle,
+  getDisplayFaculty,
+  getDisplayRoom,
+  getDisplayTime,
+  getSemesterLabel,
+  renderHighlightedText,
+  shouldHighlightRow,
+} from './timetableTableUtils';
 
 type Props = { grouped: GroupedTimetable; sortedSemesters: string[]; showDay: boolean };
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const sectionColor = (index: number): React.CSSProperties => {
+  // Golden-angle spacing keeps every semester in the current result visually
+  // distinct instead of folding labels into a small repeating palette.
+  const hue = Math.round((index * 137.508 + 205) % 360);
+  return {
+    '--section-bg': `hsl(${hue} 70% 92%)`,
+    '--section-border': `hsl(${hue} 58% 67%)`,
+    '--section-text': `hsl(${hue} 52% 29%)`,
+  } as React.CSSProperties;
+};
+
+const rowKey = (item: TimetableItem, index: number) => [
+  item.schedule_day,
+  getSemesterLabel(item),
+  item.course_code || item.course_title || item.course,
+  item.faculty,
+  item.time,
+  item.room,
+  item.row_number,
+  index,
+].join('|');
+
+function ScheduleRow({ item, sectionIndex }: { item: TimetableItem; sectionIndex: number }) {
+  const section = getSemesterLabel(item);
+  return <article
+    className={`conversation-class ${shouldHighlightRow(item) ? 'conversation-class--cancelled' : ''}`}
+  >
+    <time className="conversation-class__time">{renderHighlightedText(getDisplayTime(item))}</time>
+    <div className="conversation-class__course">
+      <strong>{renderHighlightedText(getDisplayCourseTitle(item))}</strong>
+      <span>{renderHighlightedText(getCourseCode(item))}</span>
+    </div>
+    <div className="conversation-class__person">
+      <small>Faculty</small>
+      <span>{renderHighlightedText(getDisplayFaculty(item))}</span>
+    </div>
+    <div className="conversation-class__place">
+      <small>Location</small>
+      <span>{renderHighlightedText(getDisplayRoom(item))}</span>
+      <em>{renderHighlightedText(getDisplayCampus(item))}</em>
+    </div>
+    <span className="conversation-class__section" style={sectionColor(sectionIndex)} title={section}>{renderHighlightedText(section)}</span>
+  </article>;
+}
+
+function ScheduleGroup({ title, items, semesterIndexes }: { title: string; items: TimetableItem[]; semesterIndexes: Map<string, number> }) {
+  return <section className="conversation-day">
+    <header className="conversation-day__header">
+      <h2>{title}</h2>
+      <span>{items.length} {items.length === 1 ? 'class' : 'classes'}</span>
+    </header>
+    <div className="conversation-day__classes">
+      {items.map((item, index) => <ScheduleRow key={rowKey(item, index)} item={item} sectionIndex={semesterIndexes.get(getSemesterLabel(item)) ?? 0} />)}
+    </div>
+  </section>;
+}
 
 export default function TimetableDesktopTable({ grouped, sortedSemesters, showDay }: Props) {
-  const renderItem = (item: TimetableItem, key: string, itemIndex: number) => {
-    const roomDisplay = getDisplayRoom(item);
-    const isOnline = roomDisplay.toLowerCase() === 'online';
-    const isCancelled = shouldHighlightRow(item);
-    return (
-      <tr key={key} className={`tw-table-row ${isCancelled ? 'tw-table-row--cancelled' : ''}`}
-        style={{ animationDelay: `${(itemIndex + 1) * 35}ms` }}>
-        <td className="tw-cell--semester"><span className="tw-table-chip tw-table-chip--semester">{renderHighlightedText(getSemesterLabel(item))}</span></td>
-        <td className="tw-cell--course"><div className="tw-table-course">
-          <span className="tw-table-course-title" title={getDisplayCourseTitle(item)}>{renderHighlightedText(getDisplayCourseTitle(item))}</span>
-          <span className="tw-table-course-code">{renderHighlightedText(getCourseCode(item))}</span>
-        </div></td>
-        <td className="tw-cell--faculty"><span className="tw-muted-text">{renderHighlightedText(getDisplayFaculty(item))}</span></td>
-        <td className="tw-cell--room"><span className={`tw-table-chip tw-table-chip--room ${isOnline ? 'tw-table-chip--online' : ''}`}>{renderHighlightedText(roomDisplay)}</span></td>
-        <td className="tw-cell--time"><span className="tw-table-chip tw-table-chip--time">{renderHighlightedText(getDisplayTime(item))}</span></td>
-        <td className="tw-cell--campus"><span className="tw-campus-chip">{renderHighlightedText(getDisplayCampus(item))}</span></td>
-      </tr>
-    );
-  };
+  const semesterIndexes = new Map(sortedSemesters.map((semester, index) => [semester, index]));
+  if (!showDay) {
+    return <div className="tw-desktop-view conversation-schedule">
+      {sortedSemesters.map((semester) => <ScheduleGroup key={semester} title={semester} items={grouped[semester]} semesterIndexes={semesterIndexes} />)}
+    </div>;
+  }
 
-  const dayGroups = DAY_ORDER.map((day) => ({
+  const days = DAY_ORDER.map((day) => ({
     day,
-    semesters: sortedSemesters.map((semester) => ({ semester, items: grouped[semester].filter((item) => item.schedule_day === day) }))
-      .filter((entry) => entry.items.length > 0),
-  })).filter((entry) => entry.semesters.length > 0);
+    items: sortedSemesters.flatMap((semester) => grouped[semester].filter((item) => item.schedule_day === day)),
+  })).filter(({ items }) => items.length > 0);
 
-  return <div className="tw-desktop-view"><div className="tw-table-shell"><table className="tw-table">
-    <thead><tr><th>Semester</th><th>Course Title</th><th>Faculty</th><th>Room</th><th>Time</th><th>Campus</th></tr></thead>
-    <tbody>
-      {showDay ? dayGroups.map(({ day, semesters }) => (
-        <React.Fragment key={day}>
-          <tr className={`tw-day-row tw-day-row--${day.toLowerCase()}`}><td colSpan={6}><div className="tw-day-heading"><span>{day}</span><span>{semesters.reduce((sum, entry) => sum + entry.items.length, 0)} classes</span></div></td></tr>
-          {semesters.map(({ semester, items }) => (
-            <React.Fragment key={`${day}-${semester}`}>
-              <tr className="tw-semester-row tw-semester-row--within-day"><td colSpan={6}><div className="tw-semester-title-row"><span className="tw-semester-name">{semester}</span><span className="tw-count-pill">{items.length} classes</span></div></td></tr>
-              {items.map((item, index) => renderItem(item, `${day}-${semester}-${index}`, index))}
-            </React.Fragment>
-          ))}
-        </React.Fragment>
-      )) : sortedSemesters.map((semester) => (
-        <React.Fragment key={semester}>
-          <tr className="tw-semester-row"><td colSpan={6}><div className="tw-semester-title-row"><span className="tw-semester-name">{semester}</span><span className="tw-count-pill">{grouped[semester].length} classes</span></div></td></tr>
-          {grouped[semester].map((item, index) => renderItem(item, `${semester}-${index}`, index))}
-        </React.Fragment>
-      ))}
-    </tbody>
-  </table></div></div>;
+  return <div className="tw-desktop-view conversation-schedule">
+    {days.map(({ day, items }) => <ScheduleGroup key={day} title={day} items={items} semesterIndexes={semesterIndexes} />)}
+  </div>;
 }

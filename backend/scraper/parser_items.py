@@ -198,8 +198,9 @@ def _parse_structured_row(serial_no: int, raw_text: str) -> Optional[Dict[str, o
     if "\t" not in raw_text:
         return None
 
+    # Empty cells are meaningful placeholders and must remain in their source
+    # columns. Removing them silently corrupts every field to their right.
     parts = [part.strip() for part in raw_text.split("\t")]
-    parts = [part for part in parts if part]
     if len(parts) < 8:
         return None
 
@@ -210,6 +211,14 @@ def _parse_structured_row(serial_no: int, raw_text: str) -> Optional[Dict[str, o
         return None
 
     department, program, section, course, faculty, room, time_text, campus_text = parts
+    # Reject malformed/non-class rows rather than manufacturing partial
+    # classes from table furniture or email footer text.
+    if not section or not course or not re.search(
+        r"\b\d{1,2}:\d{2}(?:\s*(?:AM|PM))?\s*-\s*\d{1,2}:\d{2}(?:\s*(?:AM|PM))?\b",
+        time_text,
+        re.IGNORECASE,
+    ):
+        return None
     course_value = _collapse_whitespace(course)
 
     course_code = ""
@@ -223,7 +232,7 @@ def _parse_structured_row(serial_no: int, raw_text: str) -> Optional[Dict[str, o
     course_title = _clean_course_title(course_value, course_code)
     semester_display = _normalize_semester_display(section)
     semester_key = _normalize_semester_key(section)
-    faculty = _clean_faculty_name(faculty)
+    faculty = _clean_faculty_name(faculty) or "TBD"
     faculty, room = _merge_room_prefix_into_faculty(faculty, room)
     room = _clean_room_name(room, faculty)
     time_text = _collapse_whitespace(time_text)

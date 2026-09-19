@@ -125,37 +125,22 @@ def send_daily_timetable_email_for_user(
             'unique_faculty': 0,
         }
 
-    if timetable.get('items') == [] and status_callback:
-        status_callback({
-            'status': 'sending',
-            'success': None,
-            'message': f"No classes found. Sending a no-classes email to {personal_email}",
-            'personal_email': personal_email,
-            'user_email': university_email,
-            'items': 0,
-        })
-
     if settings.get('daily_email_last_result', {}).get('job_id'):
         timetable['email_job_id'] = settings['daily_email_last_result']['job_id']
 
     if status_callback:
+        item_count = len(timetable.get('items') or [])
         status_callback({
             'status': 'sending',
             'success': None,
-            'message': f"Scrape completed. Sending email to {personal_email}",
+            'message': (
+                f"No classes found. Sending a no-classes email to {personal_email}"
+                if item_count == 0
+                else f"Scrape completed. Sending {item_count} classes to {personal_email}"
+            ),
             'personal_email': personal_email,
             'user_email': university_email,
-            'items': len(timetable.get('items') or []),
-        })
-
-    if status_callback:
-        status_callback({
-            'status': 'sending',
-            'success': None,
-            'message': f"Sending email to {personal_email}",
-            'personal_email': personal_email,
-            'user_email': university_email,
-            'items': len(timetable.get('items') or []),
+            'items': item_count,
         })
 
     send_result = send_timetable_email(personal_email, university_email, timetable)

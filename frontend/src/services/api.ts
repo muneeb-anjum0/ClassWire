@@ -6,7 +6,10 @@ const BACKEND_WAKE_DELAY_MS = 4500;
 const LOCAL_HEALTH_TIMEOUT_MS = 3000;
 const PRODUCTION_HEALTH_TIMEOUT_MS = 90000;
 const PRODUCTION_API_BASE_URL = 'https://timetable-wizard.onrender.com';
+const LOCAL_API_BASE_URL = 'http://localhost:5001';
 const CONFIGURED_API_URL = import.meta.env.VITE_API_URL;
+let initializedApiUrl: string | null = null;
+let initializationPromise: Promise<string> | null = null;
 
 const getBackendWakeMessage = (url?: string) =>
   url?.includes('/api/scrape')
@@ -23,7 +26,7 @@ const getBackendUnavailableMessage = (attemptedCandidates: string[]) => {
   );
 
   if (localCandidates.length > 0) {
-    return 'Unable to reach the backend. Start the local API server on port 5000 or set VITE_API_URL to a working backend URL.';
+    return 'Unable to reach the backend. Start the local API server on port 5001 or set VITE_API_URL to a working backend URL.';
   }
 
   return 'Unable to reach the backend. Check VITE_API_URL or make sure the deployed API is available.';
@@ -31,9 +34,18 @@ const getBackendUnavailableMessage = (attemptedCandidates: string[]) => {
 
 const normalizeApiBaseUrl = (url: string) => url.trim().replace(/\/+$/, '');
 
+const isLocalNetworkHost = (hostname: string) =>
+  hostname === 'localhost' ||
+  hostname === '127.0.0.1' ||
+  /^10\./.test(hostname) ||
+  /^192\.168\./.test(hostname) ||
+  /^172\.(?:1[6-9]|2\d|3[01])\./.test(hostname);
+
 const getLocalApiBaseUrl = () => {
   const hostname = window.location.hostname;
-  if (hostname === 'localhost' || hostname === '127.0.0.1') return 'http://localhost:5000';
+  if (hostname === '127.0.0.1') return 'http://127.0.0.1:5001';
+  if (hostname === 'localhost') return LOCAL_API_BASE_URL;
+  if (isLocalNetworkHost(hostname)) return `http://${hostname}:5001`;
   return PRODUCTION_API_BASE_URL;
 };
 
@@ -97,11 +109,14 @@ export const apiService = {
   _axiosInstance: api,
 
   initialize: async (): Promise<string> => {
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (initializedApiUrl) return initializedApiUrl;
+    if (initializationPromise) return initializationPromise;
+
+    initializationPromise = (async () => {
+    const isLocalhost = isLocalNetworkHost(window.location.hostname);
     const candidates = Array.from(new Set([
       CONFIGURED_API_URL,
-      isLocalhost ? 'http://localhost:5000' : undefined,
-      isLocalhost ? 'http://127.0.0.1:5000' : undefined,
+      isLocalhost ? getLocalApiBaseUrl() : undefined,
       PRODUCTION_API_BASE_URL,
     ].filter(Boolean).map((candidate) => normalizeApiBaseUrl(candidate as string))));
     let lastError: unknown = null;
@@ -126,6 +141,7 @@ export const apiService = {
 
         if (res.ok) {
           api.defaults.baseURL = candidate;
+          initializedApiUrl = candidate;
           return candidate;
         }
       } catch (error) {
@@ -141,6 +157,14 @@ export const apiService = {
     const errorMessage = getBackendUnavailableMessage(candidates);
     const causeMessage = lastError instanceof Error ? ` ${lastError.message}` : '';
     throw new Error(`${errorMessage}${causeMessage}`.trim());
+    })();
+
+    try {
+      return await initializationPromise;
+    } catch (error) {
+      initializationPromise = null;
+      throw error;
+    }
   },
 
   getBaseOrigin: (): string => {
@@ -235,8 +259,8 @@ export const apiService = {
     return response.data;
   },
 
-  searchTimetable: async (query: string): Promise<ApiResponse<TimetableData>> => {
-    const response: AxiosResponse<ApiResponse<TimetableData>> = await api.post('/api/search', { query });
+  searchTimetable: async (query: string, forceRefresh = false): Promise<ApiResponse<TimetableData>> => {
+    const response: AxiosResponse<ApiResponse<TimetableData>> = await api.post('/api/search', { query, force_refresh: forceRefresh });
     return response.data;
   },
 

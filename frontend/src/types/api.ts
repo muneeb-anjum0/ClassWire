@@ -24,6 +24,7 @@ export interface TimetableData {
     unique_faculty: number;
   };
   search?: {
+    parser_version?: number;
     query?: string;
     saved_at?: string;
     answer: string;
