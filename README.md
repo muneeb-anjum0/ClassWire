@@ -1,10 +1,14 @@
-# ClassWire
+# ClassWire — SZABIST Timetable Search
 
-ClassWire converts university timetable emails into a searchable, structured class schedule. It connects to Gmail with read-only OAuth access, parses inconsistent HTML timetable formats, and presents the results through a responsive React interface.
+ClassWire is a fast, searchable **SZABIST timetable and class-schedule app** for students. It connects to Gmail with read-only OAuth access, converts SZABIST timetable emails into structured schedules, and lets students search courses, sections, faculty availability, labs, and weekly classes using natural language.
+
+**Live app:** [class-wire.vercel.app](https://class-wire.vercel.app/)
+
+ClassWire is an independent student utility and is not an official SZABIST service.
 
 ## Features
 
-- Natural-language timetable search for sections, courses, faculty, weekdays, and course codes
+- Natural-language SZABIST timetable search for sections, courses, faculty, weekdays, and course codes
 - Faculty availability calculation across university hours
 - Theory, lab, and final-year-project classification from credit-hour notation
 - Header-aware HTML parsing with fallback heuristics for inconsistent email layouts
@@ -14,6 +18,17 @@ ClassWire converts university timetable emails into a searchable, structured cla
 - Optional daily timetable delivery by email
 - In-memory and compressed Firestore caching to reduce API calls, latency, and storage costs
 - Responsive light and dark interfaces for desktop and mobile
+
+## SZABIST timetable search
+
+Students can search the weekly SZABIST class schedule with questions such as:
+
+- `Show BS(SE)-7A classes on Monday`
+- `When is Zainab Iftikhar free?`
+- `Show all 3-credit-hour courses`
+- `Find Software Quality Engineering and Testing classes for the entire week`
+
+ClassWire understands common SZABIST section formats, course codes, theory and lab credit notation, multiple faculty members, and timetable data from the Islamabad campus email format.
 
 ## Technology stack
 
@@ -28,7 +43,7 @@ ClassWire converts university timetable emails into a searchable, structured cla
 
 ## Architecture
 
-The React client communicates exclusively with the Flask API. The backend owns authentication, Gmail access, parsing, search, caching, Firestore persistence, and optional email delivery. Browser clients never receive Gmail credentials or connect directly to Firestore.
+The React client communicates exclusively with the Flask API. The backend owns authentication, Gmail access, SZABIST timetable parsing, search, caching, Firestore persistence, and optional email delivery. Browser clients never receive Gmail credentials or connect directly to Firestore.
 
 Timetable retrieval follows this path:
 
