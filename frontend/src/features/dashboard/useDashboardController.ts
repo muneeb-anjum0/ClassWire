@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import axios from 'axios';
 import { apiService } from '../../services/api';
 import { ConfigData, TimetableData } from '../../types/api';
 import {
@@ -21,7 +22,7 @@ export const useDashboardController = ({
   logout,
   user,
 }: DashboardAuthState) => {
-  const SEARCH_PARSER_VERSION = 4;
+  const SEARCH_PARSER_VERSION = 7;
   const ui = useDashboardUiState(logout);
   const statusToast = useDashboardStatusToast();
   const showStatus = statusToast.showStatus;
@@ -38,6 +39,8 @@ export const useDashboardController = ({
   const searchStorageKey = `classwire:v2:last-search:${user?.email || 'anonymous'}`;
   const timetableStorageKey = `classwire:v2:last-timetable:${user?.email || 'anonymous'}`;
   const bootstrapStarted = useRef(false);
+  const dataRequestSequence = useRef(0);
+  const searchInFlight = useRef(false);
 
   const readCachedTimetable = (): TimetableData | null => {
     try {
@@ -149,13 +152,19 @@ export const useDashboardController = ({
     }
   };
 
-  const applySuccessfulTimetable = (data: TimetableData, timestamp?: string, message?: string, silent = false) => {
+  const applySuccessfulTimetable = (
+    data: TimetableData,
+    timestamp?: string,
+    message?: string,
+    silent = false,
+    status: 'success' | 'warning' = 'success',
+  ) => {
     setTimetableData(data);
     cacheTimetableLocally(data);
     if (timestamp) {
       setLastUpdate(timestamp);
     }
-    if (!silent) showStatus('success', message || 'Data loaded successfully');
+    if (!silent) showStatus(status, message || 'Data loaded successfully');
   };
 
   const loadLatestTimetable = async (force = false, silent = false) => {
@@ -163,6 +172,7 @@ export const useDashboardController = ({
       return;
     }
 
+    const requestSequence = ++dataRequestSequence.current;
     try {
       if (!silent) {
         showStatus('warning', lastUpdate ? 'Loading cached data...' : 'Loading previous data...');
@@ -174,16 +184,26 @@ export const useDashboardController = ({
         () => apiService.getLatestTimetable(),
         'Network error when fetching timetable, retrying after autodetect',
       );
+      if (requestSequence !== dataRequestSequence.current) return;
 
       if (response.success && response.data) {
         if (response.data.search?.query && response.data.search.parser_version !== SEARCH_PARSER_VERSION) {
           const staleQuery = response.data.search.query.trim();
-          const refreshed = await apiService.searchTimetable(staleQuery, true);
+          // Re-run the saved query against the already cached source. Parser
+          // migrations must not trigger an expensive Gmail scrape.
+          const refreshed = await apiService.searchTimetable(staleQuery);
+          if (requestSequence !== dataRequestSequence.current) return;
           if (refreshed.success && refreshed.data) {
             setIsSmartResult(true);
             setSearchQuery(staleQuery);
             saveSearchLocally(refreshed.data);
-            applySuccessfulTimetable(refreshed.data, refreshed.timestamp, 'Updated your saved search', silent);
+            applySuccessfulTimetable(
+              refreshed.data,
+              refreshed.timestamp,
+              'Updated your saved search',
+              silent,
+              refreshed.data.search?.recognized === false ? 'warning' : 'success',
+            );
             return;
           }
         }
@@ -204,34 +224,76 @@ export const useDashboardController = ({
       setTimetableData(null);
       showStatus('warning', 'No timetable data available. Try running a manual scrape.');
     } catch (error) {
+      if (requestSequence !== dataRequestSequence.current) return;
       console.error('Error loading timetable:', error);
       setTimetableData(null);
       showStatus('error', 'Failed to load timetable data');
     } finally {
-      setIsLoading(false);
-      setOperationInProgress(false);
+      if (requestSequence === dataRequestSequence.current) {
+        setIsLoading(false);
+        setOperationInProgress(false);
+      }
     }
   };
 
   const runSmartSearch = async (query = searchQuery) => {
     const cleaned = query.trim();
-    if (cleaned.length < 2 || operationInProgress) return;
+    // A user search is allowed to supersede the background restore request.
+    // searchInFlight is synchronous, unlike React state, so rapid submits
+    // cannot create competing responses that overwrite one another.
+    if (cleaned.length < 2 || searchInFlight.current || isScraperRunning) return;
+    const requestSequence = ++dataRequestSequence.current;
+    searchInFlight.current = true;
     try {
       setSearchQuery(cleaned);
+      // Never leave an older answer visible while a different query is in
+      // flight; that makes a correct input look as if it returned stale data.
+      setTimetableData(null);
+      setIsSmartResult(true);
       setIsScraperRunning(true);
       setOperationInProgress(true);
-      showStatus('loading', 'Understanding your question and checking Gmail...');
+      showStatus('loading', 'Searching your timetable...');
       const response = await apiService.searchTimetable(cleaned);
+      if (requestSequence !== dataRequestSequence.current) return;
       if (!response.success || !response.data) throw new Error(response.error || 'Search failed');
+      if (response.data.search?.query?.trim() !== cleaned) {
+        throw new Error('The search response did not match your question. Please try again.');
+      }
       setIsSmartResult(true);
       saveSearchLocally(response.data);
-      applySuccessfulTimetable(response.data, response.timestamp, response.message);
+      applySuccessfulTimetable(
+        response.data,
+        response.timestamp,
+        response.message,
+        false,
+        response.data.search?.recognized === false ? 'warning' : 'success',
+      );
     } catch (error) {
-      showStatus('error', error instanceof Error ? error.message : 'Search failed');
+      if (requestSequence !== dataRequestSequence.current) return;
+      setTimetableData(null);
+      setIsSmartResult(true);
+      const apiMessage = axios.isAxiosError(error)
+        ? error.response?.data?.error || error.response?.data?.message
+        : undefined;
+      showStatus('error', apiMessage || (error instanceof Error ? error.message : 'Search failed'));
     } finally {
-      setIsScraperRunning(false);
-      setOperationInProgress(false);
+      searchInFlight.current = false;
+      if (requestSequence === dataRequestSequence.current) {
+        setIsScraperRunning(false);
+        setOperationInProgress(false);
+      }
     }
+  };
+
+  const clearSmartSearch = () => {
+    if (isScraperRunning) return;
+    dataRequestSequence.current += 1;
+    setSearchQuery('');
+    setTimetableData(null);
+    setIsSmartResult(false);
+    window.localStorage.removeItem(timetableStorageKey);
+    statusToast.setStatus('idle');
+    statusToast.setMessage('');
   };
 
   const executeScraper = async () => {
@@ -447,6 +509,7 @@ export const useDashboardController = ({
     operationInProgress,
     personalEmail,
     quickActionsToggleLabel,
+    clearSmartSearch,
     runButtonText,
     runScraper,
     runSmartSearch,

@@ -33,6 +33,7 @@ export default function DashboardPage() {
             query={controller.searchQuery}
             setQuery={controller.setSearchQuery}
             onSearch={controller.runSmartSearch}
+            onClear={controller.clearSmartSearch}
             loading={controller.isScraperRunning}
             data={controller.timetableData}
             userEmail={controller.userEmail}
@@ -72,7 +73,10 @@ export default function DashboardPage() {
             !controller.isScraperRunning &&
             controller.timetableData.items &&
             controller.timetableData.items.length > 0 && (
-              <section className="schedule-panel" aria-labelledby="schedule-heading">
+              <section
+                className={`schedule-panel ${controller.timetableData.search ? 'schedule-panel--search-result' : ''}`}
+                aria-labelledby="schedule-heading"
+              >
                 <div className="schedule-panel__header">
                   <h2 id="schedule-heading">Class schedule</h2>
                   <p className="schedule-panel__meta">

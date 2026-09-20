@@ -277,6 +277,7 @@ def gmail_callback():
         session.permanent = True
         session["user_id"] = user["id"]
         session["user_email"] = user_email.strip().lower()
+        session["user_identity_verified"] = True
 
         frontend_origin = resolve_frontend_origin(state_data)
         if is_mobile_request():

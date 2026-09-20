@@ -2,31 +2,39 @@
 
 from __future__ import annotations
 
+import os
 import re
 from collections import Counter
+from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
 from functools import lru_cache
 from typing import Dict, List, Tuple
+from zoneinfo import ZoneInfo
 
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-PARSER_VERSION = 4
+PARSER_VERSION = 7
 DAY_START = 8 * 60
 DAY_END = 21 * 60 + 30
 NOISE = {
     "schedule", "timetable", "time", "table", "class", "classes", "course", "courses",
     "when", "where", "what", "does", "have", "has", "their", "there", "entire", "week",
     "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "free", "office",
-    "next", "this", "following", "all", "every", "my",
+    "next", "this", "following", "today", "tomorrow", "yesterday", "all", "every", "my",
     "is", "are", "was", "were", "be", "in", "on", "at", "for", "show", "find", "give", "tell",
     "me", "the", "a", "an", "of", "and", "or", "to", "from", "with", "without", "please",
-    "theory", "lab", "laboratory", "fyp", "final", "year", "project", "sir", "madam",
+    "theory", "lab", "labs", "laboratory", "laboratories", "fyp", "final", "year", "project", "sir", "madam",
+    "maam", "mam",
     "credit", "credits", "hour", "hours", "hr", "hrs", "ch",
 }
-HONORIFICS = {"mr", "mrs", "ms", "miss", "dr", "prof", "professor", "engr", "eng"}
+HONORIFICS = {
+    "mr", "mrs", "ms", "miss", "dr", "prof", "professor", "engr", "eng",
+    "sir", "madam", "maam", "mam",
+}
 NUMBER_WORDS = {
     "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
     "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
 }
+NOISE.update(NUMBER_WORDS)
 
 
 @lru_cache(maxsize=16384)
@@ -47,11 +55,25 @@ def words(value: object) -> List[str]:
     return list(_word_tuple(str(value or "")))
 
 
-def parse_days(query: str) -> List[str]:
+def parse_days(query: str, reference_date: date | None = None) -> List[str]:
     lowered = query.lower()
-    selected = [day for day in DAYS if day.lower() in lowered]
     if "entire week" in lowered or "all week" in lowered or "whole week" in lowered:
         return DAYS
+    selected = [day for day in DAYS if day.lower() in lowered]
+    if not selected:
+        relative_offset = 0 if re.search(r"\btoday\b", lowered) else (
+            1 if re.search(r"\btomorrow\b", lowered) else (
+                -1 if re.search(r"\byesterday\b", lowered) else None
+            )
+        )
+        if relative_offset is not None:
+            if reference_date is None:
+                timezone_name = os.getenv("TZ", "Asia/Karachi")
+                try:
+                    reference_date = datetime.now(ZoneInfo(timezone_name)).date()
+                except Exception:
+                    reference_date = datetime.now(ZoneInfo("Asia/Karachi")).date()
+            return [(reference_date + timedelta(days=relative_offset)).strftime("%A")]
     if not selected:
         query_tokens = words(query)
         selected = [
@@ -140,6 +162,14 @@ def _is_broad_schedule_request(query: str) -> bool:
         return True
     if re.search(r"\b(?:show|list|give)\s+(?:me\s+)?(?:the\s+)?(?:schedule|timetable)\b", lowered):
         return True
+    query_words = words(query)
+    has_day_scope = any(
+        token == day.lower() or _similar(token, day.lower()) >= 0.78
+        for token in query_words
+        for day in DAYS
+    ) or any(token in {"today", "tomorrow", "yesterday"} for token in query_words)
+    if has_day_scope and re.search(r"\b(?:classes|courses|schedule|timetable)\b", lowered):
+        return True
     return bool(re.search(r"\bwhat\s+classes\s+(?:do\s+i\s+have|are\s+scheduled)\b", lowered))
 
 
@@ -157,7 +187,7 @@ def _requested_class_types(query: str, named_courses: List[str] | None = None) -
     requested = []
     if "theory" in lowered or re.search(r"\(\s*[23]\s*,\s*0\s*\)", lowered):
         requested.append("theory")
-    if re.search(r"\b(?:lab|laboratory)\b", lowered) or re.search(r"\(\s*0\s*,\s*1\s*\)", lowered):
+    if re.search(r"\b(?:labs?|laborator(?:y|ies))\b", lowered) or re.search(r"\(\s*0\s*,\s*1\s*\)", lowered):
         requested.append("lab")
     if "fyp" in lowered or "final year project" in lowered or re.search(r"\(\s*0\s*,\s*3\s*\)", lowered):
         requested.append("fyp")
@@ -231,12 +261,21 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
     courses = sorted({str(item.get("course_title") or item.get("course")) for item in items if item.get("course_title") or item.get("course")})
     codes = sorted({str(item.get("course_code")) for item in items if item.get("course_code")})
 
-    matched_sections = [
-        value for value in sections
-        if len(normalize(value)) >= 2
-        and bool(re.search(r"[a-z]", normalize(value)))
-        and normalize(value) in compact_query
-    ]
+    matched_sections = []
+    for value in sections:
+        normalized_section = normalize(value)
+        if len(normalized_section) < 2 or not re.search(r"[a-z]", normalized_section):
+            continue
+        # A short section such as "BS" must match a complete token. Raw
+        # substring matching otherwise treats the end of "labs" as section
+        # BS and filters every legitimate lab row out of the result.
+        section_is_named = (
+            normalized_section in query_words
+            if len(normalized_section) <= 2
+            else normalized_section in compact_query
+        )
+        if section_is_named:
+            matched_sections.append(value)
     # Prefer the most specific section when one label contains another
     # (for example "BSSS 2" and "BSSS 2 - Section A").
     matched_sections = [
@@ -301,11 +340,16 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
         }
 
     faculty_scores = []
-    meaningful_query_sequence = [word for word in words(query) if len(word) >= 3 and word not in NOISE]
+    meaningful_query_sequence = [
+        word for word in words(query)
+        if len(word) >= 3
+        and word not in NOISE
+        and not any(_similar(word, day.lower()) >= 0.78 for day in DAYS)
+    ]
     meaningful_query_words = set(meaningful_query_sequence)
     meaningful_query_compact = "".join(meaningful_query_sequence)
     faculty_intent = bool(re.search(
-        r"\b(?:free|available|faculty|teacher|professor|sir|madam)\b|\bwhen\s+(?:does|is)\b|\bclasses\s+(?:of|for|by)\b",
+        r"\b(?:free|available|faculty|teacher|professor|sir|madam|maam|mam|miss|ms|mr|dr|class|classes)\b|\bwhen\s+(?:does|is)\b",
         query.lower(),
     ))
     for value in faculty:
@@ -354,9 +398,11 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
         title_words = [word for word in words(value) if len(word) >= 4 and word not in NOISE]
         compact_title = normalize(value)
         overlap = sum(1 for word in title_words if word in meaningful_query_words)
+        fuzzy_threshold = 0.90 if len(meaningful_query_words) == 1 else 0.82
         fuzzy_overlap = sum(
             1 for title_word in title_words
-            if title_word not in meaningful_query_words and any(_similar(query_word, title_word) >= 0.82 for query_word in meaningful_query_words)
+            if title_word not in meaningful_query_words
+            and any(_similar(query_word, title_word) >= fuzzy_threshold for query_word in meaningful_query_words)
         )
         if len(compact_title) >= 3 and compact_title in compact_query:
             score = 100 + len(title_words)
@@ -452,9 +498,9 @@ def faculty_free_slots(items: List[Dict], days: List[str]) -> Dict[str, List[str
     return result
 
 
-def search_timetable(query: str, items: List[Dict]) -> Dict:
+def search_timetable(query: str, items: List[Dict], reference_date: date | None = None) -> Dict:
     items = _canonicalize_faculty(items)
-    days = parse_days(query)
+    days = parse_days(query, reference_date)
     entities = find_entities(query, items)
     wants_free = any(phrase in query.lower() for phrase in ("free", "available", "office hour", "no class"))
     if wants_free and entities["faculty"]:
@@ -497,6 +543,7 @@ def search_timetable(query: str, items: List[Dict]) -> Dict:
     free_slots = faculty_availability[0]["slots"] if len(faculty_availability) == 1 else {}
     labels = entities["sections"] + entities["faculty"] + entities["courses"] + entities["codes"]
     subject = ", ".join(dict.fromkeys(labels)) if labels else "your query"
+    day_suffix = f" on {days[0]}" if len(days) == 1 else ""
     if wants_free and entities["faculty"]:
         answer = "Faculty availability"
     else:
@@ -526,16 +573,27 @@ def search_timetable(query: str, items: List[Dict]) -> Dict:
         elif credit_label:
             qualifier = f" {class_type}" if class_type else ""
             answer = f"No scheduled classes found for {credit_label}{qualifier} courses."
-        elif matched and _is_broad_schedule_request(query):
+        elif matched and _is_broad_schedule_request(query) and not any(entities.values()):
             scope = days[0] if len(days) == 1 else "the selected week"
             answer = f"Found {len(matched)} scheduled {'class' if len(matched) == 1 else 'classes'} for {scope}."
         elif matched:
-            answer = f"Found {len(matched)} {kind if len(matched) == 1 else kind + 'es'} for {subject}."
+            answer = f"Found {len(matched)} {kind if len(matched) == 1 else kind + 'es'} for {subject}{day_suffix}."
         elif not any(entities.values()) and not _is_broad_schedule_request(query):
             answer = (
                 "I couldn't identify a section, faculty member, course, class type, "
                 "credit-hour value, or schedule scope in that question."
             )
         else:
-            answer = f"No {kind + 'es'} found for {subject}."
-    return {"parser_version": PARSER_VERSION, "items": matched, "days": days, "entities": entities, "free_slots": free_slots, "faculty_availability": faculty_availability, "answer": answer, "intent": "free_time" if wants_free else "schedule"}
+            answer = f"No {kind + 'es'} found for {subject}{day_suffix}."
+    recognized = bool(any(entities.values()) or _is_broad_schedule_request(query))
+    return {
+        "parser_version": PARSER_VERSION,
+        "items": matched,
+        "days": days,
+        "entities": entities,
+        "free_slots": free_slots,
+        "faculty_availability": faculty_availability,
+        "answer": answer,
+        "intent": "free_time" if wants_free else "schedule",
+        "recognized": recognized,
+    }

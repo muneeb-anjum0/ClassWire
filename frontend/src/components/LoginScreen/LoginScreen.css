@@ -1,5 +1,6 @@
 .login-page {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: 32px 20px;
@@ -160,17 +161,27 @@
 }
 
 .login-footer {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
   margin-top: 25px;
   color: var(--text-muted);
   font-size: 12px;
   text-align: center;
 }
 
+.login-footer__disclaimer {
+  max-width: 360px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .legal-links {
   display: flex;
   justify-content: center;
   gap: 8px;
-  margin-top: 9px;
+  margin-top: 4px;
 }
 
 @keyframes login-spin {
@@ -178,8 +189,19 @@
 }
 
 @media (max-width: 480px) {
-  .login-page { padding: 28px 22px; }
+  .login-page {
+    align-items: center;
+    padding:
+      calc(28px + env(safe-area-inset-top))
+      max(20px, env(safe-area-inset-right))
+      calc(28px + env(safe-area-inset-bottom))
+      max(20px, env(safe-area-inset-left));
+  }
   .login-card { width: 100%; }
-  .login-card h1 { font-size: 33px; }
+  .login-card h1 { font-size: clamp(31px, 9vw, 36px); }
   .login-copy { font-size: 15px; }
+  .gmail-btn { min-height: 56px; margin-top: 28px; }
+  .legal-consent { gap: 6px; margin-top: 18px; }
+  .legal-consent__check { min-height: 40px; align-items: center; }
+  .legal-consent__check input { width: 18px; height: 18px; margin: 0; }
 }

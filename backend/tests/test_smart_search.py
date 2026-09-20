@@ -1,4 +1,6 @@
-from scraper.smart_search import search_timetable
+from datetime import date
+
+from scraper.smart_search import parse_days, search_timetable
 
 
 ITEMS = [
@@ -12,6 +14,23 @@ def test_section_and_day_query():
     result = search_timetable("Timetable for BSSE7A on Friday", ITEMS)
     assert len(result["items"]) == 1
     assert result["items"][0]["faculty"] == "Muhammad Qasim"
+    assert result["answer"] == "Found 1 class for BSSE 7A on Friday."
+
+
+def test_relative_day_queries_resolve_from_the_local_calendar_date():
+    sunday = date(2026, 9, 20)
+
+    assert parse_days("BSSE7A classes today", sunday) == ["Sunday"]
+    assert parse_days("classes tomorrow", sunday) == ["Monday"]
+    assert parse_days("classes yesterday", sunday) == ["Saturday"]
+
+
+def test_today_query_on_sunday_does_not_return_the_entire_week():
+    result = search_timetable("BSSE7A classes today", ITEMS, date(2026, 9, 20))
+
+    assert result["days"] == ["Sunday"]
+    assert result["items"] == []
+    assert result["answer"] == "No classes found for BSSE 7A on Sunday."
 
 
 def test_first_name_faculty_query_matches_full_name():
@@ -62,7 +81,7 @@ def test_short_honorific_name_is_not_renamed_or_merged_with_full_name():
         {"schedule_day": "Monday", "semester_display": "BSSE 8B", "course_title": "Data Science", "faculty": "Muhammad Qasim", "time": "02:00 PM - 03:30 PM"},
     ]
     exact = search_timetable("When is Muhammad Qasim free on Monday?", items)
-    assert exact["parser_version"] == 4
+    assert exact["parser_version"] == 7
     assert exact["entities"]["faculty"] == ["Muhammad Qasim"]
     assert {item["faculty"] for item in exact["items"]} == {"Muhammad Qasim"}
 
@@ -268,10 +287,107 @@ def test_broad_schedule_requests_return_the_selected_schedule_instead_of_nothing
     assert len(entire_week["items"]) == len(ITEMS)
 
 
+def test_day_only_timetable_request_is_a_valid_schedule_scope():
+    result = search_timetable("timetable for Friday", ITEMS)
+
+    assert result["recognized"] is True
+    assert result["days"] == ["Friday"]
+    assert len(result["items"]) == 1
+
+
+def test_plural_labs_does_not_false_match_a_short_bs_section():
+    items = [
+        {
+            "schedule_day": "Monday",
+            "semester_display": "BS(CS)-1A",
+            "course_title": "Programming Lab",
+            "course": "CSCL 1103 Programming Lab (0,1)",
+            "time": "12:00 PM - 02:00 PM",
+        },
+        {
+            "schedule_day": "Monday",
+            "semester_display": "BS",
+            "course_title": "Media Studies",
+            "course": "MD 1120 Media Studies (1,0)",
+            "time": "08:00 AM - 09:30 AM",
+        },
+    ]
+
+    result = search_timetable("show all 1 credit hour labs for Monday", items)
+
+    assert result["recognized"] is True
+    assert result["entities"]["sections"] == []
+    assert result["entities"]["class_types"] == ["lab"]
+    assert [item["course_title"] for item in result["items"]] == ["Programming Lab"]
+
+
 def test_unrecognized_question_gives_an_interpretation_message():
     result = search_timetable("please solve something mysterious", ITEMS)
     assert result["items"] == []
     assert "couldn't identify" in result["answer"]
+    assert result["recognized"] is False
+
+
+def test_honorific_and_surname_resolve_faculty_availability():
+    items = [
+        {
+            "schedule_day": "Monday",
+            "course_title": "Software Re-Engineering",
+            "faculty": "Sheikh Abdul Wahab",
+            "time": "10:30 AM - 12:00 PM",
+        },
+        {
+            "schedule_day": "Monday",
+            "course_title": "Software Project Management",
+            "faculty": "Muhammad Qasim",
+            "time": "02:00 PM - 03:30 PM",
+        },
+    ]
+
+    result = search_timetable("When is sir wahab free on Monday?", items)
+
+    assert result["recognized"] is True
+    assert result["entities"]["faculty"] == ["Sheikh Abdul Wahab"]
+    assert [item["faculty"] for item in result["items"]] == ["Sheikh Abdul Wahab"]
+    assert result["free_slots"]["Monday"] == ["8:00 AM – 10:30 AM", "12:00 PM – 9:30 PM"]
+
+
+def test_maam_honorific_does_not_interfere_with_surname_matching():
+    items = [{
+        "schedule_day": "Tuesday",
+        "course_title": "Design and Analysis of Algorithms",
+        "faculty": "Zainab Iftikhar Chaudhary",
+        "time": "03:30 PM - 05:00 PM",
+    }]
+
+    result = search_timetable("When is ma'am Zainab free on Tuesday?", items)
+
+    assert result["recognized"] is True
+    assert result["entities"]["faculty"] == ["Zainab Iftikhar Chaudhary"]
+
+
+def test_partial_faculty_name_before_classes_is_treated_as_faculty_intent():
+    items = [
+        {"schedule_day": "Monday", "course_title": "Algorithms", "faculty": "Zainab Iftikhar Chaudhary", "time": "08:00 AM - 09:30 AM"},
+        {"schedule_day": "Monday", "course_title": "Databases", "faculty": "Someone Else", "time": "09:30 AM - 11:00 AM"},
+    ]
+
+    result = search_timetable("Zainab Iftikhar classes Monday", items)
+
+    assert result["entities"]["faculty"] == ["Zainab Iftikhar Chaudhary"]
+    assert [item["faculty"] for item in result["items"]] == ["Zainab Iftikhar Chaudhary"]
+
+
+def test_spelled_credit_number_is_not_mistaken_for_a_faculty_name():
+    items = [
+        {"schedule_day": "Monday", "course_title": "Programming Lab", "course": "CSCL 1103 Programming Lab (0,1)", "faculty": "Ada Lovelace", "time": "08:00 AM - 10:00 AM"},
+        {"schedule_day": "Monday", "course_title": "Finance", "course": "FIN 2001 Finance (3,0)", "faculty": "Money Markets TBA", "time": "10:00 AM - 11:30 AM"},
+    ]
+
+    result = search_timetable("one credit hour courses", items)
+
+    assert result["entities"]["faculty"] == []
+    assert [item["course_title"] for item in result["items"]] == ["Programming Lab"]
 
 
 def test_explicit_faculty_ignores_names_embedded_in_noisy_course_text():

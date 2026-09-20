@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 800;
+  src: url('@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2') format('woff2-variations');
+}
+
 *,
 *::before,
 *::after {
@@ -10,6 +18,7 @@
 
 html {
   min-height: 100%;
+  min-height: 100dvh;
   background: var(--theme-page-bg, #f8fafc);
   color: var(--theme-text-primary, #0f172a);
   text-rendering: optimizeLegibility;
@@ -19,12 +28,13 @@ html {
 
 body {
   min-height: 100%;
+  min-height: 100dvh;
   margin: 0;
   overflow-x: hidden;
   background: var(--theme-page-bg, #f8fafc);
   color: var(--theme-text-primary, #0f172a);
   font-family:
-    Inter,
+    Manrope,
     ui-sans-serif,
     system-ui,
     -apple-system,
@@ -43,6 +53,7 @@ body {
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
   isolation: isolate;
 }
 

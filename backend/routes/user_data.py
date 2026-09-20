@@ -46,6 +46,9 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
     def current_timestamp():
         return timestamp_now()
 
+    def has_searchable_items(source) -> bool:
+        return isinstance(source, dict) and isinstance(source.get("items"), list) and bool(source["items"])
+
     def get_user_from_request():
         return authenticated_user(get_store(), logger)
 
@@ -339,23 +342,30 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
             if force_source_refresh and not current_app.testing and not refresh_limiter.allow(f"search-refresh:{user['id']}"):
                 return jsonify({"success": False, "error": "Please wait before refreshing Gmail again"}), 429
             cached_source = search_source_cache.get(user["id"])
-            if cached_source is not None and not force_source_refresh:
+            source_was_stale = False
+            if has_searchable_items(cached_source) and not force_source_refresh:
                 source = cached_source
             else:
                 # Collapse simultaneous searches for the same user into one
                 # Gmail scrape. Waiters reuse the source produced by the first.
                 with refresh_lock_for(user["id"]):
                     cached_source = search_source_cache.get(user["id"])
-                    if cached_source is not None and not force_source_refresh:
+                    if has_searchable_items(cached_source) and not force_source_refresh:
                         source = cached_source
                     else:
                         persisted_source = None
+                        stale_source = None
                         if not force_source_refresh:
                             persisted_source = store.get_search_source_cache(
                                 user["id"],
                                 max_age_seconds=1800,
                             )
-                        if isinstance(persisted_source, dict):
+                            if not isinstance(persisted_source, dict):
+                                stale_source = store.get_search_source_cache(
+                                    user["id"],
+                                    max_age_seconds=None,
+                                )
+                        if has_searchable_items(persisted_source):
                             source = persisted_source
                             search_source_cache.set(user["id"], source)
                         else:
@@ -371,17 +381,55 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
                                 user_settings=search_settings, show_table=False,
                             )
                             if not scrape_result or not scrape_result.get("success"):
-                                return jsonify({"success": False, "error": (scrape_result or {}).get("error", "Search failed")}), 400
-                            source = scrape_result.get("data") or {}
-                            search_source_cache.set(user["id"], source)
-                            if not store.save_search_source_cache(user["id"], source):
-                                logger.warning("Could not persist search source for user %s", user["id"])
+                                if has_searchable_items(stale_source):
+                                    source = stale_source
+                                    source_was_stale = True
+                                    search_source_cache.set(user["id"], source)
+                                    logger.warning("Using stale timetable source for user %s after Gmail refresh failed", user["id"])
+                                else:
+                                    detail = (scrape_result or {}).get("error", "Search failed")
+                                    if "credential" in detail.lower() or "oauth" in detail.lower() or "decrypt" in detail.lower():
+                                        detail = "Gmail authorization could not be read. Sign out, reconnect Gmail, and try again."
+                                    return jsonify({"success": False, "error": detail}), 400
+                            else:
+                                source = scrape_result.get("data") or {}
+                                search_source_cache.set(user["id"], source)
+                                if not store.save_search_source_cache(user["id"], source):
+                                    logger.warning("Could not persist search source for user %s", user["id"])
+
+            source_items = source.get("items") or []
+            if not source_items:
+                logger.warning(
+                    "No searchable timetable source for user=%s email_domain=%s",
+                    user["id"][-6:],
+                    str(user.get("email") or "").partition("@")[2] or "unknown",
+                )
+                return jsonify({
+                    "success": False,
+                    "error": (
+                        f"No timetable is saved for {user['email']}. Sign out and connect the Google "
+                        "account that receives your SZABIST class-schedule emails."
+                    ),
+                    "code": "TIMETABLE_SOURCE_EMPTY",
+                    "timestamp": current_timestamp(),
+                }), 409
 
             from scraper.smart_search import search_timetable
-            search_result = search_timetable(query, source.get("items") or [])
+            search_result = search_timetable(query, source_items)
             search_result["query"] = query
             search_result["saved_at"] = current_timestamp()
+            search_result["source_stale"] = source_was_stale
+            search_result["source_item_count"] = len(source_items)
             matched_items = search_result.pop("items")
+            logger.info(
+                "Smart search user=%s query=%r source_items=%d matched_items=%d recognized=%s entities=%s",
+                user["id"][-6:],
+                query,
+                len(source_items),
+                len(matched_items),
+                search_result.get("recognized"),
+                search_result.get("entities"),
+            )
             semesters = {}
             for item in matched_items:
                 semester = item.get("semester_display") or item.get("semester") or "Unknown"
@@ -400,7 +448,10 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
             }
             if not store.save_timetable_cache(user["id"], data):
                 logger.warning("Could not persist the latest search for user %s", user["id"])
-            return jsonify({"success": True, "data": data, "message": search_result["answer"], "timestamp": current_timestamp()})
+            message = search_result["answer"]
+            if source_was_stale:
+                message += " Using your last saved timetable because Gmail refresh is currently unavailable."
+            return jsonify({"success": True, "data": data, "message": message, "timestamp": current_timestamp(), "cached": source_was_stale})
         except Exception as error:
             logger.error("Smart timetable search failed: %s", error, exc_info=True)
             return jsonify({"success": False, "error": str(error), "timestamp": current_timestamp()}), 500

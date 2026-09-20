@@ -77,9 +77,33 @@ def test_signed_session_identity_avoids_redundant_firestore_user_read():
 
         session["user_id"] = "existing-user-id"
         session["user_email"] = "User@Example.com"
+        session["user_identity_verified"] = True
         user, error, status = authenticated_user(store, app.logger)
 
     assert user == {"id": "existing-user-id", "email": "user@example.com"}
     assert error is None
     assert status is None
     store.get_or_create_user.assert_not_called()
+
+
+def test_older_signed_session_is_migrated_to_the_canonical_user_id():
+    store = MagicMock()
+    store.get_or_create_user.return_value = {
+        "id": "canonical-user-id",
+        "email": "user@example.com",
+    }
+
+    with app.test_request_context("/"):
+        from flask import session
+
+        session["user_id"] = "obsolete-user-id"
+        session["user_email"] = "User@Example.com"
+        user, error, status = authenticated_user(store, app.logger)
+
+        assert session["user_id"] == "canonical-user-id"
+        assert session["user_identity_verified"] is True
+
+    assert user == {"id": "canonical-user-id", "email": "user@example.com"}
+    assert error is None
+    assert status is None
+    store.get_or_create_user.assert_called_once_with("user@example.com")
