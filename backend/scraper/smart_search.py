@@ -12,7 +12,7 @@ from typing import Dict, List, Tuple
 from zoneinfo import ZoneInfo
 
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-PARSER_VERSION = 7
+PARSER_VERSION = 8
 DAY_START = 8 * 60
 DAY_END = 21 * 60 + 30
 NOISE = {
@@ -293,6 +293,52 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
             for other in explicitly_named_faculty
         )
     ]
+    # A user may combine an exact faculty name with a recognizable shortened
+    # name (for example, "Zainab Iftikhar and Hamza Imran"). Previously the
+    # exact match triggered the fast path and silently discarded the partial
+    # name before fuzzy resolution could run. Retain unambiguous, consecutive
+    # two-word name fragments alongside exact matches.
+    meaningful_query_sequence = [
+        word for word in words(query)
+        if len(word) >= 3
+        and word not in NOISE
+        and word not in HONORIFICS
+        and not any(_similar(word, day.lower()) >= 0.78 for day in DAYS)
+    ]
+
+    def partial_name_position(value: str) -> int | None:
+        name_sequence = [word for word in _name_words(value) if len(word) >= 3 and word not in NOISE]
+        if len(name_sequence) < 3:
+            return None
+        for fragment_length in range(len(name_sequence) - 1, 1, -1):
+            for name_index in range(len(name_sequence) - fragment_length + 1):
+                fragment = name_sequence[name_index:name_index + fragment_length]
+                for query_index in range(len(meaningful_query_sequence) - fragment_length + 1):
+                    if meaningful_query_sequence[query_index:query_index + fragment_length] == fragment:
+                        return query_index
+        return None
+
+    partially_named_faculty = []
+    for value in faculty:
+        if value in explicitly_named_faculty:
+            continue
+        position = partial_name_position(value)
+        if position is None:
+            continue
+        # If the fragment already names a shorter exact identity, do not also
+        # broaden it to a longer faculty label with the same prefix/suffix.
+        if any(normalize(exact) in normalize(value) for exact in explicitly_named_faculty):
+            continue
+        partially_named_faculty.append((position, value))
+
+    named_faculty = list(dict.fromkeys(
+        explicitly_named_faculty + [value for _, value in sorted(partially_named_faculty)]
+    ))
+    query_word_positions = {word: index for index, word in enumerate(meaningful_query_sequence)}
+    named_faculty.sort(key=lambda value: min(
+        (query_word_positions[word] for word in _name_words(value) if word in query_word_positions),
+        default=len(meaningful_query_sequence),
+    ))
     matched_codes = [value for value in codes if normalize(value) and normalize(value) in compact_query]
     explicitly_named_courses = [
         value for value in courses
@@ -313,7 +359,7 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
         (kind, value)
         for kind, values in (
             ("section", matched_sections),
-            ("faculty", explicitly_named_faculty),
+            ("faculty", named_faculty),
             ("course", explicitly_named_courses),
             ("code", matched_codes),
         )
@@ -332,7 +378,7 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
         }
         return {
             "sections": [value for value in matched_sections if ("section", value) not in dominated],
-            "faculty": [value for value in explicitly_named_faculty if ("faculty", value) not in dominated],
+            "faculty": [value for value in named_faculty if ("faculty", value) not in dominated],
             "courses": [value for value in explicitly_named_courses if ("course", value) not in dominated],
             "codes": [value for value in matched_codes if ("code", value) not in dominated],
             "class_types": _requested_class_types(query, explicitly_named_courses),
@@ -340,12 +386,6 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
         }
 
     faculty_scores = []
-    meaningful_query_sequence = [
-        word for word in words(query)
-        if len(word) >= 3
-        and word not in NOISE
-        and not any(_similar(word, day.lower()) >= 0.78 for day in DAYS)
-    ]
     meaningful_query_words = set(meaningful_query_sequence)
     meaningful_query_compact = "".join(meaningful_query_sequence)
     faculty_intent = bool(re.search(

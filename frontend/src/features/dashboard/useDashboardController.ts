@@ -22,7 +22,7 @@ export const useDashboardController = ({
   logout,
   user,
 }: DashboardAuthState) => {
-  const SEARCH_PARSER_VERSION = 7;
+  const SEARCH_PARSER_VERSION = 8;
   const ui = useDashboardUiState(logout);
   const statusToast = useDashboardStatusToast();
   const showStatus = statusToast.showStatus;

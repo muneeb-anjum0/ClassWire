@@ -12,6 +12,7 @@ import {
   getSectionColor,
   renderHighlightedText,
   shouldHighlightRow,
+  sortTimetableItems,
 } from './timetableTableUtils';
 
 type Props = { grouped: GroupedTimetable; sortedSemesters: string[]; showDay: boolean };
@@ -92,7 +93,9 @@ export default function TimetableDesktopTable({ grouped, sortedSemesters, showDa
 
   const days = DAY_ORDER.map((day) => ({
     day,
-    items: sortedSemesters.flatMap((semester) => grouped[semester].filter((item) => item.schedule_day === day)),
+    items: sortTimetableItems(
+      sortedSemesters.flatMap((semester) => grouped[semester].filter((item) => item.schedule_day === day)),
+    ),
   })).filter(({ items }) => items.length > 0);
   const showDayBreakdown = days.length > 1;
 
