@@ -1,4 +1,4 @@
-# ClassWire — SZABIST Timetable Search
+# ClassWire - SZABIST Timetable Search
 
 ClassWire is a fast, searchable **SZABIST timetable and class-schedule app** for students. It connects to Gmail with read-only OAuth access, converts SZABIST timetable emails into structured schedules, and lets students search courses, sections, faculty availability, labs, and weekly classes using natural language.
 
