@@ -25,12 +25,12 @@ export const getSectionColor = (index: number): React.CSSProperties => {
 
 export const parseTimeToMinutes = (timeStr: string): number => {
   if (!timeStr || timeStr === '-' || timeStr === 'null') {
-    return 0;
+    return Number.POSITIVE_INFINITY;
   }
 
   const timeMatch = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
   if (!timeMatch) {
-    return 0;
+    return Number.POSITIVE_INFINITY;
   }
 
   let hours = parseInt(timeMatch[1], 10);
@@ -45,6 +45,22 @@ export const parseTimeToMinutes = (timeStr: string): number => {
 
   return hours * 60 + minutes;
 };
+
+export const compareTimetableItems = (left: TimetableItem, right: TimetableItem): number => {
+  const timeDifference = parseTimeToMinutes(getDisplayTime(left)) - parseTimeToMinutes(getDisplayTime(right));
+  if (timeDifference !== 0 && !Number.isNaN(timeDifference)) return timeDifference;
+
+  const courseDifference = getCourseCode(left).localeCompare(getCourseCode(right));
+  if (courseDifference !== 0) return courseDifference;
+
+  const semesterDifference = getSemesterLabel(left).localeCompare(getSemesterLabel(right));
+  if (semesterDifference !== 0) return semesterDifference;
+
+  return getDisplayFaculty(left).localeCompare(getDisplayFaculty(right));
+};
+
+export const sortTimetableItems = (items: TimetableItem[]): TimetableItem[] =>
+  [...items].sort(compareTimetableItems);
 
 export const getDisplayTime = (item: TimetableItem): string => {
   if (validateData(item.time)) {
@@ -156,16 +172,7 @@ export const groupAndSortData = (items: TimetableItem[]) => {
   }, {} as GroupedTimetable);
 
   Object.keys(grouped).forEach((semester) => {
-    grouped[semester].sort((left, right) => {
-      const leftTime = parseTimeToMinutes(getDisplayTime(left));
-      const rightTime = parseTimeToMinutes(getDisplayTime(right));
-
-      if (leftTime === rightTime) {
-        return getCourseCode(left).localeCompare(getCourseCode(right));
-      }
-
-      return leftTime - rightTime;
-    });
+    grouped[semester].sort(compareTimetableItems);
   });
 
   return {

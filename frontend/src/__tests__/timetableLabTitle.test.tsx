@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { getCourseMeta, getDisplayCourseTitle } from '../components/TimetableTable/timetableTableUtils';
+import {
+  getCourseMeta,
+  getDisplayCourseTitle,
+  sortTimetableItems,
+} from '../components/TimetableTable/timetableTableUtils';
 
 describe('timetable lab titles', () => {
   it('adds Lab to a parsed lab row title', () => {
@@ -38,5 +42,27 @@ describe('timetable lab titles', () => {
       course: 'CSCL 1108 Lab: Introduction to Computer Science (0,1)',
       course_title: 'Introduction to Computer Science',
     })).toBe('CSCL 1108 · (0,1)');
+  });
+});
+
+describe('timetable presentation order', () => {
+  it('sorts merged semester results chronologically and leaves missing times last', () => {
+    const items = [
+      { course_code: 'SEC 3604', semester: 'BS(SE)-5A', time: '05:30 PM - 06:30 PM' },
+      { course_code: 'SECL 3604', semester: 'BS(SE)-5B', time: '12:00 PM - 02:00 PM' },
+      { course_code: 'SEC 3608', semester: 'BS(SE)-6A', time: '06:30 PM - 08:00 PM' },
+      { course_code: 'SECL 3604', semester: 'BS(SE)-5A', time: '02:00 PM - 04:00 PM' },
+      { course_code: 'SEC 3604', semester: 'BS(SE)-5B', time: '04:00 PM - 05:00 PM' },
+      { course_code: 'TBD', semester: 'BS(SE)-6B', time: '-' },
+    ];
+
+    expect(sortTimetableItems(items).map((item) => item.time)).toEqual([
+      '12:00 PM - 02:00 PM',
+      '02:00 PM - 04:00 PM',
+      '04:00 PM - 05:00 PM',
+      '05:30 PM - 06:30 PM',
+      '06:30 PM - 08:00 PM',
+      '-',
+    ]);
   });
 });

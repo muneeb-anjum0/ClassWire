@@ -81,7 +81,7 @@ def test_short_honorific_name_is_not_renamed_or_merged_with_full_name():
         {"schedule_day": "Monday", "semester_display": "BSSE 8B", "course_title": "Data Science", "faculty": "Muhammad Qasim", "time": "02:00 PM - 03:30 PM"},
     ]
     exact = search_timetable("When is Muhammad Qasim free on Monday?", items)
-    assert exact["parser_version"] == 7
+    assert exact["parser_version"] == 8
     assert exact["entities"]["faculty"] == ["Muhammad Qasim"]
     assert {item["faculty"] for item in exact["items"]} == {"Muhammad Qasim"}
 
@@ -406,6 +406,25 @@ def test_multiple_explicit_faculty_names_are_all_retained():
     ]
     result = search_timetable("Show classes for Safi Ullah and Zainab Iftikhar Chaudhary", items)
     assert {item["faculty"] for item in result["items"]} == {"Safi Ullah", "Zainab Iftikhar Chaudhary"}
+
+
+def test_exact_and_shortened_faculty_names_are_both_retained_for_availability():
+    items = [
+        {"schedule_day": "Monday", "course_title": "Algorithms", "faculty": "Zainab Iftikhar Chaudhary", "time": "09:30 AM - 11:00 AM"},
+        {"schedule_day": "Monday", "course_title": "Programming", "faculty": "Hamza Imran", "time": "12:00 PM - 01:30 PM"},
+    ]
+
+    result = search_timetable("When is Zainab Iftikhar and Hamza Imran free on Monday?", items)
+
+    assert result["entities"]["faculty"] == ["Zainab Iftikhar Chaudhary", "Hamza Imran"]
+    assert [entry["faculty"] for entry in result["faculty_availability"]] == [
+        "Zainab Iftikhar Chaudhary",
+        "Hamza Imran",
+    ]
+    assert {item["faculty"] for item in result["items"]} == {
+        "Zainab Iftikhar Chaudhary",
+        "Hamza Imran",
+    }
 
 
 def test_nested_course_title_prefers_the_specific_explicit_title():
