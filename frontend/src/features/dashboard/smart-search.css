@@ -7,6 +7,7 @@
 
 .smart-search--empty {
   min-height: min(660px, calc(100vh - 112px));
+  min-height: min(660px, calc(100dvh - 112px));
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -216,6 +217,30 @@
   stroke-width: 2.2;
 }
 
+.smart-search__form button.smart-search__clear {
+  width: 34px;
+  height: 34px;
+  flex-basis: 34px;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.smart-search__form button.smart-search__clear:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.smart-search__form button.smart-search__clear:disabled {
+  background: transparent;
+  opacity: 0.45;
+}
+
+.smart-search__form button.smart-search__clear svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.9;
+}
+
 .smart-search__loader {
   width: 17px;
   height: 17px;
@@ -227,6 +252,7 @@
 
 .smart-search__discovery {
   max-height: min(430px, calc(100vh - 250px));
+  max-height: min(430px, calc(100dvh - 250px));
   overflow-y: auto;
   padding: 7px 8px 10px;
   border-top: 1px solid var(--border);
@@ -364,34 +390,6 @@
   color: var(--text-primary);
 }
 
-.smart-search__hidden-result {
-  width: 100%;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin: 28px auto 0;
-  padding: 0 4px;
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.smart-search__hidden-result button {
-  padding: 5px 8px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.smart-search__hidden-result button:hover {
-  background: var(--surface-hover);
-  color: var(--text-primary);
-}
-
 .smart-search__answer {
   width: 100%;
   margin: 42px auto 0;
@@ -432,14 +430,27 @@
   color: var(--text-primary);
 }
 
+.smart-search__answer--hidden .smart-search__answer-header {
+  margin-bottom: 0;
+}
+
+.smart-search__answer-header > button.smart-search__show-result {
+  width: auto;
+  min-width: 44px;
+  padding: 0 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .smart-search__answer-header svg {
   width: 16px;
   height: 16px;
 }
 
 .smart-search__answer > p {
-  width: min(100%, 960px);
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   font-size: 16px;
   line-height: 1.7;
   white-space: pre-wrap;
@@ -542,16 +553,22 @@
 @media (max-width: 760px) {
   .smart-search,
   .smart-search--compact {
-    padding-top: 72px;
+    padding-top: calc(68px + env(safe-area-inset-top));
   }
 
   .smart-search--empty {
     min-height: calc(100vh - 80px);
-    padding-bottom: 60px;
+    min-height: calc(100dvh - 80px);
+    padding-bottom: calc(48px + env(safe-area-inset-bottom));
   }
 
   .smart-search__account {
-    top: 18px;
+    top: calc(16px + env(safe-area-inset-top));
+  }
+
+  .smart-search__account-trigger {
+    width: 42px;
+    height: 42px;
   }
 
   .smart-search__intro {
@@ -566,45 +583,127 @@
     font-size: 14px;
   }
 
+  .smart-search__composer {
+    border-radius: 27px;
+    box-shadow: 0 6px 20px rgb(0 0 0 / 6%);
+  }
+
+  .smart-search__composer.is-open {
+    border-radius: 19px;
+  }
+
   .smart-search__form {
     min-height: 54px;
-    padding-left: 15px;
+    gap: 10px;
+    padding: 6px 7px 6px 15px;
   }
 
   .smart-search__form input {
-    font-size: 15px;
+    font-size: 16px;
   }
 
   .smart-search__form button {
-    width: 40px;
-    height: 40px;
-    flex-basis: 40px;
+    width: 42px;
+    height: 42px;
+    flex-basis: 42px;
+  }
+
+  .smart-search__discovery {
+    max-height: min(420px, calc(100dvh - 190px - env(safe-area-inset-top)));
+    padding: 6px 6px 9px;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .smart-search__discovery-section > header {
+    min-height: 38px;
+    padding-inline: 8px 4px;
+  }
+
+  .smart-search__discovery-section > header button {
+    min-height: 36px;
+    padding-inline: 9px;
   }
 
   .smart-search__suggestion-list {
     grid-template-columns: 1fr;
   }
 
+  .smart-search__recent {
+    grid-template-columns: minmax(0, 1fr) 42px;
+  }
+
+  .smart-search__recent-query,
+  .smart-search__suggestion-list > button {
+    min-height: 44px;
+    padding: 8px 9px;
+    line-height: 1.4;
+  }
+
+  .smart-search__recent-query span,
+  .smart-search__suggestion-list span {
+    display: -webkit-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
   .smart-search__remove-recent {
+    width: 38px;
+    height: 38px;
     opacity: 1;
   }
 
   .smart-search__answer {
-    margin-top: 32px;
+    margin-top: 28px;
+  }
+
+  .smart-search__answer-header {
+    min-height: 40px;
+    margin-bottom: 9px;
+  }
+
+  .smart-search__answer-header > button {
+    width: 40px;
+    height: 40px;
+  }
+
+  .smart-search__answer > p {
+    font-size: 15px;
+    line-height: 1.65;
+  }
+
+  .smart-search__faculty + .smart-search__faculty {
+    margin-top: 25px;
+  }
+
+  .smart-search__faculty h3 {
+    font-size: 18px;
   }
 
   .smart-search__day {
     grid-template-columns: 94px 1fr;
     gap: 10px;
+    min-height: 58px;
+    padding: 14px 0;
+  }
+
+  .smart-search__slots span {
+    min-width: 0;
+    flex-wrap: wrap;
+    row-gap: 2px;
+    font-size: 14px;
   }
 }
 
 @media (max-width: 460px) {
   .smart-search__account-menu {
     position: fixed;
-    top: 64px;
-    right: 14px;
-    left: 14px;
+    top: calc(64px + env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
+    left: max(12px, env(safe-area-inset-left));
     width: auto;
   }
 
@@ -612,12 +711,51 @@
     display: none;
   }
 
+  .smart-search__form {
+    padding-left: 16px;
+  }
+
   .smart-search__discovery {
-    max-height: min(380px, calc(100vh - 200px));
+    max-height: min(400px, calc(100dvh - 178px - env(safe-area-inset-top)));
+  }
+
+  .smart-search__intro {
+    margin-bottom: 18px;
+  }
+
+  .smart-search__intro h1 {
+    font-size: clamp(26px, 8vw, 30px);
+  }
+
+  .smart-search__intro p {
+    max-width: 300px;
+    margin-inline: auto;
+    line-height: 1.45;
   }
 
   .smart-search__day {
     grid-template-columns: 1fr;
     gap: 7px;
+  }
+
+  .smart-search__slots {
+    gap: 8px;
+  }
+
+  .smart-search__slots span {
+    line-height: 1.45;
+  }
+
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .smart-search__account-trigger:hover,
+  .smart-search__account-menu > button:hover,
+  .smart-search__discovery-section > header button:hover,
+  .smart-search__recent:hover,
+  .smart-search__remove-recent:hover,
+  .smart-search__suggestion-list > button:hover,
+  .smart-search__answer-header > button:hover {
+    background: transparent;
   }
 }

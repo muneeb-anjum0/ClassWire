@@ -255,6 +255,38 @@ class TestSearchEndpoint:
         mock_store.save_search_source_cache.assert_called_once_with(mock_user['id'], source)
         mock_store.save_timetable_cache.assert_called_once()
 
+    @patch('app.run_once')
+    def test_search_falls_back_to_stale_source_when_gmail_refresh_fails(self, mock_run_once, client, mock_store):
+        user = {'id': 'stale-cache-user', 'email': 'stale@example.com'}
+        item = {
+            'schedule_day': 'Monday',
+            'semester_display': 'BS(SE)-7A',
+            'course': 'SEC 3603 Software Project Management (3,0)',
+            'course_code': 'SEC 3603',
+            'course_title': 'Software Project Management',
+            'faculty': 'Ada Lovelace',
+            'time': '02:00 PM - 03:30 PM',
+        }
+        source = {'items': [item], 'for_day': 'Entire Week', 'summary': {}}
+        mock_store.get_or_create_user.return_value = user
+        mock_store.get_user_settings.return_value = {}
+        mock_store.get_search_source_cache.side_effect = [None, source]
+        mock_store.save_timetable_cache.return_value = True
+        mock_run_once.return_value = {'success': False, 'error': 'Stored OAuth credentials could not be decrypted'}
+
+        response = client.post(
+            '/api/search',
+            json={'query': 'BSSE7A classes on Monday'},
+            headers={'X-User-Email': user['email']},
+        )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload['cached'] is True
+        assert payload['data']['items'] == [item]
+        assert payload['data']['search']['source_stale'] is True
+        assert 'last saved timetable' in payload['message']
+
     def test_search_rejects_unbounded_query_input(self, client, mock_store, mock_user):
         mock_store.get_or_create_user.return_value = mock_user
 

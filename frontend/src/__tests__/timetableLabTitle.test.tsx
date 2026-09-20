@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getDisplayCourseTitle } from '../components/TimetableTable/timetableTableUtils';
+import { getCourseMeta, getDisplayCourseTitle } from '../components/TimetableTable/timetableTableUtils';
 
 describe('timetable lab titles', () => {
   it('adds Lab to a parsed lab row title', () => {
@@ -23,5 +23,20 @@ describe('timetable lab titles', () => {
       course: 'SECL 3604 Lab: Software Construction and Development Lab',
       course_title: 'Software Construction and Development Lab',
     })).toBe('Software Construction and Development Lab');
+  });
+
+  it('shows compact course metadata without repeating the title', () => {
+    expect(getCourseMeta({
+      course: 'SEC 3603 Software Project Management (3,0)',
+      course_code: 'SEC 3603',
+      course_title: 'Software Project Management',
+    })).toBe('SEC 3603 · (3,0)');
+  });
+
+  it('extracts a compact code when legacy data has no course_code field', () => {
+    expect(getCourseMeta({
+      course: 'CSCL 1108 Lab: Introduction to Computer Science (0,1)',
+      course_title: 'Introduction to Computer Science',
+    })).toBe('CSCL 1108 · (0,1)');
   });
 });

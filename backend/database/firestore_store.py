@@ -243,7 +243,7 @@ class FirestoreStore:
         self,
         user_id: str,
         *,
-        max_age_seconds: int = 1800,
+        max_age_seconds: Optional[int] = 1800,
     ) -> Optional[Dict[str, Any]]:
         snapshot = self.source_cache.document(user_id).get()
         if not snapshot.exists:
@@ -254,7 +254,7 @@ class FirestoreStore:
             return None
         if updated_at.tzinfo is None:
             updated_at = updated_at.replace(tzinfo=timezone.utc)
-        if (_utc_now() - updated_at).total_seconds() > max_age_seconds:
+        if max_age_seconds is not None and (_utc_now() - updated_at).total_seconds() > max_age_seconds:
             return None
         source_data = _decode_json_payload(payload.get("source_gzip")) or payload.get("source_data")
         return source_data if isinstance(source_data, dict) else None

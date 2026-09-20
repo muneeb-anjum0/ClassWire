@@ -27,6 +27,9 @@ export interface TimetableData {
     parser_version?: number;
     query?: string;
     saved_at?: string;
+    source_stale?: boolean;
+    source_item_count?: number;
+    recognized?: boolean;
     answer: string;
     intent: 'schedule' | 'free_time';
     days: string[];

@@ -1,6 +1,7 @@
 {
   "short_name": "ClassWire",
-  "name": "ClassWire",
+  "name": "ClassWire — SZABIST Timetable Search",
+  "description": "Search and organize SZABIST class schedules from timetable emails.",
   "icons": [
     {
       "src": "logoo.svg",
@@ -8,8 +9,11 @@
       "type": "image/svg+xml"
     }
   ],
-  "start_url": ".",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "theme_color": "#ffffff",
+  "background_color": "#ffffff",
+  "lang": "en-PK"
 }

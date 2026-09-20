@@ -65,7 +65,7 @@ const LoginScreen: React.FC = () => {
         <div className="login-card__header">
           <h1>Welcome to ClassWire</h1>
           <p className="login-copy">
-            Sign in with Google to search and organize your class timetable.
+            Search and organize SZABIST class schedules from your timetable emails.
           </p>
         </div>
 
@@ -144,6 +144,7 @@ const LoginScreen: React.FC = () => {
 
         <footer className="login-footer">
           <span>Read-only Gmail access for timetable parsing.</span>
+          <span className="login-footer__disclaimer">Independent student utility—not an official SZABIST service.</span>
           <div className="legal-links">
             <a href="/privacy">Privacy</a>
             <span aria-hidden="true">/</span>

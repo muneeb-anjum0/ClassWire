@@ -9,6 +9,7 @@ const baseProps = {
   query: '',
   setQuery: vi.fn(),
   onSearch: vi.fn(),
+  onClear: vi.fn(),
   loading: false,
   userEmail: 'student@example.com',
   onLogout: vi.fn(),
@@ -69,4 +70,15 @@ test('a search answer can be hidden and restored without removing its data', asy
 
   await user.click(screen.getByRole('button', { name: 'Show' }));
   expect(screen.getByText('Zainab Iftikhar Chaudhary')).toBeInTheDocument();
+});
+
+test('the composer clear button starts a new centered search', async () => {
+  const onClear = vi.fn();
+  const user = userEvent.setup();
+
+  render(<SmartSearch {...baseProps} query="BSSE7A timetable Monday" onClear={onClear} data={null} />);
+
+  await user.click(screen.getByRole('button', { name: 'Clear search and start over' }));
+
+  expect(onClear).toHaveBeenCalledOnce();
 });

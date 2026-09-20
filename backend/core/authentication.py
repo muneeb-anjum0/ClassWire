@@ -25,11 +25,14 @@ def authenticated_user(store, logger) -> tuple[dict[str, Any] | None, Any, int |
         return None, jsonify({"success": False, "error": "Authentication required"}), 401
 
     normalized_email = email.strip().lower()
-    # Both values are written only after a successful OAuth callback and live
-    # inside Flask's signed session cookie. Re-querying Firestore on every API
-    # call adds latency and a billable read without adding authentication
-    # value. The test-only header fallback still resolves through the store.
-    if isinstance(user_id, str) and user_id.strip():
+    # Existing sessions created before an account migration may contain a
+    # validly signed but obsolete user id. Verify that id once per browser
+    # session, then retain the no-read fast path for every later request.
+    if (
+        isinstance(user_id, str)
+        and user_id.strip()
+        and session.get("user_identity_verified") is True
+    ):
         return {"id": user_id, "email": normalized_email}, None, None
 
     try:
@@ -38,9 +41,14 @@ def authenticated_user(store, logger) -> tuple[dict[str, Any] | None, Any, int |
         logger.error("Could not resolve authenticated user: %s", error)
         return None, jsonify({"success": False, "error": "User lookup failed"}), 500
 
-    if user_id and user.get("id") != user_id:
+    canonical_user_id = str(user.get("id") or "").strip()
+    if not canonical_user_id:
         session.clear()
-        return None, jsonify({"success": False, "error": "Invalid session"}), 401
+        return None, jsonify({"success": False, "error": "Invalid user account"}), 401
+
+    session["user_id"] = canonical_user_id
+    session["user_email"] = normalized_email
+    session["user_identity_verified"] = True
     return user, None, None
 
 

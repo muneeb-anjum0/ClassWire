@@ -25,7 +25,8 @@ import './smart-search.css';
 type Props = {
   query: string;
   setQuery: (value: string) => void;
-  onSearch: (query?: string) => void;
+  onSearch: (query?: string) => void | Promise<unknown>;
+  onClear: () => void;
   loading: boolean;
   data: TimetableData | null;
   userEmail?: string;
@@ -35,12 +36,13 @@ type Props = {
   onThemeChange: (theme: DashboardTheme) => void;
 };
 
-const WEEKDAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const WEEKDAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 export default function SmartSearch({
   query,
   setQuery,
   onSearch,
+  onClear,
   loading,
   data,
   userEmail,
@@ -120,9 +122,17 @@ export default function SmartSearch({
     onSearch(cleaned);
   }, [loading, onSearch, rememberSearch, setQuery]);
 
-  const submit = (event: FormEvent) => {
+  const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    runQuery(query);
+    const visibleQuery = new FormData(event.currentTarget).get('timetable-query');
+    runQuery(typeof visibleQuery === 'string' ? visibleQuery : query);
+  };
+
+  const clearSearch = () => {
+    if (loading) return;
+    onClear();
+    setResultHidden(false);
+    setComposerOpen(true);
   };
 
   const readableTime = (slot: string) => slot.replace(' – ', ' to ');
@@ -213,6 +223,7 @@ export default function SmartSearch({
       <form onSubmit={submit} className="smart-search__form">
         <Search aria-hidden="true" />
         <input
+          name="timetable-query"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onFocus={() => setComposerOpen(true)}
@@ -222,6 +233,13 @@ export default function SmartSearch({
           aria-controls="smart-search-discovery"
           autoComplete="off"
         />
+        {(query || hasContent) && <button
+          type="button"
+          className="smart-search__clear"
+          onClick={clearSearch}
+          disabled={loading}
+          aria-label="Clear search and start over"
+        ><X aria-hidden="true" /></button>}
         <button type="submit" disabled={loading || query.trim().length < 2} aria-label={loading ? 'Searching timetable' : 'Search timetable'}>
           {loading ? <span className="smart-search__loader" /> : <ArrowUp aria-hidden="true" />}
         </button>
@@ -267,9 +285,17 @@ export default function SmartSearch({
       </div>}
     </div>
 
-    {result && resultHidden && <div className="smart-search__hidden-result" role="status">
-      <span>Search result hidden</span>
-      <button type="button" onClick={() => setResultHidden(false)}>Show</button>
+    {result && resultHidden && <div className="smart-search__answer smart-search__answer--hidden" role="status">
+      <div className="smart-search__answer-header">
+        <div className="smart-search__answer-label">Search result hidden</div>
+        <button
+          type="button"
+          className="smart-search__show-result"
+          onClick={() => setResultHidden(false)}
+        >
+          Show
+        </button>
+      </div>
     </div>}
 
     {result && !resultHidden && <div className="smart-search__answer">
