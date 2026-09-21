@@ -3,7 +3,7 @@ flask>=2.3.0
 flask-cors>=6.0.5
 
 # Database
-firebase-admin>=6.5.0
+firebase-admin>=7.6.0
 aiohttp>=3.14.1
 cryptography>=48.0.1
 idna>=3.18
