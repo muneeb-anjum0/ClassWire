@@ -10,17 +10,6 @@ export default function DashboardPage() {
   const auth = useAuth();
   const controller = useDashboardController(auth);
 
-  if (controller.authLoading) {
-    return (
-      <div className="app-loading-screen">
-        <div className="app-loading-card">
-          <div className="app-loading-spinner" />
-          <p>Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
   if (!auth.isAuthenticated) {
     return <LoginScreen />;
   }

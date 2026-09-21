@@ -38,7 +38,8 @@ export const useDashboardController = ({
   const [isSmartResult, setIsSmartResult] = useState(false);
   const searchStorageKey = `classwire:v2:last-search:${user?.email || 'anonymous'}`;
   const timetableStorageKey = `classwire:v2:last-timetable:${user?.email || 'anonymous'}`;
-  const bootstrapStarted = useRef(false);
+  const hydratedUser = useRef<string | null>(null);
+  const bootstrappedUser = useRef<string | null>(null);
   const dataRequestSequence = useRef(0);
   const searchInFlight = useRef(false);
 
@@ -221,12 +222,10 @@ export const useDashboardController = ({
         return;
       }
 
-      setTimetableData(null);
       showStatus('warning', 'No timetable data available. Try running a manual scrape.');
     } catch (error) {
       if (requestSequence !== dataRequestSequence.current) return;
       console.error('Error loading timetable:', error);
-      setTimetableData(null);
       showStatus('error', 'Failed to load timetable data');
     } finally {
       if (requestSequence === dataRequestSequence.current) {
@@ -445,10 +444,11 @@ export const useDashboardController = ({
   };
 
   useEffect(() => {
-    if (!isAuthenticated || bootstrapStarted.current) {
+    const userKey = user?.email?.trim().toLowerCase();
+    if (!isAuthenticated || !userKey || hydratedUser.current === userKey) {
       return;
     }
-    bootstrapStarted.current = true;
+    hydratedUser.current = userKey;
 
     const cached = readCachedTimetable();
     if (cached) {
@@ -456,6 +456,17 @@ export const useDashboardController = ({
       setIsSmartResult(Boolean(cached.search));
       setSearchQuery(cached.search?.query?.trim() || '');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, user?.email]);
+
+  useEffect(() => {
+    const userKey = user?.email?.trim().toLowerCase();
+    if (!isAuthenticated || loading || !userKey || bootstrappedUser.current === userKey) {
+      return;
+    }
+    bootstrappedUser.current = userKey;
+
+    const cached = readCachedTimetable();
 
     const bootstrap = async () => {
       await Promise.allSettled([
@@ -466,7 +477,7 @@ export const useDashboardController = ({
 
     bootstrap();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated]);
+  }, [isAuthenticated, loading, user?.email]);
 
   useEffect(() => {
     if (config && timetableData && noSemestersConfigured && !isScraperRunning && !operationInProgress) {
@@ -478,7 +489,7 @@ export const useDashboardController = ({
   }, [config, noSemestersConfigured, operationInProgress, isScraperRunning, showStatus, timetableData]);
 
   return {
-    authLoading: loading,
+    authLoading: loading && !user,
     cancelLogoutConfirm: ui.cancelLogoutConfirm,
     config,
     dailyEmailEnabled,

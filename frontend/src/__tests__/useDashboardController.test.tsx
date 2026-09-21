@@ -110,3 +110,36 @@ test('a user search supersedes a slower background result restore', async () => 
   expect(result.current.searchQuery).toBe('');
   expect(result.current.timetableData).toBeNull();
 });
+
+test('cached results render before session verification and survive a failed refresh', async () => {
+  const cachedQuery = 'When is Zainab free on Monday?';
+  const cachedResult = makeSearchData(cachedQuery, 'Faculty availability', [{
+    faculty: 'Zainab Iftikhar Chaudhary',
+    schedule_day: 'Monday',
+    course_title: 'Algorithms',
+  }]);
+  localStorage.setItem(
+    'classwire:v2:last-timetable:student@example.com',
+    JSON.stringify(cachedResult),
+  );
+  apiMocks.getLatestTimetable.mockRejectedValue(new Error('Backend is sleeping'));
+
+  const auth = {
+    isAuthenticated: true,
+    logout: vi.fn(),
+    user: { id: 'student', email: 'student@example.com' },
+  };
+  const { result, rerender } = renderHook(
+    ({ loading }) => useDashboardController({ ...auth, loading }),
+    { initialProps: { loading: true } },
+  );
+
+  await waitFor(() => expect(result.current.timetableData?.search?.query).toBe(cachedQuery));
+  expect(result.current.authLoading).toBe(false);
+  expect(apiMocks.getLatestTimetable).not.toHaveBeenCalled();
+
+  rerender({ loading: false });
+  await waitFor(() => expect(apiMocks.getLatestTimetable).toHaveBeenCalledOnce());
+  expect(result.current.timetableData?.search?.query).toBe(cachedQuery);
+  expect(result.current.timetableData?.items).toHaveLength(1);
+});
