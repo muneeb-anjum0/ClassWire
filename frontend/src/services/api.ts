@@ -4,7 +4,6 @@ import { ApiResponse, TimetableData, ConfigData, StatusData } from '../types/api
 export const BACKEND_WAKE_EVENT = 'backend-wake-state';
 const BACKEND_WAKE_DELAY_MS = 4500;
 const LOCAL_HEALTH_TIMEOUT_MS = 3000;
-const PRODUCTION_HEALTH_TIMEOUT_MS = 90000;
 const PRODUCTION_API_BASE_URL = 'https://timetable-wizard.onrender.com';
 const LOCAL_API_BASE_URL = 'http://localhost:5001';
 const CONFIGURED_API_URL = import.meta.env.VITE_API_URL;
@@ -114,18 +113,33 @@ export const apiService = {
 
     initializationPromise = (async () => {
     const isLocalhost = isLocalNetworkHost(window.location.hostname);
+    // Production already has one authoritative API origin. A blocking health
+    // probe here used to wake Render and then make the real request wait for a
+    // second network round trip. Select the known origin synchronously and let
+    // the requested endpoint serve as the health check.
+    if (!isLocalhost) {
+      const productionUrl = normalizeApiBaseUrl(CONFIGURED_API_URL || PRODUCTION_API_BASE_URL);
+      api.defaults.baseURL = productionUrl;
+      initializedApiUrl = productionUrl;
+      return productionUrl;
+    }
+
     const candidates = Array.from(new Set([
       CONFIGURED_API_URL,
-      isLocalhost ? getLocalApiBaseUrl() : undefined,
+      getLocalApiBaseUrl(),
       PRODUCTION_API_BASE_URL,
     ].filter(Boolean).map((candidate) => normalizeApiBaseUrl(candidate as string))));
     let lastError: unknown = null;
 
     for (const candidate of candidates) {
       const isLocalCandidate = candidate.includes('localhost') || candidate.includes('127.0.0.1');
-      const healthTimeoutMs = isLocalCandidate ? LOCAL_HEALTH_TIMEOUT_MS : PRODUCTION_HEALTH_TIMEOUT_MS;
+      if (!isLocalCandidate) {
+        api.defaults.baseURL = candidate;
+        initializedApiUrl = candidate;
+        return candidate;
+      }
       const controller = new AbortController();
-      const timeoutTimer = window.setTimeout(() => controller.abort(), healthTimeoutMs);
+      const timeoutTimer = window.setTimeout(() => controller.abort(), LOCAL_HEALTH_TIMEOUT_MS);
       const wakeTimer = isLocalCandidate
         ? undefined
         : window.setTimeout(() => {

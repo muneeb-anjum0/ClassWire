@@ -179,43 +179,9 @@ a:focus-visible {
   text-underline-offset: 3px;
 }
 
-.app-loading-screen {
-  min-height: 100vh;
-  min-height: 100dvh;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: var(--page-bg);
-}
-
-.app-loading-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--text-secondary);
-  font-size: 14px;
-}
-
-.app-loading-card p {
-  margin: 0;
-}
-
-.app-loading-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--border-strong);
-  border-top-color: var(--text-primary);
-  border-radius: 50%;
-  animation: app-spin 0.75s linear infinite;
-}
-
 .theme-text-primary { color: var(--text-primary); }
 .theme-text-secondary { color: var(--text-secondary); }
 .theme-text-muted { color: var(--text-muted); }
-
-@keyframes app-spin {
-  to { transform: rotate(360deg); }
-}
 
 @media (max-width: 760px) {
   .dashboard-main {
