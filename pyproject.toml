@@ -1,0 +1,27 @@
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["backend"]
+addopts = "-ra --strict-config --strict-markers"
+markers = [
+  "unit: deterministic tests for one parser, search, cache, or configuration boundary",
+  "integration: contracts between application layers with external systems replaced by controlled doubles",
+  "acceptance: representative timetable data and natural-language scenarios that define user-visible correctness",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["backend"]
+omit = [
+  "backend/tests/*",
+  "backend/scripts/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+precision = 1
+fail_under = 61
+exclude_also = [
+  "if __name__ == .__main__.:",
+  "raise NotImplementedError",
+]

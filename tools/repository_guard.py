@@ -12,9 +12,11 @@ ALLOWED_ROOTS = {
     ".github",
     ".gitignore",
     "README.md",
+    "TESTING.md",
     "backend",
     "docs",
     "frontend",
+    "pyproject.toml",
     "tools",
 }
 FORBIDDEN_NAMES = {

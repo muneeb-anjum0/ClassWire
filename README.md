@@ -3,7 +3,7 @@
 > A multi-user, Gmail-integrated SZABIST timetable platform that extracts inconsistent schedule data, normalizes it, stores it cost-efficiently, and supports natural-language class and faculty-availability queries.
 
 [![Live application](https://img.shields.io/badge/live-class--wire.vercel.app-111111?style=flat-square)](https://class-wire.vercel.app/)
-[![Security and build](https://img.shields.io/github/actions/workflow/status/muneeb-anjum0/ClassWire/security.yml?branch=main&style=flat-square&label=build)](https://github.com/muneeb-anjum0/ClassWire/actions/workflows/security.yml)
+[![Quality, security, and build](https://img.shields.io/github/actions/workflow/status/muneeb-anjum0/ClassWire/security.yml?branch=main&style=flat-square&label=quality)](https://github.com/muneeb-anjum0/ClassWire/actions/workflows/security.yml)
 [![React](https://img.shields.io/badge/React-19-149eca?style=flat-square)](frontend/)
 [![Python](https://img.shields.io/badge/Python-Flask-3776ab?style=flat-square)](backend/)
 
@@ -46,6 +46,7 @@ ClassWire is an independent student project and is not an official SZABIST servi
 - [Security and privacy engineering](#security-and-privacy-engineering)
 - [Reliability and background work](#reliability-and-background-work)
 - [Observability without paid monitoring](#observability-without-paid-monitoring)
+- [Quality engineering](#quality-engineering)
 - [Technology choices](#technology-choices)
 - [Current boundaries](#current-boundaries)
 
@@ -62,9 +63,11 @@ The project began as a timetable scraper and evolved into a complete schedule-in
 | Gmail refresh | Unchanged weekdays are reused; only changed timetable emails are downloaded and parsed |
 | Browser persistence | Large timetable results use IndexedDB through one reused connection, with synchronous storage retained only as a compatibility fallback |
 | Large result rendering | Initial DOM work is bounded to **60 schedule rows** and progressively expanded |
+| Automated quality | **198 backend tests** and **21 frontend tests**, including a forty-query acceptance matrix |
+| Measured coverage | **62.3% backend branch-aware coverage** and **52.4% frontend line coverage** across the complete application surface |
 | Production payload | Initial JavaScript reduced from **300.9 kB / 96.7 kB gzip** to **203.9 kB / 65.0 kB gzip**; authenticated CSS is **27.6 kB / 6.4 kB gzip** and route styles load on demand |
 
-The import and build figures were measured locally. They are engineering baselines, not claims about public-network latency, Google APIs, Firestore, or Render cold starts.
+The import, coverage, and build figures were measured locally. They are engineering baselines, not claims about public-network latency, Google APIs, Firestore, or Render cold starts.
 
 ### Optimization ledger
 
@@ -119,7 +122,7 @@ This table condenses the major changes into the problem each one addressed and t
 | The initial frontend shipped one large application bundle | Split login, legal, and authenticated dashboard routes and removed Axios/Tailwind runtime weight | Initial JavaScript gzip size fell by about 33%, with route code loaded only when needed |
 | The API client depended on a general-purpose HTTP library | Replaced it with a typed native Fetch client preserving credentials, timeouts, errors, and wake feedback | Smaller dependency graph and browser bundle with the same API contract |
 | Global CSS contained unused animations and utility rules | Removed dead effects and retained only active touch and reduced-motion behavior | Less CSS parsing and a smaller stylesheet without changing the interface |
-| Changes could reach production without automated safeguards | Protected `main` with production builds, dependency audits, and repository-guard checks | Deployments originate from reviewed commits that pass security and build validation |
+| Changes could reach production without automated safeguards | Protected `main` with layered tests, coverage floors, production builds, dependency audits, and repository-guard checks | Deployments originate from reviewed commits that pass correctness, security, and build validation |
 
 ---
 
@@ -565,6 +568,21 @@ These counters make it possible to estimate cost from actual usage without embed
 
 ---
 
+## Quality engineering
+
+ClassWire has a layered quality suite built around the failures that matter most for timetable software: missing rows, unrelated rows, incorrect section binding, ambiguous people, malformed source data, stale asynchronous state, and unsafe external-service behavior.
+
+- **104 unit tests** isolate parsing, natural-language interpretation, semester normalization, subject filtering, cache expiry, rate limits, and production-server configuration.
+- **53 integration tests** exercise API contracts, Gmail message handling, latest-per-weekday selection, Firestore serialization, security boundaries, and daily-email delivery with deterministic service doubles.
+- **41 acceptance tests** validate representative timetable fixtures and forty exact natural-language scenarios. Each scenario rejects both missing and unexpected rows.
+- **21 frontend behavior tests** exercise accessible search interactions, API failures, result persistence, stale-request protection, large-result windowing, suggestions, and timetable presentation in a browser-like DOM.
+
+The current suite contains **219 tests** in total. Backend coverage is measured with branch tracking and guarded at 61%; frontend coverage is guarded independently for statements, branches, functions, and lines. These are repository-wide floors, not selective numbers from only the easiest modules.
+
+Every pull request runs the complete quality suite, dependency audits, secret scanning, and the production build. The full test architecture, commands, fixture policy, and contribution rules are documented in [TESTING.md](TESTING.md).
+
+---
+
 ## Search and data-flow examples
 
 ### Standard section lookup
@@ -627,6 +645,7 @@ Result
 | Database | Cloud Firestore | Simple per-user documents and inexpensive direct document access |
 | Email source | Gmail API, Google OAuth 2.0 | Read-only access to the user’s authoritative timetable messages |
 | Parsing | Beautiful Soup, lxml, deterministic heuristics | Handles both structured tables and malformed HTML/text without per-query AI cost |
+| Quality | Pytest, pytest-cov, Vitest, Testing Library | Layered unit, integration, acceptance, UI behavior, and coverage checks |
 | Automation | GitHub Actions | Scheduled delivery and CI without a paid background-worker service |
 | Hosting | Vercel and Render | Static frontend delivery with an independently deployable Python API |
 
@@ -641,15 +660,18 @@ ClassWire/
 │   ├── database/             Encrypted tokens and optimized Firestore persistence
 │   ├── routes/               User, search, config, automation, and lifecycle APIs
 │   ├── scraper/              Gmail synchronization, parsing, normalization, search
-│   └── scripts/              Scheduled automation entry point
+│   ├── scripts/              Scheduled automation entry point
+│   └── tests/                Unit, integration, acceptance, and fixture suites
 ├── frontend/
 │   └── src/
 │       ├── components/       Timetable, login, status, and shared UI
 │       ├── context/          Authenticated bootstrap and account lifecycle
 │       ├── features/         Dashboard and conversational search experience
-│       └── services/         API client and IndexedDB persistence
-├── .github/workflows/        Security/build checks and scheduled delivery
+│       ├── services/         API client and IndexedDB persistence
+│       └── tests/            UI behavior, hooks, API contracts, and rendering checks
+├── .github/workflows/        Quality, security, build, and scheduled delivery checks
 ├── tools/                    Repository security guard
+├── TESTING.md                Quality architecture and contribution guide
 └── README.md                 Engineering case study and project documentation
 ```
 
