@@ -17,6 +17,7 @@ from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from core.ttl_cache import TTLCache
+from core.telemetry import configure_request_telemetry
 
 LOCAL_ORIGIN_PATTERNS = (
     re.compile(r"^http://localhost:\d+$"),
@@ -107,6 +108,7 @@ def configure_app(app: Flask) -> None:
         allow_headers=["Content-Type", "Authorization"],
         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     )
+    configure_request_telemetry(app)
 
     @app.before_request
     def reject_untrusted_browser_mutations():

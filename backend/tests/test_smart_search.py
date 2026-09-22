@@ -81,7 +81,7 @@ def test_short_honorific_name_is_not_renamed_or_merged_with_full_name():
         {"schedule_day": "Monday", "semester_display": "BSSE 8B", "course_title": "Data Science", "faculty": "Muhammad Qasim", "time": "02:00 PM - 03:30 PM"},
     ]
     exact = search_timetable("When is Muhammad Qasim free on Monday?", items)
-    assert exact["parser_version"] == 8
+    assert exact["parser_version"] == 10
     assert exact["entities"]["faculty"] == ["Muhammad Qasim"]
     assert {item["faculty"] for item in exact["items"]} == {"Muhammad Qasim"}
 
@@ -434,6 +434,59 @@ def test_nested_course_title_prefers_the_specific_explicit_title():
     ]
     result = search_timetable("Show Software Engineering Lab classes", items)
     assert [item["course_title"] for item in result["items"]] == ["Software Engineering Lab"]
+
+
+def test_section_timetable_can_union_explicit_courses_from_other_sections():
+    items = [
+        {"schedule_day": "Monday", "semester_display": "BS(SE)-7A", "course_code": "SEC 3603", "course_title": "Software Project Management", "course": "SEC 3603 Software Project Management (3,0)", "time": "02:00 PM - 03:30 PM"},
+        {"schedule_day": "Wednesday", "semester_display": "BS(SE)-7A", "course_code": "SEC 4516", "course_title": "Artificial Intelligence", "course": "SEC 4516 Artificial Intelligence (2,0)", "time": "06:30 PM - 08:00 PM"},
+        {"schedule_day": "Monday", "semester_display": "BS(SE)-5A", "course_code": "SEC 3604", "course_title": "Software Construction and Development", "course": "SEC 3604 Software Construction and Development (2,0)", "time": "02:00 PM - 03:00 PM"},
+        {"schedule_day": "Wednesday", "semester_display": "BS(SE)-5B", "course_code": "SECL 3604", "course_title": "Software Construction and Development", "course": "SECL 3604 Lab: Software Construction and Development (0,1)", "time": "12:00 PM - 02:00 PM"},
+        {"schedule_day": "Thursday", "semester_display": "BS(SE)-6A", "course_code": "SEC 3608", "course_title": "Software Quality Engineering and Testing", "course": "SEC 3608 Software Quality Engineering and Testing (3,0)", "time": "02:00 PM - 03:30 PM"},
+        {"schedule_day": "Friday", "semester_display": "BBA-3A", "course_code": "BBA 2001", "course_title": "Marketing", "course": "BBA 2001 Marketing (3,0)", "time": "08:00 AM - 09:30 AM"},
+    ]
+
+    result = search_timetable(
+        "I am from BSSE7A but I want to take Software Construction and Development "
+        "and Software Quality Engineering and Testing as well",
+        items,
+    )
+
+    assert result["match_mode"] == "union"
+    assert len(result["items"]) == 5
+    assert {item["semester_display"] for item in result["items"]} == {
+        "BS(SE)-7A", "BS(SE)-5A", "BS(SE)-5B", "BS(SE)-6A",
+    }
+    assert result["answer"].startswith("Found 5 classes for BS(SE)-7A plus")
+
+
+def test_section_and_course_without_additive_language_remains_an_intersection():
+    items = [
+        {"schedule_day": "Monday", "semester_display": "BS(SE)-7A", "course_title": "Software Construction and Development", "course": "Software Construction and Development (2,0)", "time": "02:00 PM - 03:00 PM"},
+        {"schedule_day": "Monday", "semester_display": "BS(SE)-5A", "course_title": "Software Construction and Development", "course": "Software Construction and Development (2,0)", "time": "05:00 PM - 06:00 PM"},
+        {"schedule_day": "Monday", "semester_display": "BS(SE)-7A", "course_title": "Software Project Management", "course": "Software Project Management (3,0)", "time": "03:30 PM - 05:00 PM"},
+    ]
+
+    result = search_timetable(
+        "Show Software Construction and Development for BSSE7A on Monday",
+        items,
+    )
+
+    assert result["match_mode"] == "intersection"
+    assert len(result["items"]) == 1
+    assert result["items"][0]["semester_display"] == "BS(SE)-7A"
+
+
+def test_custom_union_query_exposes_plan_and_schedule_conflicts():
+    items = [
+        {"schedule_day": "Monday", "semester_display": "BS(SE)-7A", "course_title": "Core", "course": "Core (3,0)", "time": "02:00 PM - 03:30 PM"},
+        {"schedule_day": "Monday", "semester_display": "BS(SE)-5A", "course_title": "Software Construction", "course": "Software Construction (2,0)", "time": "03:00 PM - 04:00 PM"},
+    ]
+    result = search_timetable("I am from BSSE7A plus Software Construction on Monday", items)
+    assert result["query_plan"]["combination"] == "union"
+    assert result["query_plan"]["day_scope"] == ["Monday"]
+    assert result["conflict_count"] == 1
+    assert result["conflicts"][0]["overlap"] == "3:00 PM – 3:30 PM"
 
 
 def test_lab_word_inside_exact_course_title_is_not_a_type_filter():

@@ -8,20 +8,18 @@ import hashlib
 import logging
 import os
 import uuid
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-import firebase_admin
-from firebase_admin import credentials, firestore
-from google.cloud.firestore_v1.base_query import FieldFilter
-
 from core.ttl_cache import TTLCache
+from core.telemetry import increment
 
 from .defaults import build_default_user_settings
-from .token_crypto import decrypt_token_data, encrypt_token_data
 
 logger = logging.getLogger(__name__)
 MAX_FIRESTORE_PAYLOAD_BYTES = 900_000
+CACHE_RETENTION_DAYS = 7
 
 
 def _utc_now() -> datetime:
@@ -68,6 +66,8 @@ def _cache_content_hash(cache_data: Dict[str, Any]) -> str:
 
 
 def _load_firebase_credentials():
+    from firebase_admin import credentials
+
     service_account_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
     service_account_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH", "").strip()
 
@@ -92,6 +92,9 @@ def _load_firebase_credentials():
 
 
 def _initialize_firestore_client():
+    import firebase_admin
+    from firebase_admin import firestore
+
     project_id = os.getenv("FIREBASE_PROJECT_ID", "").strip() or None
 
     if firebase_admin._apps:
@@ -116,6 +119,8 @@ class FirestoreStore:
         self._token_cache = TTLCache[str, Dict[str, Any]](ttl_seconds=300, max_entries=512)
         self._timetable_cache = TTLCache[str, tuple[Dict[str, Any], str]](ttl_seconds=60, max_entries=256)
         self._timetable_hashes = TTLCache[str, str](ttl_seconds=86400, max_entries=512)
+        self._source_cache = TTLCache[str, tuple[Dict[str, Any], datetime]](ttl_seconds=1800, max_entries=256)
+        self._source_hashes = TTLCache[str, str](ttl_seconds=86400, max_entries=512)
         self._health_cache = TTLCache[str, bool](ttl_seconds=60, max_entries=1)
         logger.info("Firestore client initialized")
 
@@ -128,8 +133,11 @@ class FirestoreStore:
         return True
 
     def get_or_create_user(self, email: str) -> Dict[str, Any]:
+        from google.cloud.firestore_v1.base_query import FieldFilter
+
         normalized_email = email.strip().lower()
         matches = list(self.users.where(filter=FieldFilter("email", "==", normalized_email)).limit(1).stream())
+        increment("firestore.read.users")
 
         if matches:
             payload = matches[0].to_dict() or {}
@@ -145,9 +153,12 @@ class FirestoreStore:
             "updated_at": now,
         }
         self.users.document(user_id).set(payload)
+        increment("firestore.write.users")
         return {**payload, "created_at": _serialize_timestamp(now), "updated_at": _serialize_timestamp(now)}
 
     def save_user_tokens(self, user_id: str, token_data: Dict[str, Any]) -> bool:
+        from .token_crypto import encrypt_token_data
+
         self.tokens.document(user_id).set(
             {
                 "user_id": user_id,
@@ -155,14 +166,19 @@ class FirestoreStore:
                 "updated_at": _utc_now(),
             }
         )
+        increment("firestore.write.gmail_tokens")
         self._token_cache.set(user_id, dict(token_data))
         return True
 
     def get_user_tokens(self, user_id: str) -> Optional[Dict[str, Any]]:
+        from .token_crypto import decrypt_token_data
+
         cached = self._token_cache.get(user_id)
         if cached is not None:
+            increment("cache.gmail_tokens.hit")
             return dict(cached)
         snapshot = self.tokens.document(user_id).get()
+        increment("firestore.read.gmail_tokens")
         if not snapshot.exists:
             return None
         payload = snapshot.to_dict() or {}
@@ -193,8 +209,10 @@ class FirestoreStore:
                 "cache_gzip": compressed,
                 "cache_version": 2,
                 "updated_at": now,
+                "expires_at": now + timedelta(days=CACHE_RETENTION_DAYS),
             }
         )
+        increment("firestore.write.timetable_cache")
         self._timetable_hashes.set(user_id, content_hash)
         self._timetable_cache.set(user_id, (cache_data, _serialize_timestamp(now) or ""))
         return True
@@ -202,8 +220,10 @@ class FirestoreStore:
     def get_latest_timetable_cache(self, user_id: str) -> Optional[Dict[str, Any]]:
         cached = self._timetable_cache.get(user_id)
         if cached is not None:
+            increment("cache.timetable.hit")
             return cached[0]
         snapshot = self.cache.document(user_id).get()
+        increment("firestore.read.timetable_cache")
         if not snapshot.exists:
             return None
         payload = snapshot.to_dict() or {}
@@ -221,22 +241,32 @@ class FirestoreStore:
         self.source_cache.document(user_id).delete()
         self._timetable_hashes.pop(user_id)
         self._timetable_cache.pop(user_id)
+        self._source_cache.pop(user_id)
+        self._source_hashes.pop(user_id)
         return True
 
     def save_search_source_cache(self, user_id: str, source_data: Dict[str, Any]) -> bool:
         """Persist the compact weekly source so process restarts do not rescrape Gmail."""
+        content_hash = _cache_content_hash(source_data)
+        if self._source_hashes.get(user_id) == content_hash:
+            return True
         compressed = _encode_json_payload(source_data)
         if len(compressed) > MAX_FIRESTORE_PAYLOAD_BYTES:
             logger.error("Search source is too large to persist safely: %s compressed bytes", len(compressed))
             return False
+        now = _utc_now()
         self.source_cache.document(user_id).set(
             {
                 "user_id": user_id,
                 "source_gzip": compressed,
                 "cache_version": 2,
-                "updated_at": _utc_now(),
+                "updated_at": now,
+                "expires_at": now + timedelta(days=CACHE_RETENTION_DAYS),
             }
         )
+        increment("firestore.write.timetable_source_cache")
+        self._source_hashes.set(user_id, content_hash)
+        self._source_cache.set(user_id, (source_data, now))
         return True
 
     def get_search_source_cache(
@@ -245,7 +275,14 @@ class FirestoreStore:
         *,
         max_age_seconds: Optional[int] = 1800,
     ) -> Optional[Dict[str, Any]]:
+        cached = self._source_cache.get(user_id)
+        if cached is not None:
+            source_data, updated_at = cached
+            if max_age_seconds is None or (_utc_now() - updated_at).total_seconds() <= max_age_seconds:
+                increment("cache.timetable_source.hit")
+                return source_data
         snapshot = self.source_cache.document(user_id).get()
+        increment("firestore.read.timetable_source_cache")
         if not snapshot.exists:
             return None
         payload = snapshot.to_dict() or {}
@@ -257,7 +294,65 @@ class FirestoreStore:
         if max_age_seconds is not None and (_utc_now() - updated_at).total_seconds() > max_age_seconds:
             return None
         source_data = _decode_json_payload(payload.get("source_gzip")) or payload.get("source_data")
+        if isinstance(source_data, dict):
+            self._source_hashes.set(user_id, _cache_content_hash(source_data))
+            self._source_cache.set(user_id, (source_data, updated_at))
         return source_data if isinstance(source_data, dict) else None
+
+    def get_bootstrap_data(self, user_id: str) -> Dict[str, Any]:
+        """Read settings and the last timetable in one Firestore RPC."""
+        cached_settings = self._settings_cache.get(user_id)
+        cached_timetable = self._timetable_cache.get(user_id)
+        if cached_settings is not None and cached_timetable is not None:
+            return {
+                "settings": dict(cached_settings),
+                "timetable": cached_timetable[0],
+                "last_update": cached_timetable[1] or None,
+            }
+
+        settings_ref = self.settings.document(user_id)
+        cache_ref = self.cache.document(user_id)
+        snapshots = list(self.client.get_all([settings_ref, cache_ref]))
+        increment("firestore.read.bootstrap_documents", 2)
+        # Both documents intentionally share the user id, so use reference path
+        # rather than snapshot id to distinguish their collections.
+        by_path = {snapshot.reference.path: snapshot for snapshot in snapshots}
+        settings_snapshot = by_path.get(settings_ref.path)
+        cache_snapshot = by_path.get(cache_ref.path)
+
+        if cached_settings is None:
+            settings_payload = settings_snapshot.to_dict() if settings_snapshot and settings_snapshot.exists else {}
+            cached_settings = build_default_user_settings((settings_payload or {}).get("settings") or {})
+            self._settings_cache.set(user_id, dict(cached_settings))
+
+        timetable = cached_timetable[0] if cached_timetable else None
+        last_update = cached_timetable[1] if cached_timetable else None
+        if cached_timetable is None and cache_snapshot and cache_snapshot.exists:
+            payload = cache_snapshot.to_dict() or {}
+            timetable = _decode_json_payload(payload.get("cache_gzip")) or payload.get("cache_data")
+            last_update = _serialize_timestamp(payload.get("updated_at"))
+            if isinstance(timetable, dict):
+                self._timetable_cache.set(user_id, (timetable, last_update or ""))
+                self._timetable_hashes.set(user_id, _cache_content_hash(timetable))
+        return {"settings": dict(cached_settings), "timetable": timetable, "last_update": last_update}
+
+    def delete_user_data(self, user_id: str) -> bool:
+        """Permanently delete every document and in-process cache for a user."""
+        batch = self.client.batch()
+        for collection in (self.users, self.tokens, self.settings, self.cache, self.source_cache):
+            batch.delete(collection.document(user_id))
+        batch.commit()
+        increment("firestore.delete.account_documents", 5)
+        for cache in (
+            self._settings_cache,
+            self._token_cache,
+            self._timetable_cache,
+            self._timetable_hashes,
+            self._source_cache,
+            self._source_hashes,
+        ):
+            cache.pop(user_id)
+        return True
 
     def get_latest_timetable_timestamp(self, user_id: str | None = None) -> Optional[str]:
         if user_id:
@@ -268,6 +363,8 @@ class FirestoreStore:
             if not snapshot.exists:
                 return None
             return _serialize_timestamp((snapshot.to_dict() or {}).get("updated_at"))
+
+        from firebase_admin import firestore
 
         docs = list(self.cache.order_by("updated_at", direction=firestore.Query.DESCENDING).limit(1).stream())
         if not docs:
@@ -283,14 +380,17 @@ class FirestoreStore:
                 "updated_at": _utc_now(),
             }
         )
+        increment("firestore.write.user_settings")
         self._settings_cache.set(user_id, dict(merged))
         return True
 
     def get_user_settings(self, user_id: str) -> Dict[str, Any]:
         cached = self._settings_cache.get(user_id)
         if cached is not None:
+            increment("cache.user_settings.hit")
             return dict(cached)
         snapshot = self.settings.document(user_id).get()
+        increment("firestore.read.user_settings")
         if not snapshot.exists:
             settings = build_default_user_settings()
         else:
@@ -340,7 +440,9 @@ class FirestoreStore:
         return configured_users
 
     def cleanup_old_cache(self) -> bool:
-        cutoff = _utc_now() - timedelta(days=7)
+        from google.cloud.firestore_v1.base_query import FieldFilter
+
+        cutoff = _utc_now() - timedelta(days=CACHE_RETENTION_DAYS)
         batch = self.client.batch()
         pending = 0
         for collection in (self.cache, self.source_cache):
@@ -362,10 +464,13 @@ class LazyFirestoreStore:
 
     def __init__(self) -> None:
         self._store: FirestoreStore | None = None
+        self._lock = threading.Lock()
 
     def _get_store(self) -> FirestoreStore:
         if self._store is None:
-            self._store = FirestoreStore()
+            with self._lock:
+                if self._store is None:
+                    self._store = FirestoreStore()
         return self._store
 
     def is_healthy(self) -> bool:

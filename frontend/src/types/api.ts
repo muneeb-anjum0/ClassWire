@@ -32,6 +32,20 @@ export interface TimetableData {
     recognized?: boolean;
     answer: string;
     intent: 'schedule' | 'free_time';
+    match_mode?: 'intersection' | 'union';
+    query_plan?: {
+      intent: 'schedule' | 'free_time';
+      day_scope: string[];
+      combination: 'intersection' | 'union';
+      filters: Record<string, string[]>;
+    };
+    conflict_count?: number;
+    conflicts?: Array<{
+      day: string;
+      overlap: string;
+      left: { course?: string; section?: string; time?: string };
+      right: { course?: string; section?: string; time?: string };
+    }>;
     days: string[];
     entities: Record<string, string[]>;
     free_slots: Record<string, string[]>;
@@ -40,6 +54,15 @@ export interface TimetableData {
       slots: Record<string, string[]>;
     }>;
   };
+}
+
+export interface BootstrapData {
+  success: boolean;
+  user: { id: string; email: string };
+  config: ConfigData;
+  timetable: TimetableData | null;
+  last_update: string | null;
+  timestamp: string;
 }
 
 export interface ApiResponse<T = any> {

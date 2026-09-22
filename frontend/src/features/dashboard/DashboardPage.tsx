@@ -27,6 +27,7 @@ export default function DashboardPage() {
             data={controller.timetableData}
             userEmail={controller.userEmail}
             onLogout={controller.handleLogoutClick}
+            onDeleteAccount={controller.deleteAccount}
             logoutConfirmArmed={controller.logoutConfirmArmed}
             theme={controller.theme}
             onThemeChange={controller.setTheme}
@@ -74,6 +75,11 @@ export default function DashboardPage() {
                     <span>{controller.filteredItems.length} {controller.filteredItems.length === 1 ? 'class' : 'classes'}</span>
                   </p>
                 </div>
+                {(controller.timetableData.search?.conflict_count || 0) > 0 && (
+                  <div className="schedule-panel__conflicts" role="status">
+                    {controller.timetableData.search?.conflict_count} timetable overlap{controller.timetableData.search?.conflict_count === 1 ? '' : 's'} detected in this custom schedule.
+                  </div>
+                )}
                 <div className="timetable-container">
                   <TimetableTable items={controller.filteredItems} />
                 </div>

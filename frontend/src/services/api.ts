@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
-import { ApiResponse, TimetableData, ConfigData, StatusData } from '../types/api';
+import { ApiResponse, TimetableData, ConfigData, StatusData, BootstrapData } from '../types/api';
 
 export const BACKEND_WAKE_EVENT = 'backend-wake-state';
 const BACKEND_WAKE_DELAY_MS = 4500;
@@ -200,6 +200,15 @@ export const apiService = {
   getSession: async (): Promise<{ success: boolean; user: { id: string; email: string } }> => {
     const response = await api.get('/api/auth/session');
     return response.data;
+  },
+
+  getBootstrap: async (): Promise<BootstrapData> => {
+    const response: AxiosResponse<BootstrapData> = await api.get('/api/bootstrap');
+    return response.data;
+  },
+
+  deleteAccount: async (): Promise<void> => {
+    await api.delete('/api/account');
   },
 
   logout: async (): Promise<void> => {

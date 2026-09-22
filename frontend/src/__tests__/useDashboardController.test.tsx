@@ -31,7 +31,7 @@ const makeSearchData = (query: string, answer: string, items: TimetableData['ite
     unique_faculty: 0,
   },
   search: {
-    parser_version: 8,
+    parser_version: 10,
     query,
     answer,
     intent: 'schedule',
@@ -82,6 +82,8 @@ test('a user search supersedes a slower background result restore', async () => 
   });
 
   const { result } = renderHook(() => useDashboardController({
+    bootstrap: null,
+    deleteAccount: vi.fn(),
     isAuthenticated: true,
     loading: false,
     logout: vi.fn(),
@@ -125,6 +127,8 @@ test('cached results render before session verification and survive a failed ref
   apiMocks.getLatestTimetable.mockRejectedValue(new Error('Backend is sleeping'));
 
   const auth = {
+    bootstrap: null,
+    deleteAccount: vi.fn(),
     isAuthenticated: true,
     logout: vi.fn(),
     user: { id: 'student', email: 'student@example.com' },
@@ -139,7 +143,7 @@ test('cached results render before session verification and survive a failed ref
   expect(apiMocks.getLatestTimetable).not.toHaveBeenCalled();
 
   rerender({ loading: false });
-  await waitFor(() => expect(apiMocks.getLatestTimetable).toHaveBeenCalledOnce());
+  await waitFor(() => expect(apiMocks.getLatestTimetable).toHaveBeenCalledTimes(2));
   expect(result.current.timetableData?.search?.query).toBe(cachedQuery);
   expect(result.current.timetableData?.items).toHaveLength(1);
 });

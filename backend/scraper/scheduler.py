@@ -3,8 +3,9 @@ import logging
 import os
 import sys
 import re
+import time
 from datetime import datetime, timedelta
-from typing import Dict, Optional
+from typing import Dict, Iterable, Optional
 
 # Add parent directory to path for absolute imports
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -15,6 +16,7 @@ from dateutil import tz
 from google.auth.transport.requests import Request as GoogleAuthRequest
 
 from core.ttl_cache import TTLCache
+from core.telemetry import increment, observe
 
 from .gmail_client import (
     build_service,
@@ -25,7 +27,11 @@ from .gmail_client import (
     list_latest_messages_batch,
     list_messages,
 )
-from .timetable_parser import parse_html_with_advanced_pandas
+from .timetable_parser import (
+    TIMETABLE_PARSER_VERSION,
+    parse_html_with_advanced_pandas,
+    parse_html_with_diagnostics,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -110,6 +116,23 @@ def _summarize(items):
         "unique_faculty": len({item.get("faculty") for item in items if item.get("faculty")}),
     }
 
+
+def _items_by_weekday(source: Optional[Dict]) -> Dict[str, list]:
+    grouped = {day: [] for day in WEEKDAY_NAMES[:6]}
+    for item in (source or {}).get("items", []):
+        day = item.get("schedule_day")
+        if day in grouped:
+            grouped[day].append(dict(item))
+    return grouped
+
+
+def _message_received_at(message: Optional[Dict]) -> Optional[str]:
+    value = (message or {}).get("internalDate")
+    try:
+        return datetime.fromtimestamp(int(value) / 1000, tz=tz.UTC).isoformat().replace("+00:00", "Z")
+    except (TypeError, ValueError, OSError):
+        return None
+
 def _target_day_name(now_local: datetime, next_day_available_hour: int = 17) -> str:
     """
     Determine which day's timetable to look for based on current time.
@@ -146,18 +169,41 @@ def _target_date(now_local: datetime, next_day_available_hour: int = 17) -> date
         # Target today's date
         return now_local
 
-def _build_query(base: str, day_name: str, newer_than_days: int) -> str:
+def _build_query(base: str, day_name: str, newer_than_days: Optional[int] = None) -> str:
     # Some schedule emails visually contain "for Tuesday", but Gmail's index
     # splits that phrase across HTML nodes. Match the weekday in the subject as
     # the reliable path and retain the body phrase as a fallback.
-    return f'{base} {{subject:{day_name} "for {day_name}"}} newer_than:{newer_than_days}d -in:trash'
+    age_filter = f" newer_than:{newer_than_days}d" if newer_than_days is not None else ""
+    return f'{base} {{subject:{day_name} "for {day_name}"}}{age_filter} -in:trash'
 
 
-def _build_week_query(base: str, newer_than_days: int) -> str:
+def _build_week_query(base: str, newer_than_days: Optional[int] = None) -> str:
     alternatives = " ".join(
         [*(f"subject:{day}" for day in WEEKDAY_NAMES[:6]), *(f'"for {day}"' for day in WEEKDAY_NAMES[:6])]
     )
-    return f"{base} {{{alternatives}}} newer_than:{newer_than_days}d -in:trash"
+    age_filter = f" newer_than:{newer_than_days}d" if newer_than_days is not None else ""
+    return f"{base} {{{alternatives}}}{age_filter} -in:trash"
+
+
+def _latest_messages_by_weekday(
+    service,
+    user_email: str,
+    gmail_query_base: str,
+    day_names: Iterable[str],
+) -> Dict[str, Dict]:
+    """Find each weekday's newest available email in one HTTP batch.
+
+    Gmail returns message searches newest-first. Independent, unbounded
+    weekday queries therefore let today's new Monday schedule coexist with
+    the latest available Tuesday schedule from an older week, without a
+    second round trip or an arbitrary age cut-off.
+    """
+    days = list(day_names)
+    queries = {
+        day_name: _build_query(gmail_query_base, day_name)
+        for day_name in days
+    }
+    return list_latest_messages_batch(service, user_email, queries)
 
 
 def _day_from_subject(subject: str) -> Optional[str]:
@@ -211,11 +257,11 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
         faculty_filters = user_settings.get('faculty_filters', []) if user_settings else []
         parser_semesters = allowed_semesters if filter_mode == 'semesters' else None
         gmail_query_base = user_settings.get('gmail_query_base', settings.gmail_query_base) if user_settings else settings.gmail_query_base
-        newer_than_days = user_settings.get('newer_than_days', settings.newer_than_days) if user_settings else settings.newer_than_days
         timezone = user_settings.get('timezone', settings.tz) if user_settings else settings.tz
         next_day_available_hour = user_settings.get('next_day_available_hour', settings.next_day_available_hour) if user_settings else settings.next_day_available_hour
         timetable_day = user_settings.get('timetable_day', 'Auto') if user_settings else 'Auto'
         should_save_cache = user_settings.get('_save_cache', True) if user_settings else True
+        previous_source = user_settings.get('_previous_source') if user_settings else None
         
         local_tz = tz.gettz(timezone)
         now_local = datetime.now(tz=local_tz)
@@ -225,9 +271,9 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
         if timetable_day not in ('Auto', 'Entire Week'):
             target_date = _next_date_for_day(now_local, timetable_day)
 
-        query = (_build_query(gmail_query_base, for_day_name, newer_than_days)
+        query = (_build_query(gmail_query_base, for_day_name)
                  if timetable_day != 'Entire Week' else
-                 _build_week_query(gmail_query_base, max(newer_than_days, 7)))
+                 _build_week_query(gmail_query_base))
 
         LOGGER.info("Looking for: %s  (local: %s)", for_day_name, now_local.strftime("%Y-%m-%d %H:%M"))
         LOGGER.info("Gmail query: %s", query)
@@ -303,29 +349,68 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
         if timetable_day == 'Entire Week':
             items = []
             message_ids = []
-            week_lookback_days = max(newer_than_days, 7)
-            day_queries = {
-                day_name: _build_query(gmail_query_base, day_name, week_lookback_days)
-                for day_name in WEEKDAY_NAMES[:6]
-            }
-            latest_by_day = list_latest_messages_batch(service, user_email, day_queries)
+            latest_by_day = _latest_messages_by_weekday(
+                service,
+                user_email,
+                gmail_query_base,
+                WEEKDAY_NAMES[:6],
+            )
+            previous_ids = (previous_source or {}).get("message_ids_by_day") or {}
+            previous_items = _items_by_weekday(previous_source)
+            can_reuse_previous = (
+                isinstance(previous_source, dict)
+                and previous_source.get("parser_version") == TIMETABLE_PARSER_VERSION
+            )
+            changed_days = [
+                day for day in WEEKDAY_NAMES[:6]
+                if (latest_by_day.get(day) or {}).get("id")
+                and (
+                    not can_reuse_previous
+                    or previous_ids.get(day) != (latest_by_day.get(day) or {}).get("id")
+                )
+            ]
             candidate_ids = [
-                message.get("id")
-                for message in latest_by_day.values()
-                if message.get("id")
+                (latest_by_day.get(day) or {}).get("id")
+                for day in changed_days
+                if (latest_by_day.get(day) or {}).get("id")
             ]
             fetched = get_messages_batch(service, user_email, candidate_ids)
+            increment("gmail.messages_fetched", len(candidate_ids))
+            message_ids_by_day = {}
+            received_at_by_day = dict((previous_source or {}).get("source_received_at_by_day") or {})
+            parser_diagnostics = {}
 
             for day_name in WEEKDAY_NAMES[:6]:
                 selected = latest_by_day.get(day_name) or {}
                 message_id = selected.get("id")
-                message = fetched.get(message_id) if message_id else None
-                if not message_id or not message:
+                if not message_id:
                     continue
                 message_ids.append(message_id)
-                html = get_message_html_from_message(message) or ""
-                day_items = parse_html_with_advanced_pandas(html, parser_semesters)
-                day_items = _apply_item_filters(day_items, filter_mode, subject_filters, faculty_filters)
+                message_ids_by_day[day_name] = message_id
+                if can_reuse_previous and previous_ids.get(day_name) == message_id:
+                    day_items = previous_items.get(day_name, [])
+                    parser_diagnostics[day_name] = {
+                        "parser_version": TIMETABLE_PARSER_VERSION,
+                        "accepted_rows": len(day_items),
+                        "reused": True,
+                    }
+                else:
+                    message = fetched.get(message_id)
+                    if not message:
+                        continue
+                    received_at_by_day[day_name] = _message_received_at(message)
+                    html = get_message_html_from_message(message) or ""
+                    parser_started = time.perf_counter()
+                    day_items, diagnostics = parse_html_with_diagnostics(html, parser_semesters)
+                    observe("parser.timetable", (time.perf_counter() - parser_started) * 1000)
+                    increment("parser.rows_accepted", diagnostics.get("accepted_rows", 0))
+                    increment(
+                        "parser.rows_rejected",
+                        diagnostics.get("rejected_missing_identity", 0)
+                        + diagnostics.get("rejected_missing_time", 0),
+                    )
+                    day_items = _apply_item_filters(day_items, filter_mode, subject_filters, faculty_filters)
+                    parser_diagnostics[day_name] = {**diagnostics, "reused": False}
                 for item in day_items:
                     item["schedule_day"] = day_name
                 items.extend(day_items)
@@ -335,6 +420,15 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
                 "for_day": "Entire Week", "for_date": now_local.date().isoformat(),
                 "query": query, "message_id": message_ids[0] if message_ids else None,
                 "message_ids": message_ids, "items": items, "semesters": allowed_semesters,
+                "message_ids_by_day": message_ids_by_day,
+                "source_received_at_by_day": received_at_by_day,
+                "parser_version": TIMETABLE_PARSER_VERSION,
+                "parser_diagnostics": parser_diagnostics,
+                "refresh": {
+                    "changed_days": changed_days,
+                    "reused_days": [day for day in message_ids_by_day if day not in changed_days],
+                    "fetched_messages": len(candidate_ids),
+                },
                 "summary": _summarize(items),
             }
             if user_id and should_save_cache:
@@ -344,7 +438,7 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
                 _save_json(doc)
             return {"success": True, "data": doc, "message": f"Successfully found {len(items)} items for the week"}
 
-        msgs = list_messages(service, user_id=user_email, query=query, max_results=5)
+        msgs = list_messages(service, user_id=user_email, query=query, max_results=1)
         
         if not msgs:
             LOGGER.warning("No messages found for target date")

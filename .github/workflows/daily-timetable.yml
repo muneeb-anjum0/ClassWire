@@ -1,0 +1,28 @@
+name: Daily timetable delivery
+
+on:
+  schedule:
+    - cron: "15 14 * * 1-6"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-timetable-delivery
+  cancel-in-progress: false
+
+jobs:
+  deliver:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run delivery and wait for completion
+        env:
+          CLASSWIRE_BACKEND_URL: ${{ secrets.CLASSWIRE_BACKEND_URL }}
+          CLASSWIRE_AUTOMATION_SECRET: ${{ secrets.CLASSWIRE_AUTOMATION_SECRET }}
+        run: |
+          test -n "$CLASSWIRE_BACKEND_URL"
+          test -n "$CLASSWIRE_AUTOMATION_SECRET"
+          curl --fail-with-body --retry 3 --retry-all-errors --max-time 300 \
+            -X POST "${CLASSWIRE_BACKEND_URL%/}/api/automation/send-daily-timetables?wait=1" \
+            -H "X-Automation-Secret: $CLASSWIRE_AUTOMATION_SECRET"

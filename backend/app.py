@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import urllib.parse
+import hmac
 from datetime import datetime
 
 from flask import Flask, jsonify, redirect, request, session
@@ -26,8 +27,7 @@ from core.app_support import (
 )
 from database.firestore_store import data_store
 from routes.user_data import create_user_data_blueprint
-from scraper.config import settings
-from scraper.scheduler import run_once
+from core.telemetry import snapshot as telemetry_snapshot
 
 app = Flask(__name__)
 configure_app(app)
@@ -39,6 +39,20 @@ oauth_state_store = TemporaryStateStore()
 
 LOCAL_IP = get_local_ip()
 FRONTEND_PORT = int(os.environ.get("FRONTEND_PORT", 5174))
+
+
+def run_once(*args, **kwargs):
+    """Load the Gmail/parser stack only when a scrape is actually requested."""
+    from scraper.scheduler import run_once as scrape_once
+
+    return scrape_once(*args, **kwargs)
+
+
+def get_settings():
+    """Keep Pydantic and scraper configuration off the cold-start path."""
+    from scraper.config import settings
+
+    return settings
 
 
 def build_popup_message_page(*, frontend_origin: str, payload: dict, close_delay_ms: int, body_text: str) -> str:
@@ -137,23 +151,26 @@ def logout():
 
 @app.route("/api/health", methods=["GET"])
 def health_check():
-    try:
-        return jsonify(
-            {
-                "status": "healthy",
-                "timestamp": datetime.now().isoformat(),
-                "config_loaded": True,
-                "firestore_connected": store.is_healthy(),
-            }
-        )
-    except Exception as error:
-        return jsonify(
-            {
-                "status": "unhealthy",
-                "error": "Backend health check failed",
-                "timestamp": datetime.now().isoformat(),
-            }
-        ), 500
+    # This endpoint is both Render's liveness probe and the browser's wake-up
+    # target. Never put Firestore/Gmail network I/O here: the process is ready
+    # as soon as Flask can answer, and downstream dependencies are checked by
+    # the authenticated requests that actually use them.
+    return jsonify(
+        {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "config_loaded": True,
+        }
+    )
+
+
+@app.route("/api/metrics", methods=["GET"])
+def metrics():
+    configured = os.environ.get("AUTOMATION_SECRET", "")
+    supplied = request.headers.get("X-Automation-Secret", "")
+    if not configured or not hmac.compare_digest(configured, supplied):
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    return jsonify({"success": True, "data": telemetry_snapshot()})
 
 
 @app.route("/api/auth/gmail", methods=["GET"])
@@ -317,7 +334,7 @@ app.register_blueprint(
     create_user_data_blueprint(
         logger=logger,
         get_run_once=lambda: run_once,
-        get_settings=lambda: settings,
+        get_settings=get_settings,
         get_store=lambda: store,
     )
 )

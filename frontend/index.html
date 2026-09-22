@@ -20,6 +20,27 @@
     <meta name="theme-color" content="#ffffff" />
     <link rel="preconnect" href="https://timetable-wizard.onrender.com" crossorigin />
     <link rel="dns-prefetch" href="https://timetable-wizard.onrender.com" />
+    <script>
+      // Start a sleeping Render instance as soon as the HTML is parsed. The
+      // dashboard paints from local cache while this request runs in parallel.
+      // Wake it again when someone returns to a long-open tab, without using
+      // a periodic keep-alive that would consume free-instance hours.
+      if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        let lastWakeAt = 0;
+        const wakeBackend = () => {
+          if (Date.now() - lastWakeAt < 60000) return;
+          lastWakeAt = Date.now();
+          fetch('https://timetable-wizard.onrender.com/api/health', {
+            mode: 'no-cors',
+            cache: 'no-store',
+          }).catch(() => undefined);
+        };
+        wakeBackend();
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') wakeBackend();
+        });
+      }
+    </script>
     <link rel="canonical" href="https://class-wire.vercel.app/" />
     <link rel="icon" href="/tab-icon.svg" />
     <link rel="manifest" href="/manifest.json" />
