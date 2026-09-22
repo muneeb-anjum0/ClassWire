@@ -12,7 +12,7 @@ from typing import Dict, List, Tuple
 from zoneinfo import ZoneInfo
 
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-PARSER_VERSION = 8
+PARSER_VERSION = 10
 DAY_START = 8 * 60
 DAY_END = 21 * 60 + 30
 NOISE = {
@@ -490,6 +490,55 @@ def _matches(item: Dict, entities: Dict[str, List[str]]) -> bool:
     return all(checks) if checks else False
 
 
+def _uses_additive_course_scope(query: str, entities: Dict[str, List[str]]) -> bool:
+    """Detect requests for a section timetable plus courses from elsewhere."""
+    if not entities["sections"] or not (entities["courses"] or entities["codes"]):
+        return False
+    lowered = query.lower()
+    additive_language = (
+        r"\bas\s+well\b",
+        r"\bin\s+addition\b",
+        r"\balong\s+with\b",
+        r"\bplus\b",
+        r"\balso\b",
+        r"\bbut\b.{0,80}\b(?:want|take|add|include)\b",
+        r"\b(?:want|would\s+like)\s+to\s+(?:take|add|include)\b",
+        r"\bi(?:\s+am|'m|m)\s+(?:from|in)\b",
+    )
+    return any(re.search(pattern, lowered) for pattern in additive_language)
+
+
+def _matches_additive_course_scope(item: Dict, entities: Dict[str, List[str]]) -> bool:
+    """Match a base section OR an explicitly requested additional course."""
+    section_match = any(
+        normalize(value) == normalize(_item_section(item))
+        for value in entities["sections"]
+    )
+    course_match = any(
+        normalize(value) == normalize(item.get("course_title") or item.get("course"))
+        for value in entities["courses"]
+    )
+    code_match = any(
+        normalize(value) == normalize(item.get("course_code"))
+        for value in entities["codes"]
+    )
+    if not (section_match or course_match or code_match):
+        return False
+
+    if entities["faculty"] and not any(
+        normalize(value) == normalize(item.get("faculty"))
+        for value in entities["faculty"]
+    ):
+        return False
+    if entities["class_types"] and _class_type(item) not in entities["class_types"]:
+        return False
+    if entities["credit_hours"]:
+        requested = {float(value) for value in entities["credit_hours"]}
+        if _credit_hours(item) not in requested:
+            return False
+    return True
+
+
 def _time_minutes(value: str) -> Tuple[int, int] | None:
     matches = re.findall(r"(\d{1,2}):(\d{2})\s*(AM|PM)", value or "", re.I)
     if len(matches) < 2:
@@ -511,6 +560,42 @@ def _format_minutes(value: int) -> str:
     suffix = "PM" if hour >= 12 else "AM"
     display_hour = hour % 12 or 12
     return f"{display_hour}:{minute:02d} {suffix}"
+
+
+def _schedule_conflicts(items: List[Dict]) -> List[Dict]:
+    """Return deterministic overlapping class pairs for custom schedules."""
+    conflicts: List[Dict] = []
+    by_day: Dict[str, List[tuple[Dict, Tuple[int, int]]]] = {}
+    for item in items:
+        interval = _time_minutes(str(item.get("time") or ""))
+        day = str(item.get("schedule_day") or "")
+        if interval and day:
+            by_day.setdefault(day, []).append((item, interval))
+    for day, entries in by_day.items():
+        entries.sort(key=lambda pair: pair[1])
+        for index, (left, left_interval) in enumerate(entries):
+            for right, right_interval in entries[index + 1:]:
+                if right_interval[0] >= left_interval[1]:
+                    break
+                overlap_start = max(left_interval[0], right_interval[0])
+                overlap_end = min(left_interval[1], right_interval[1])
+                if overlap_start >= overlap_end:
+                    continue
+                conflicts.append({
+                    "day": day,
+                    "overlap": f"{_format_minutes(overlap_start)} – {_format_minutes(overlap_end)}",
+                    "left": {
+                        "course": left.get("course_title") or left.get("course"),
+                        "section": _item_section(left),
+                        "time": left.get("time"),
+                    },
+                    "right": {
+                        "course": right.get("course_title") or right.get("course"),
+                        "section": _item_section(right),
+                        "time": right.get("time"),
+                    },
+                })
+    return conflicts
 
 
 def faculty_free_slots(items: List[Dict], days: List[str]) -> Dict[str, List[str]]:
@@ -542,6 +627,12 @@ def search_timetable(query: str, items: List[Dict], reference_date: date | None 
     items = _canonicalize_faculty(items)
     days = parse_days(query, reference_date)
     entities = find_entities(query, items)
+    additive_course_scope = _uses_additive_course_scope(query, entities)
+    matches_scope = (
+        (lambda item: _matches_additive_course_scope(item, entities))
+        if additive_course_scope
+        else (lambda item: _matches(item, entities))
+    )
     wants_free = any(phrase in query.lower() for phrase in ("free", "available", "office hour", "no class"))
     if wants_free and entities["faculty"]:
         # Availability questions are faculty-first. Incidental words such as
@@ -554,7 +645,7 @@ def search_timetable(query: str, items: List[Dict], reference_date: date | None 
     elif _is_broad_schedule_request(query) and not any(entities.values()):
         all_entity_matches = list(items)
     else:
-        all_entity_matches = [item for item in items if _matches(item, entities)]
+        all_entity_matches = [item for item in items if matches_scope(item)]
     day_items = [item for item in items if item.get("schedule_day") in days]
     # Availability answers and their supporting timetable share the requested
     # day scope. Faculty-only matching above prevents incidental query words
@@ -564,7 +655,7 @@ def search_timetable(query: str, items: List[Dict], reference_date: date | None 
     elif _is_broad_schedule_request(query) and not any(entities.values()):
         matched = day_items
     else:
-        matched = [item for item in day_items if _matches(item, entities)]
+        matched = [item for item in day_items if matches_scope(item)]
     day_rank = {day: index for index, day in enumerate(DAYS)}
     matched.sort(key=lambda item: (
         day_rank.get(str(item.get("schedule_day")), len(DAYS)),
@@ -616,6 +707,13 @@ def search_timetable(query: str, items: List[Dict], reference_date: date | None 
         elif matched and _is_broad_schedule_request(query) and not any(entities.values()):
             scope = days[0] if len(days) == 1 else "the selected week"
             answer = f"Found {len(matched)} scheduled {'class' if len(matched) == 1 else 'classes'} for {scope}."
+        elif matched and additive_course_scope:
+            base = ", ".join(dict.fromkeys(entities["sections"]))
+            additions = ", ".join(dict.fromkeys(entities["courses"] + entities["codes"]))
+            answer = (
+                f"Found {len(matched)} {'class' if len(matched) == 1 else 'classes'} "
+                f"for {base} plus {additions}{day_suffix}."
+            )
         elif matched:
             answer = f"Found {len(matched)} {kind if len(matched) == 1 else kind + 'es'} for {subject}{day_suffix}."
         elif not any(entities.values()) and not _is_broad_schedule_request(query):
@@ -626,6 +724,7 @@ def search_timetable(query: str, items: List[Dict], reference_date: date | None 
         else:
             answer = f"No {kind + 'es'} found for {subject}{day_suffix}."
     recognized = bool(any(entities.values()) or _is_broad_schedule_request(query))
+    conflicts = _schedule_conflicts(matched)
     return {
         "parser_version": PARSER_VERSION,
         "items": matched,
@@ -635,5 +734,14 @@ def search_timetable(query: str, items: List[Dict], reference_date: date | None 
         "faculty_availability": faculty_availability,
         "answer": answer,
         "intent": "free_time" if wants_free else "schedule",
+        "match_mode": "union" if additive_course_scope else "intersection",
+        "query_plan": {
+            "intent": "free_time" if wants_free else "schedule",
+            "day_scope": days,
+            "combination": "union" if additive_course_scope else "intersection",
+            "filters": entities,
+        },
+        "conflicts": conflicts,
+        "conflict_count": len(conflicts),
         "recognized": recognized,
     }

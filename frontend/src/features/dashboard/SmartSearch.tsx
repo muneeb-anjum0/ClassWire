@@ -7,6 +7,7 @@ import {
   RefreshCw,
   Search,
   Sun,
+  Trash2,
   UserRound,
   X,
 } from 'lucide-react';
@@ -31,6 +32,7 @@ type Props = {
   data: TimetableData | null;
   userEmail?: string;
   onLogout: () => void;
+  onDeleteAccount?: () => Promise<void>;
   logoutConfirmArmed: boolean;
   theme: DashboardTheme;
   onThemeChange: (theme: DashboardTheme) => void;
@@ -47,6 +49,7 @@ export default function SmartSearch({
   data,
   userEmail,
   onLogout,
+  onDeleteAccount,
   logoutConfirmArmed,
   theme,
   onThemeChange,
@@ -54,6 +57,7 @@ export default function SmartSearch({
   const [accountOpen, setAccountOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(true);
   const [resultHidden, setResultHidden] = useState(false);
+  const [deleteArmed, setDeleteArmed] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const accountRef = useRef<HTMLDivElement>(null);
@@ -211,6 +215,21 @@ export default function SmartSearch({
           <LogOut aria-hidden="true" />
           {logoutConfirmArmed ? 'Click again to sign out' : 'Sign out'}
         </button>
+        {onDeleteAccount && <button
+          type="button"
+          role="menuitem"
+          className={deleteArmed ? 'is-danger' : ''}
+          onClick={() => {
+            if (!deleteArmed) {
+              setDeleteArmed(true);
+              return;
+            }
+            void onDeleteAccount();
+          }}
+        >
+          <Trash2 aria-hidden="true" />
+          {deleteArmed ? 'Confirm permanent deletion' : 'Delete account data'}
+        </button>}
       </div>}
     </div>
 

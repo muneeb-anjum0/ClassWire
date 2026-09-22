@@ -397,3 +397,23 @@ html[data-theme='dark'] .conversation-class__section {
 
   .tw-mobile-semester-tag { width: 104px; }
 }
+.tw-window-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  color: var(--text-secondary, #6b7280);
+  font-size: 0.8rem;
+}
+
+.tw-window-controls button {
+  border: 1px solid var(--border-color, #d9d9d9);
+  border-radius: 999px;
+  background: var(--surface, #fff);
+  color: inherit;
+  padding: 0.42rem 0.75rem;
+  cursor: pointer;
+}
+
+.tw-window-controls button:hover { background: var(--surface-muted, #f5f5f5); }

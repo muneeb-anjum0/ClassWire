@@ -131,6 +131,16 @@ a:focus-visible {
   letter-spacing: -0.025em;
 }
 
+.schedule-panel__conflicts {
+  margin: 0.75rem 0;
+  border-left: 3px solid #d97706;
+  border-radius: 0 0.5rem 0.5rem 0;
+  background: color-mix(in srgb, #f59e0b 9%, transparent);
+  color: var(--text-secondary);
+  padding: 0.65rem 0.8rem;
+  font-size: 0.82rem;
+}
+
 .schedule-panel__meta {
   display: flex;
   align-items: center;

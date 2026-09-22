@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { apiService } from '../services/api';
+import { BootstrapData } from '../types/api';
+import { deleteTimetableCache } from '../services/timetableCache';
 
 interface User {
   id: string;
@@ -11,6 +13,8 @@ interface AuthContextType {
   isAuthenticated: boolean;
   loginWithGmail: () => Promise<boolean>;
   logout: () => void;
+  deleteAccount: () => Promise<void>;
+  bootstrap: BootstrapData | null;
   loading: boolean;
 }
 
@@ -85,6 +89,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // background and wins if the cached identity is stale.
   const [user, setUser] = useState<User | null>(() => readCachedUser());
   const [loading, setLoading] = useState(true);
+  const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
   const authTimeoutRef = React.useRef<number | null>(null);
   const authPopupCheckRef = React.useRef<number | null>(null);
   const pendingGmailAuthRef = React.useRef<((success: boolean) => void) | null>(null);
@@ -117,9 +122,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const restoreSession = async () => {
       try {
         await apiService.initialize();
-        const response = await apiService.getSession();
-        setUser(response.user);
-        cacheUser(response.user);
+        try {
+          const response = await apiService.getBootstrap();
+          setBootstrap(response);
+          setUser(response.user);
+          cacheUser(response.user);
+        } catch {
+          // Supports a zero-downtime frontend rollout while older backend
+          // instances are still draining.
+          const response = await apiService.getSession();
+          setUser(response.user);
+          cacheUser(response.user);
+        }
       } catch {
         setUser(null);
         cacheUser(null);
@@ -151,9 +165,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       if (event.data.type === 'GMAIL_AUTH_SUCCESS') {
         try {
-          const response = await apiService.getSession();
-          setUser(response.user);
-          cacheUser(response.user);
+          try {
+            const response = await apiService.getBootstrap();
+            setBootstrap(response);
+            setUser(response.user);
+            cacheUser(response.user);
+          } catch {
+            const response = await apiService.getSession();
+            setUser(response.user);
+            cacheUser(response.user);
+          }
           finishPendingGmailAuth(true);
         } catch {
           setUser(null);
@@ -233,11 +254,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     void apiService.logout().catch(() => undefined);
   };
 
+  const deleteAccount = async () => {
+    const email = user?.email;
+    await apiService.deleteAccount();
+    await deleteTimetableCache(email);
+    setBootstrap(null);
+    setUser(null);
+    cacheUser(null);
+    try {
+      window.localStorage.setItem(SESSION_SIGNED_OUT_KEY, 'true');
+    } catch {
+      // Server-side deletion has already completed.
+    }
+  };
+
   const value: AuthContextType = {
     user,
     isAuthenticated: !!user,
     loginWithGmail,
     logout,
+    deleteAccount,
+    bootstrap,
     loading
   };
 

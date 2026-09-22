@@ -11,18 +11,25 @@ import { useDashboardStatusToast } from './useDashboardStatusToast';
 import { useDashboardEmailActions } from './useDashboardEmailActions';
 import { useDashboardUiState } from './useDashboardUiState';
 import {
+  deleteTimetableCache,
+  readTimetableCache,
+  writeTimetableCache,
+} from '../../services/timetableCache';
+import {
   formatLastUpdate,
   getDetectedSemesters,
   getFilteredTimetableItems,
 } from './utils';
 
 export const useDashboardController = ({
+  bootstrap: authBootstrap,
+  deleteAccount,
   isAuthenticated,
   loading,
   logout,
   user,
 }: DashboardAuthState) => {
-  const SEARCH_PARSER_VERSION = 8;
+  const SEARCH_PARSER_VERSION = 10;
   const ui = useDashboardUiState(logout);
   const statusToast = useDashboardStatusToast();
   const showStatus = statusToast.showStatus;
@@ -37,42 +44,24 @@ export const useDashboardController = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isSmartResult, setIsSmartResult] = useState(false);
   const searchStorageKey = `classwire:v2:last-search:${user?.email || 'anonymous'}`;
-  const timetableStorageKey = `classwire:v2:last-timetable:${user?.email || 'anonymous'}`;
   const hydratedUser = useRef<string | null>(null);
   const bootstrappedUser = useRef<string | null>(null);
   const dataRequestSequence = useRef(0);
   const searchInFlight = useRef(false);
 
-  const readCachedTimetable = (): TimetableData | null => {
-    try {
-      const raw = window.localStorage.getItem(timetableStorageKey);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw) as TimetableData;
-      if (!parsed || !Array.isArray(parsed.items)) return null;
-      if (parsed.search && parsed.search.parser_version !== SEARCH_PARSER_VERSION) return null;
-      return parsed;
-    } catch {
-      return null;
-    }
+  const readCachedTimetable = async (): Promise<TimetableData | null> => {
+    const parsed = await readTimetableCache(user?.email);
+    if (parsed?.search && parsed.search.parser_version !== SEARCH_PARSER_VERSION) return null;
+    return parsed;
   };
 
   const cacheTimetableLocally = (data: TimetableData) => {
-    try {
-      window.localStorage.setItem(timetableStorageKey, JSON.stringify(data));
-    } catch (error) {
-      console.warn('Could not cache timetable locally:', error);
-    }
+    void writeTimetableCache(user?.email, data);
   };
 
-  const readSavedSearch = (): TimetableData | null => {
-    try {
-      const saved = window.localStorage.getItem(timetableStorageKey);
-      if (!saved) return null;
-      const parsed = JSON.parse(saved) as TimetableData;
-      return parsed?.search?.query && parsed.search.parser_version === SEARCH_PARSER_VERSION ? parsed : null;
-    } catch {
-      return null;
-    }
+  const readSavedSearch = async (): Promise<TimetableData | null> => {
+    const parsed = await readTimetableCache(user?.email);
+    return parsed?.search?.query && parsed.search.parser_version === SEARCH_PARSER_VERSION ? parsed : null;
   };
 
   const saveSearchLocally = (data: TimetableData) => {
@@ -120,6 +109,15 @@ export const useDashboardController = ({
     } catch (error) {
       setConfig((current) => current ? { ...current, timetable_day: previousDay } : current);
       showStatus('error', error instanceof Error ? error.message : 'Failed to save timetable day');
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    try {
+      showStatus('loading', 'Deleting your ClassWire data...');
+      await deleteAccount();
+    } catch (error) {
+      showStatus('error', error instanceof Error ? error.message : 'Could not delete account data');
     }
   };
 
@@ -208,7 +206,7 @@ export const useDashboardController = ({
             return;
           }
         }
-        const locallySavedSearch = readSavedSearch();
+        const locallySavedSearch = await readSavedSearch();
         const restoredData = response.data.search ? response.data : (locallySavedSearch || response.data);
         const restoredSearchQuery = restoredData.search?.query?.trim() || '';
         setIsSmartResult(Boolean(restoredData.search));
@@ -290,7 +288,7 @@ export const useDashboardController = ({
     setSearchQuery('');
     setTimetableData(null);
     setIsSmartResult(false);
-    window.localStorage.removeItem(timetableStorageKey);
+    void deleteTimetableCache(user?.email);
     statusToast.setStatus('idle');
     statusToast.setMessage('');
   };
@@ -450,12 +448,12 @@ export const useDashboardController = ({
     }
     hydratedUser.current = userKey;
 
-    const cached = readCachedTimetable();
-    if (cached) {
+    void readCachedTimetable().then((cached) => {
+      if (!cached || hydratedUser.current !== userKey) return;
       setTimetableData(cached);
       setIsSmartResult(Boolean(cached.search));
       setSearchQuery(cached.search?.query?.trim() || '');
-    }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, user?.email]);
 
@@ -466,18 +464,26 @@ export const useDashboardController = ({
     }
     bootstrappedUser.current = userKey;
 
-    const cached = readCachedTimetable();
-
     const bootstrap = async () => {
-      await Promise.allSettled([
-        loadConfig(),
-        loadLatestTimetable(true, Boolean(cached)),
-      ]);
+      const cached = await readCachedTimetable();
+      if (authBootstrap?.user.email.toLowerCase() === userKey) {
+        setConfig(authBootstrap.config);
+        if (authBootstrap.timetable) {
+          const serverData = authBootstrap.timetable;
+          const locallySavedSearch = await readSavedSearch();
+          const restoredData = serverData.search ? serverData : (locallySavedSearch || serverData);
+          setIsSmartResult(Boolean(restoredData.search));
+          setSearchQuery(restoredData.search?.query?.trim() || '');
+          applySuccessfulTimetable(restoredData, authBootstrap.last_update || authBootstrap.timestamp, undefined, true);
+        }
+        return;
+      }
+      await Promise.allSettled([loadConfig(), loadLatestTimetable(true, Boolean(cached))]);
     };
 
     bootstrap();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, loading, user?.email]);
+  }, [authBootstrap, isAuthenticated, loading, user?.email]);
 
   useEffect(() => {
     if (config && timetableData && noSemestersConfigured && !isScraperRunning && !operationInProgress) {
@@ -537,5 +543,6 @@ export const useDashboardController = ({
     timetableData,
     timetableDay,
     userEmail: user?.email,
+    deleteAccount: handleDeleteAccount,
   };
 };

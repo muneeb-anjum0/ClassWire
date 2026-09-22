@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { TimetableItem } from '../../types/api';
 import EmptyTimetableState from './EmptyTimetableState';
 import TimetableDesktopTable from './TimetableDesktopTable';
@@ -11,12 +11,16 @@ interface TimetableTableProps {
 }
 
 const EMPTY_ITEMS: TimetableItem[] = [];
+const WINDOW_SIZE = 60;
 
 const TimetableTable: React.FC<TimetableTableProps> = ({ items }) => {
   const safeItems = items || EMPTY_ITEMS;
+  const [visibleCount, setVisibleCount] = useState(WINDOW_SIZE);
+  useEffect(() => setVisibleCount(WINDOW_SIZE), [safeItems]);
+  const visibleItems = useMemo(() => safeItems.slice(0, visibleCount), [safeItems, visibleCount]);
   const { grouped, sortedSemesters } = useMemo(
-    () => groupAndSortData(safeItems),
-    [safeItems],
+    () => groupAndSortData(visibleItems),
+    [visibleItems],
   );
   const showDay = useMemo(
     () => safeItems.some((item) => Boolean(item.schedule_day)),
@@ -31,6 +35,12 @@ const TimetableTable: React.FC<TimetableTableProps> = ({ items }) => {
         <div className="tw-stage">
           <TimetableMobileSection grouped={grouped} sortedSemesters={sortedSemesters} showDay={showDay} />
           <TimetableDesktopTable grouped={grouped} sortedSemesters={sortedSemesters} showDay={showDay} />
+          {visibleCount < safeItems.length && <div className="tw-window-controls">
+            <span>Showing {visibleItems.length} of {safeItems.length} classes</span>
+            <button type="button" onClick={() => setVisibleCount((count) => Math.min(count + WINDOW_SIZE, safeItems.length))}>
+              Show {Math.min(WINDOW_SIZE, safeItems.length - visibleCount)} more
+            </button>
+          </div>}
         </div>
       )}
     </>

@@ -6,12 +6,14 @@ import os
 import re
 import threading
 import uuid
+import time
 
 from flask import Blueprint, current_app, jsonify, request
 
 from core.authentication import authenticated_user
 from core.rate_limit import TokenBucketRateLimiter
 from core.ttl_cache import TTLCache
+from core.telemetry import increment, observe
 
 from .user_data_support import (
     build_manual_email_message,
@@ -52,6 +54,23 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
     def get_user_from_request():
         return authenticated_user(get_store(), logger)
 
+    def config_payload(user_settings):
+        settings = get_settings()
+        return {
+            "gmail_query": user_settings.get("gmail_query_base", settings.gmail_query_base),
+            "semester_filter": user_settings.get("allowed_semesters", settings.allowed_semesters),
+            "filter_mode": user_settings.get("filter_mode", "semesters"),
+            "subject_filters": user_settings.get("subject_filters", []),
+            "faculty_filters": user_settings.get("faculty_filters", []),
+            "timetable_day": user_settings.get("timetable_day", "Auto"),
+            "personal_email": user_settings.get("personal_email", ""),
+            "daily_email_enabled": user_settings.get("daily_email_enabled", bool(user_settings.get("personal_email"))),
+            "daily_email_last_result": user_settings.get("daily_email_last_result"),
+            "schedule_time": f"{settings.check_hour_local:02d}:{settings.check_minute_local:02d}",
+            "timezone": user_settings.get("timezone", settings.tz),
+            "max_results": getattr(settings, "max_results_per_semester", 50),
+        }
+
     @blueprint.route("/api/config", methods=["GET"])
     def get_config():
         try:
@@ -60,27 +79,8 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
                 return error_response, status_code
 
             store = get_store()
-            settings = get_settings()
             user_settings = store.get_user_settings(user["id"])
-            return jsonify(
-                {
-                    "gmail_query": user_settings.get("gmail_query_base", settings.gmail_query_base),
-                    "semester_filter": user_settings.get("allowed_semesters", settings.allowed_semesters),
-                    "filter_mode": user_settings.get("filter_mode", "semesters"),
-                    "subject_filters": user_settings.get("subject_filters", []),
-                    "faculty_filters": user_settings.get("faculty_filters", []),
-                    "timetable_day": user_settings.get("timetable_day", "Auto"),
-                    "personal_email": user_settings.get("personal_email", ""),
-                    "daily_email_enabled": user_settings.get(
-                        "daily_email_enabled",
-                        bool(user_settings.get("personal_email")),
-                    ),
-                    "daily_email_last_result": user_settings.get("daily_email_last_result"),
-                    "schedule_time": f"{settings.check_hour_local:02d}:{settings.check_minute_local:02d}",
-                    "timezone": user_settings.get("timezone", settings.tz),
-                    "max_results": getattr(settings, "max_results_per_semester", 50),
-                }
-            )
+            return jsonify(config_payload(user_settings))
         except Exception as error:
             logger.error("Error loading config: %s", error)
             return jsonify({"error": str(error)}), 500
@@ -343,8 +343,10 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
                 return jsonify({"success": False, "error": "Please wait before refreshing Gmail again"}), 429
             cached_source = search_source_cache.get(user["id"])
             source_was_stale = False
+            source_tier = "miss"
             if has_searchable_items(cached_source) and not force_source_refresh:
                 source = cached_source
+                source_tier = "memory"
             else:
                 # Collapse simultaneous searches for the same user into one
                 # Gmail scrape. Waiters reuse the source produced by the first.
@@ -352,21 +354,18 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
                     cached_source = search_source_cache.get(user["id"])
                     if has_searchable_items(cached_source) and not force_source_refresh:
                         source = cached_source
+                        source_tier = "memory_after_wait"
                     else:
                         persisted_source = None
-                        stale_source = None
                         if not force_source_refresh:
-                            persisted_source = store.get_search_source_cache(
-                                user["id"],
-                                max_age_seconds=1800,
-                            )
-                            if not isinstance(persisted_source, dict):
-                                stale_source = store.get_search_source_cache(
-                                    user["id"],
-                                    max_age_seconds=None,
-                                )
+                            persisted_source = store.get_search_source_cache(user["id"], max_age_seconds=1800)
+                        stale_source = persisted_source or store.get_search_source_cache(
+                            user["id"],
+                            max_age_seconds=None,
+                        )
                         if has_searchable_items(persisted_source):
                             source = persisted_source
+                            source_tier = "firestore"
                             search_source_cache.set(user["id"], source)
                         else:
                             search_settings = dict(store.get_user_settings(user["id"]))
@@ -375,6 +374,7 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
                                 "subject_filters": [],
                                 "timetable_day": "Entire Week",
                                 "_save_cache": False,
+                                "_previous_source": stale_source,
                             })
                             scrape_result = get_run_once()(
                                 user_email=user["email"], user_id=user["id"],
@@ -384,6 +384,7 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
                                 if has_searchable_items(stale_source):
                                     source = stale_source
                                     source_was_stale = True
+                                    source_tier = "stale"
                                     search_source_cache.set(user["id"], source)
                                     logger.warning("Using stale timetable source for user %s after Gmail refresh failed", user["id"])
                                 else:
@@ -393,6 +394,7 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
                                     return jsonify({"success": False, "error": detail}), 400
                             else:
                                 source = scrape_result.get("data") or {}
+                                source_tier = "gmail"
                                 search_source_cache.set(user["id"], source)
                                 if not store.save_search_source_cache(user["id"], source):
                                     logger.warning("Could not persist search source for user %s", user["id"])
@@ -415,7 +417,11 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
                 }), 409
 
             from scraper.smart_search import search_timetable
+            search_started = time.perf_counter()
             search_result = search_timetable(query, source_items)
+            observe("search.parse_and_match", (time.perf_counter() - search_started) * 1000)
+            increment(f"search.source.{source_tier}")
+            increment("search.matched_rows", len(search_result.get("items") or []))
             search_result["query"] = query
             search_result["saved_at"] = current_timestamp()
             search_result["source_stale"] = source_was_stale
@@ -456,6 +462,56 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
             logger.error("Smart timetable search failed: %s", error, exc_info=True)
             return jsonify({"success": False, "error": str(error), "timestamp": current_timestamp()}), 500
 
+    @blueprint.route("/api/bootstrap", methods=["GET"])
+    def bootstrap():
+        """Return identity, settings and last result with one browser request."""
+        try:
+            user, error_response, status_code = get_user_from_request()
+            if error_response:
+                return error_response, status_code
+            state = get_store().get_bootstrap_data(user["id"])
+            return jsonify({
+                "success": True,
+                "user": {"id": user["id"], "email": user["email"]},
+                "config": config_payload(state["settings"]),
+                "timetable": state.get("timetable"),
+                "last_update": state.get("last_update"),
+                "timestamp": current_timestamp(),
+            })
+        except Exception as error:
+            logger.error("Bootstrap failed: %s", error, exc_info=True)
+            return jsonify({"success": False, "error": str(error)}), 500
+
+    @blueprint.route("/api/account", methods=["DELETE"])
+    def delete_account():
+        """Revoke Gmail access and remove all retained ClassWire data."""
+        try:
+            user, error_response, status_code = get_user_from_request()
+            if error_response:
+                return error_response, status_code
+            store = get_store()
+            token_data = store.get_user_tokens(user["id"]) or {}
+            token = token_data.get("refresh_token") or token_data.get("token")
+            if token:
+                import requests
+
+                try:
+                    requests.post(
+                        "https://oauth2.googleapis.com/revoke",
+                        params={"token": token},
+                        timeout=5,
+                    )
+                except requests.RequestException:
+                    logger.warning("Google token revocation failed during account deletion", exc_info=True)
+            store.delete_user_data(user["id"])
+            search_source_cache.pop(user["id"])
+            from flask import session
+            session.clear()
+            return jsonify({"success": True, "message": "Account data deleted"})
+        except Exception as error:
+            logger.error("Account deletion failed: %s", error, exc_info=True)
+            return jsonify({"success": False, "error": "Could not delete account data"}), 500
+
     @blueprint.route("/api/cache/clear", methods=["POST"])
     def clear_cache():
         try:
@@ -487,6 +543,16 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
             from utils.daily_email import send_daily_timetable_emails
 
             job_id = uuid.uuid4().hex
+
+            # Scheduled callers can wait for completion, which avoids tying
+            # correctness to the lifetime of an in-process daemon thread.
+            if request.args.get("wait") == "1":
+                result = send_daily_timetable_emails()
+                return jsonify({
+                    **result,
+                    "job_id": job_id,
+                    "timestamp": current_timestamp(),
+                }), 200 if result.get("success") else 500
 
             def run_daily_email_job():
                 try:

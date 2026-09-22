@@ -46,7 +46,8 @@ class TestHealthEndpoint:
         data = json.loads(response.data)
         assert data['status'] == 'healthy'
         assert 'timestamp' in data
-        assert 'firestore_connected' in data
+        assert data['config_loaded'] is True
+        assert 'firestore_connected' not in data
 
     def test_large_json_responses_are_gzipped_when_supported(self):
         with app.test_request_context('/', headers={'Accept-Encoding': 'gzip, deflate'}):
@@ -57,6 +58,43 @@ class TestHealthEndpoint:
         assert compressed.headers['Content-Encoding'] == 'gzip'
         assert len(compressed.get_data()) < original_size
         assert json.loads(gzip.decompress(compressed.get_data()))['payload'] == 'x' * 5000
+
+    def test_request_includes_trace_and_server_timing_headers(self, client):
+        response = client.get('/api/health')
+        assert response.headers['X-Request-ID']
+        assert response.headers['Server-Timing'].startswith('app;dur=')
+
+
+class TestBootstrapEndpoint:
+    def test_bootstrap_combines_user_config_and_cached_timetable(self, client, mock_store, mock_user):
+        mock_store.get_or_create_user.return_value = mock_user
+        mock_store.get_bootstrap_data.return_value = {
+            'settings': {'allowed_semesters': ['BS(SE)-7A']},
+            'timetable': {'items': [], 'for_day': 'Entire Week'},
+            'last_update': '2026-09-22T10:00:00Z',
+        }
+        response = client.get('/api/bootstrap', headers={'X-User-Email': mock_user['email']})
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['user']['email'] == mock_user['email']
+        assert data['config']['semester_filter'] == ['BS(SE)-7A']
+        assert data['timetable']['for_day'] == 'Entire Week'
+
+    def test_metrics_require_automation_secret(self, client):
+        response = client.get('/api/metrics')
+        assert response.status_code == 401
+
+
+class TestAccountDeletion:
+    @patch('requests.post')
+    def test_deletion_revokes_google_token_and_removes_all_user_data(self, revoke, client, mock_store, mock_user):
+        mock_store.get_or_create_user.return_value = mock_user
+        mock_store.get_user_tokens.return_value = {'refresh_token': 'refresh-token'}
+        mock_store.delete_user_data.return_value = True
+        response = client.delete('/api/account', headers={'X-User-Email': mock_user['email']})
+        assert response.status_code == 200
+        revoke.assert_called_once()
+        mock_store.delete_user_data.assert_called_once_with(mock_user['id'])
 
 
 class TestAuthentication:

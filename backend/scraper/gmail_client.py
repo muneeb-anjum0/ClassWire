@@ -4,6 +4,8 @@ Gmail API client + helpers.
 import base64
 import logging
 import os
+import random
+import time
 from typing import Dict, Iterable, List, Optional
 
 import httplib2
@@ -19,6 +21,21 @@ SCOPES = [
 ]
 
 LOGGER = logging.getLogger(__name__)
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+
+
+def _execute_with_retry(request, *, attempts: int = 3):
+    """Execute an API request with bounded exponential backoff and jitter."""
+    for attempt in range(attempts):
+        try:
+            return request.execute()
+        except HttpError as error:
+            status = getattr(getattr(error, "resp", None), "status", None)
+            if status not in RETRYABLE_STATUS_CODES or attempt == attempts - 1:
+                raise
+            delay = min(2.0, 0.2 * (2 ** attempt)) + random.uniform(0, 0.1)
+            LOGGER.warning("Retrying Gmail request after status %s in %.2fs", status, delay)
+            time.sleep(delay)
 
 def get_credentials(token_path: str = "token.json", client_secret_path: str = "credentials/client_secret.json") -> Credentials:
     creds = None
@@ -48,7 +65,7 @@ def build_service(creds: Credentials):
 
 def list_messages(service, user_id: str, query: str, max_results: int = 10) -> List[Dict]:
     try:
-        resp = service.users().messages().list(userId=user_id, q=query, maxResults=max_results).execute()
+        resp = _execute_with_retry(service.users().messages().list(userId=user_id, q=query, maxResults=max_results))
         return resp.get("messages", []) or []
     except HttpError as e:
         LOGGER.error("Gmail list error: %s", e)
@@ -92,7 +109,7 @@ def list_latest_messages_batch(service, user_id: str, queries: Dict[str, str]) -
     return responses
 
 def get_message(service, user_id: str, msg_id: str) -> Dict:
-    return service.users().messages().get(userId=user_id, id=msg_id, format="full").execute()
+    return _execute_with_retry(service.users().messages().get(userId=user_id, id=msg_id, format="full"))
 
 
 def get_messages_batch(service, user_id: str, message_ids: Iterable[str]) -> Dict[str, Dict]:

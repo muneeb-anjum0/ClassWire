@@ -17,6 +17,10 @@ ClassWire is an independent student utility and is not an official SZABIST servi
 - Persistent restoration of the latest timetable or search result
 - Optional daily timetable delivery by email
 - In-memory and compressed Firestore caching to reduce API calls, latency, and storage costs
+- Incremental weekday refreshes that only download and parse changed Gmail messages
+- Explicit natural-language query plans and timetable conflict detection
+- IndexedDB browser persistence and bounded large-result rendering
+- Dependency-free structured request telemetry with latency and cache metrics
 - Responsive light and dark interfaces for desktop and mobile
 
 ## SZABIST timetable search
@@ -47,11 +51,57 @@ The React client communicates exclusively with the Flask API. The backend owns a
 
 Timetable retrieval follows this path:
 
+```mermaid
+flowchart LR
+  Browser[React + IndexedDB] -->|one bootstrap request| API[Flask API]
+  API --> Memory[TTL caches]
+  Memory --> Firestore[(Firestore)]
+  API -->|changed weekdays only| Gmail[Gmail API]
+  Gmail --> Parser[Versioned parser]
+  Parser --> Source[Normalized weekly source]
+  Source --> Search[Query planner + conflict detector]
+  Search --> Browser
+```
+
 1. The user signs in through Google OAuth with Gmail read-only permission.
 2. The backend locates the newest timetable email for each weekday using batched Gmail requests.
 3. Structured table parsing extracts canonical timetable rows; guarded heuristics handle nonstandard layouts.
-4. Parsed source data is cached in memory and as compressed Firestore payloads.
-5. Natural-language queries run against the cached weekly source without repeatedly accessing Gmail.
+4. Message IDs are compared per weekday; unchanged days reuse their last parsed rows.
+5. Parsed source data is cached in memory and as compressed Firestore payloads.
+6. The authenticated bootstrap endpoint returns identity, settings, and the last result in one request.
+7. Natural-language queries run against the cached weekly source without repeatedly accessing Gmail.
+
+### Firestore schema and retention
+
+| Collection | Document ID | Contents | Read/write strategy |
+| --- | --- | --- | --- |
+| `users` | User ID | Account identity and timestamps | Read during session verification; one write on first sign-in |
+| `gmail_tokens` | User ID | Encrypted OAuth credentials | Five-minute memory cache; updated only after OAuth or token refresh |
+| `user_settings` | User ID | Filters, timezone, and delivery preferences | Five-minute memory cache; write only when preferences change |
+| `timetable_cache` | User ID | Gzip-compressed latest result | Content-hash write deduplication and 60-second memory cache |
+| `timetable_source_cache` | User ID | Gzip-compressed weekly source | Thirty-minute memory cache and content-hash write deduplication |
+
+All lookups use document IDs, so no composite Firestore index is required for interactive requests. The optional daily-email scan uses a bounded collection scan; stale timetable documents carry `expires_at` timestamps and are also cleaned after seven days. Configure Firestore TTL on `expires_at` for automatic deletion. Account deletion revokes the Google token on a best-effort basis and removes all five user documents immediately.
+
+### Observability and parser quality
+
+Every API response includes `X-Request-ID` and `Server-Timing`. The backend logs structured JSON request events without query text or timetable content. A protected `GET /api/metrics` endpoint (header `X-Automation-Secret`) reports in-process counters plus average and p95 latency without a paid monitoring service.
+
+Run the labeled parser benchmark with:
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python backend/scripts/benchmark_parser.py
+```
+
+The report includes row precision, row recall, field accuracy, rejection counts, and the parser version. Add anonymized cases to `backend/tests/fixtures/parser_benchmark.json` whenever a new email layout is encountered.
+
+Run the local concurrency smoke test with:
+
+```bash
+backend/.venv/bin/python backend/scripts/load_test.py --requests 200 --concurrency 20
+```
+
+To measure the authenticated bootstrap path, pass `--url http://localhost:5001/api/bootstrap` and an exported development session cookie through `--cookie`. The tool reports throughput, average latency, p95 latency, failures, and maximum latency; it does not call a paid monitoring or billing service.
 
 ## Prerequisites
 
@@ -132,6 +182,8 @@ Use [`backend/.env.example`](backend/.env.example) and [`frontend/.env.example`]
 | `VITE_API_URL` | Backend URL used by the React client |
 
 Generate long, independent values for `FLASK_SECRET_KEY`, `TOKEN_ENCRYPTION_KEY`, and `AUTOMATION_SECRET` in production.
+
+Daily delivery can run without a paid worker: the checked-in GitHub Actions schedule calls the synchronous automation endpoint and waits for a definitive result. Configure repository secrets `CLASSWIRE_BACKEND_URL` and `CLASSWIRE_AUTOMATION_SECRET`; the latter must match the backend's `AUTOMATION_SECRET`.
 
 ## Running locally
 
