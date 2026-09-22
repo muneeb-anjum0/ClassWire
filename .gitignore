@@ -6,10 +6,6 @@
 /.pnp
 .pnp.js
 
-# testing
-/coverage
-/.pytest_cache
-**/.pytest_cache
 **/__pycache__
 *.py[cod]
 .venv/
@@ -31,7 +27,6 @@ token.json
 data/cache
 .env.local
 .env.development.local
-.env.test.local
 .env.production.local
 
 npm-debug.log*

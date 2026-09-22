@@ -115,7 +115,7 @@ def _normalize_person_name(text: str) -> str:
     if not cleaned:
         return ""
 
-    tokens = [token for token in cleaned.split() if token not in {"-", "–", "—", "/", "&", "."}]
+    tokens = [token for token in cleaned.split() if token not in {"-", "–", "\u2014", "/", "&", "."}]
     return _collapse_whitespace(" ".join(tokens))
 
 def _clean_course_title(text: str, course_code: str = "") -> str:
@@ -249,7 +249,7 @@ def _extract_faculty_and_course(text: str) -> Tuple[str, str]:
     """
     cleaned = _collapse_whitespace(text).strip(" -/")
     # Clean trailing dashes and hyphens from faculty names
-    cleaned = re.sub(r'\s+[-–—]+\s*$', '', cleaned)
+    cleaned = re.sub(r'\s+[-–\u2014]+\s*$', '', cleaned)
     if not cleaned:
         return "", ""
 
@@ -265,7 +265,7 @@ def _extract_faculty_and_course(text: str) -> Tuple[str, str]:
         token = tokens[faculty_suffix_start - 1].strip().strip(',;:')
         upper = token.upper()
 
-        if not token or token in {'-', '–', '—', '/', '&', '.'}:
+        if not token or token in {'-', '–', '\u2014', '/', '&', '.'}:
             faculty_suffix_start -= 1
             continue
 
@@ -280,7 +280,7 @@ def _extract_faculty_and_course(text: str) -> Tuple[str, str]:
         break
 
     if saw_name_token:
-        suffix_tokens = [token for token in tokens[faculty_suffix_start:] if token not in {'-', '–', '—', '/', '&', '.'}]
+        suffix_tokens = [token for token in tokens[faculty_suffix_start:] if token not in {'-', '–', '\u2014', '/', '&', '.'}]
         prefix_offset = next((index for index, token in enumerate(suffix_tokens) if token.upper() in NAME_PREFIXES), -1)
         if prefix_offset >= 0:
             suffix_tokens = suffix_tokens[prefix_offset:]
@@ -393,12 +393,12 @@ def _extract_faculty_and_course(text: str) -> Tuple[str, str]:
     suffix_start = len(tokens)
     while suffix_start > 0:
         token = tokens[suffix_start - 1]
-        if token in {"-", "–", "—", "/", "&", "."} or _is_name_token(token):
+        if token in {"-", "–", "\u2014", "/", "&", "."} or _is_name_token(token):
             suffix_start -= 1
             continue
         break
 
-    suffix_tokens = [token for token in tokens[suffix_start:] if token not in {"-", "–", "—", "/", "&", "."}]
+    suffix_tokens = [token for token in tokens[suffix_start:] if token not in {"-", "–", "\u2014", "/", "&", "."}]
     if suffix_tokens and len(suffix_tokens) <= 5:
         if len(suffix_tokens) > 1 or suffix_tokens[0].upper() not in COURSE_KEYWORDS:
             faculty = _collapse_whitespace(" ".join(suffix_tokens))
@@ -558,7 +558,7 @@ def _clean_faculty_name(faculty: str) -> str:
     if not faculty:
         return ""
     cleaned = _normalize_person_name(faculty)
-    cleaned = re.sub(r"\s*[-–—,.;]+\s*$", "", cleaned).strip()
+    cleaned = re.sub(r"\s*[-–\u2014,.;]+\s*$", "", cleaned).strip()
     return cleaned
 
 def _clean_room_name(room: str, faculty: str = "") -> str:
