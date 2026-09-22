@@ -931,7 +931,7 @@ def search_timetable(query: str, items: List[Dict], reference_date: date | None 
                 count = type_counts.get(class_kind, 0)
                 if count:
                     type_parts.append(f"{count} {type_label} {'class' if count == 1 else 'classes'}")
-            breakdown = f" — {', '.join(type_parts)}" if len(type_parts) > 1 else ""
+            breakdown = f": {', '.join(type_parts)}" if len(type_parts) > 1 else ""
             answer = (
                 f"Found {len(matched)} scheduled {'class' if len(matched) == 1 else 'classes'} "
                 f"across {course_count} {credit_label}{qualifier} "

@@ -144,7 +144,7 @@ const LoginScreen: React.FC = () => {
 
         <footer className="login-footer">
           <span>Read-only Gmail access for timetable parsing.</span>
-          <span className="login-footer__disclaimer">Independent student utility—not an official SZABIST service.</span>
+          <span className="login-footer__disclaimer">Independent student utility, not an official SZABIST service.</span>
           <div className="legal-links">
             <a href="/privacy">Privacy</a>
             <span aria-hidden="true">/</span>

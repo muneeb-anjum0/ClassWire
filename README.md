@@ -1,9 +1,9 @@
-# ClassWire — SZABIST Timetable Search
+# ClassWire: SZABIST Timetable Search
 
 > A multi-user, Gmail-integrated SZABIST timetable platform that extracts inconsistent schedule data, normalizes it, stores it cost-efficiently, and supports natural-language class and faculty-availability queries.
 
 [![Live application](https://img.shields.io/badge/live-class--wire.vercel.app-111111?style=flat-square)](https://class-wire.vercel.app/)
-[![Security and quality](https://img.shields.io/github/actions/workflow/status/muneeb-anjum0/ClassWire/security.yml?branch=main&style=flat-square&label=quality)](https://github.com/muneeb-anjum0/ClassWire/actions/workflows/security.yml)
+[![Security and build](https://img.shields.io/github/actions/workflow/status/muneeb-anjum0/ClassWire/security.yml?branch=main&style=flat-square&label=build)](https://github.com/muneeb-anjum0/ClassWire/actions/workflows/security.yml)
 [![React](https://img.shields.io/badge/React-19-149eca?style=flat-square)](frontend/)
 [![Python](https://img.shields.io/badge/Python-Flask-3776ab?style=flat-square)](backend/)
 
@@ -17,7 +17,7 @@ ClassWire turns SZABIST Islamabad timetable emails into structured schedules tha
 - `I am from BSSE7A, but I also want Software Construction and Software Quality Engineering`
 - `Show the latest available timetable for the entire week`
 
-The result is a normalized timetable, an availability answer, or a custom cross-section schedule—with conflicting classes identified automatically.
+The result is a normalized timetable, an availability answer, or a custom cross-section schedule, with conflicting classes identified automatically.
 
 ClassWire is an independent student project and is not an official SZABIST service.
 
@@ -46,7 +46,6 @@ ClassWire is an independent student project and is not an official SZABIST servi
 - [Security and privacy engineering](#security-and-privacy-engineering)
 - [Reliability and background work](#reliability-and-background-work)
 - [Observability without paid monitoring](#observability-without-paid-monitoring)
-- [Verification strategy](#verification-strategy)
 - [Technology choices](#technology-choices)
 - [Current boundaries](#current-boundaries)
 
@@ -63,13 +62,9 @@ The project began as a timetable scraper and evolved into a complete schedule-in
 | Gmail refresh | Unchanged weekdays are reused; only changed timetable emails are downloaded and parsed |
 | Browser persistence | Large timetable results use IndexedDB through one reused connection, with synchronous storage retained only as a compatibility fallback |
 | Large result rendering | Initial DOM work is bounded to **60 schedule rows** and progressively expanded |
-| Parser benchmark | **100% row precision, row recall, and field accuracy** on the current checked-in labeled corpus |
-| Search benchmark | A 40-query pass over **1,200 synthetic rows averaged 10.24 ms/query**; a repeated-result cache lookup averaged **0.001 ms** locally |
-| Automated verification | **183 backend tests** and **21 frontend tests** passing at the time of this optimization release |
-| Local health load test | **100/100 successful requests**, approximately **718 requests/second**, **25.5 ms average**, and **38.9 ms p95** at concurrency 20 |
 | Production payload | Initial JavaScript reduced from **300.9 kB / 96.7 kB gzip** to **203.9 kB / 65.0 kB gzip**; authenticated CSS is **27.6 kB / 6.4 kB gzip** and route styles load on demand |
 
-The search, cache, import, build, and load figures were measured locally. They are repeatable engineering baselines, not claims about public-network latency, Google APIs, Firestore, or Render cold starts.
+The import and build figures were measured locally. They are engineering baselines, not claims about public-network latency, Google APIs, Firestore, or Render cold starts.
 
 ### Optimization ledger
 
@@ -103,9 +98,8 @@ This table condenses the major changes into the problem each one addressed and t
 | Plain-text and malformed emails were unsupported | Added guarded row-block fallback parsing | Non-table bulletins can still produce normalized classes |
 | Headers, addresses, and footers appeared as phantom classes | Enforced course, section, and time invariants | Noise is rejected before persistence and search |
 | Duplicate timetable rows inflated counts | Added stable multi-field row identities | Exact duplicate classes collapse into one result |
-| Parser quality was anecdotal | Added versioned diagnostics and a labeled benchmark | Precision, recall, field accuracy, and rejection reasons are measurable |
 | One-credit theory, labs, and FYP entries were conflated | Interpreted both components of `(theory, practical)` credits | `(1,0)`, `(0,1)`, and `(0,3)` produce different class semantics |
-| Natural-language matching was difficult to debug | Returned an explicit query plan with recognized entities and combination mode | Search decisions are inspectable and testable |
+| Natural-language matching was difficult to debug | Returned an explicit query plan with recognized entities and combination mode | Search decisions are inspectable |
 | Section plus extra-course questions behaved like strict filters | Added additive-language detection and union execution | Custom cross-section schedules match real registration planning |
 | Custom schedules could contain hidden collisions | Added interval-based conflict detection | Overlapping classes are surfaced with exact courses, sections, and overlap time |
 | Multi-faculty questions could collapse to one person | Preserved canonical matches for every requested faculty member | Availability is calculated and displayed separately for each person |
@@ -125,7 +119,7 @@ This table condenses the major changes into the problem each one addressed and t
 | The initial frontend shipped one large application bundle | Split login, legal, and authenticated dashboard routes and removed Axios/Tailwind runtime weight | Initial JavaScript gzip size fell by about 33%, with route code loaded only when needed |
 | The API client depended on a general-purpose HTTP library | Replaced it with a typed native Fetch client preserving credentials, timeouts, errors, and wake feedback | Smaller dependency graph and browser bundle with the same API contract |
 | Global CSS contained unused animations and utility rules | Removed dead effects and retained only active touch and reduced-motion behavior | Less CSS parsing and a smaller stylesheet without changing the interface |
-| Changes could reach production without complete verification | Protected `main` with backend, frontend, build, audit, and repository-guard checks | Deployments originate from reviewed, passing commits |
+| Changes could reach production without automated safeguards | Protected `main` with production builds, dependency audits, and repository-guard checks | Deployments originate from reviewed commits that pass security and build validation |
 
 ---
 
@@ -233,27 +227,13 @@ Every parsing pass records privacy-safe counters:
 
 No course name, faculty name, email body, or user query is placed in telemetry logs.
 
-### Labeled accuracy benchmark
-
-The repository includes an anonymized labeled parser corpus. The benchmark compares complete normalized row identities and individual fields, producing:
-
-- row precision;
-- row recall;
-- field accuracy;
-- rejection diagnostics;
-- parser-version metadata.
-
-At the time of this release, the checked-in corpus measures **1.0000 precision**, **1.0000 recall**, and **1.0000 field accuracy**. The ordinary parser test suite covers additional layouts and edge cases beyond the smaller benchmark corpus.
-
----
-
 ## Incremental Gmail synchronization
 
 The largest avoidable cost in the original pipeline was repeatedly downloading and reparsing six timetable emails when only one weekday had changed. ClassWire now treats each weekday as an independently versioned source.
 
 ### Latest-by-weekday selection
 
-Six independent Gmail searches are issued in one batch—one for each supported weekday. Each query is intentionally unbounded by a short age window. As a result:
+Six independent Gmail searches are issued in one batch, one for each supported weekday. Each query is intentionally unbounded by a short age window. As a result:
 
 - a newly published Monday timetable supersedes the previous Monday;
 - the latest Tuesday remains available even if no newer Tuesday email exists;
@@ -306,7 +286,7 @@ The interpreter recognizes:
 - whole-week and broad-schedule requests;
 - small spelling mistakes and compacted names.
 
-Canonical faculty matching combines formatting-only variants while avoiding unsafe assumptions—for example, a short name is not automatically treated as the same person as a longer, different identity.
+Canonical faculty matching combines formatting-only variants while avoiding unsafe assumptions. For example, a short name is not automatically treated as the same person as a longer, different identity.
 
 ### Explicit query plans
 
@@ -328,7 +308,7 @@ This makes incorrect behavior diagnosable instead of hiding it behind an opaque 
 
 Normal filters use intersection semantics: a request for a course in a particular section returns that course only within that section.
 
-Additive language—such as `plus`, `also`, `along with`, `as well`, or `I am from ... but want to take ...`—creates a union plan. ClassWire then returns:
+Additive language such as `plus`, `also`, `along with`, `as well`, or `I am from ... but want to take ...` creates a union plan. ClassWire then returns:
 
 - the complete base-section timetable; plus
 - explicitly requested courses from their respective sections.
@@ -585,50 +565,6 @@ These counters make it possible to estimate cost from actual usage without embed
 
 ---
 
-## Verification strategy
-
-ClassWire’s tests concentrate on failure modes that previously produced incorrect schedules, not only happy-path rendering.
-
-### Backend coverage
-
-The backend suite covers:
-
-- reordered and missing timetable columns;
-- multiple tables and nested rows;
-- malformed, incomplete, and duplicate entries;
-- Social Sciences and nonstandard semester formats;
-- credit-hour, lab, theory, and FYP interpretation;
-- typo-tolerant faculty and course matching;
-- multi-faculty availability;
-- additive custom schedules and intersections;
-- explicit course-to-section binding without unrelated-section leakage;
-- a 40-query adversarial acceptance matrix covering aliases, misspellings, relative days, credit semantics, repeated course families, ambiguous faculty names, multi-section customization, and overlap conflicts;
-- conflict detection and query plans;
-- latest-per-weekday Gmail selection;
-- incremental reuse of unchanged weekdays;
-- stale-source fallback;
-- cache compression and content hashing;
-- authentication, origin controls, rate limiting, bootstrap, telemetry headers, and account deletion.
-
-### Frontend coverage
-
-The frontend suite covers:
-
-- conversational result presentation;
-- recent and suggested search behavior;
-- preservation of cached results during failed refreshes;
-- protection against stale responses overwriting new searches;
-- Social Sciences grouping;
-- lab-title presentation;
-- native Fetch credentials, JSON serialization, and API-error behavior;
-- bounded 60-row rendering and progressive expansion.
-
-### Continuous integration
-
-The protected `main` branch requires the checked-in quality workflow. It performs backend tests, frontend tests, a production TypeScript/Vite build, dependency auditing, and repository secret scanning before changes can merge.
-
----
-
 ## Search and data-flow examples
 
 ### Standard section lookup
@@ -684,14 +620,13 @@ Result
 
 | Layer | Technology | Why it fits ClassWire |
 | --- | --- | --- |
-| Client | React 19, TypeScript, Vite | Fast static delivery, typed state, and lightweight component testing |
+| Client | React 19, TypeScript, Vite | Fast static delivery, typed state, and efficient production builds |
 | HTTP transport | Native Fetch API | Credentialed JSON requests, timeouts, and typed errors without a general-purpose client dependency |
 | Browser storage | IndexedDB | Asynchronous persistence for large timetable payloads |
 | API | Flask, Gunicorn | Small cold-start surface and straightforward authenticated routes |
 | Database | Cloud Firestore | Simple per-user documents and inexpensive direct document access |
 | Email source | Gmail API, Google OAuth 2.0 | Read-only access to the user’s authoritative timetable messages |
 | Parsing | Beautiful Soup, lxml, deterministic heuristics | Handles both structured tables and malformed HTML/text without per-query AI cost |
-| Testing | Pytest, Vitest, Testing Library | Fast backend, search, parser, hook, and component verification |
 | Automation | GitHub Actions | Scheduled delivery and CI without a paid background-worker service |
 | Hosting | Vercel and Render | Static frontend delivery with an independently deployable Python API |
 
@@ -706,16 +641,14 @@ ClassWire/
 │   ├── database/             Encrypted tokens and optimized Firestore persistence
 │   ├── routes/               User, search, config, automation, and lifecycle APIs
 │   ├── scraper/              Gmail synchronization, parsing, normalization, search
-│   ├── scripts/              Parser benchmarking and concurrency measurement
-│   └── tests/                Backend, parser, search, security, and storage tests
+│   └── scripts/              Scheduled automation entry point
 ├── frontend/
 │   └── src/
 │       ├── components/       Timetable, login, status, and shared UI
 │       ├── context/          Authenticated bootstrap and account lifecycle
 │       ├── features/         Dashboard and conversational search experience
-│       ├── services/         API client and IndexedDB persistence
-│       └── __tests__/        Hooks, search, grouping, and rendering tests
-├── .github/workflows/        Protected quality checks and scheduled delivery
+│       └── services/         API client and IndexedDB persistence
+├── .github/workflows/        Security/build checks and scheduled delivery
 ├── tools/                    Repository security guard
 └── README.md                 Engineering case study and project documentation
 ```
@@ -728,12 +661,6 @@ ClassWire is heavily optimized for its current workload, but its measurements ar
 
 - Render free-tier cold-start delay is controlled by the hosting platform; ClassWire minimizes application startup work but cannot eliminate platform suspension.
 - In-process telemetry resets when a process restarts and is not a replacement for durable production tracing.
-- The labeled parser benchmark is accurate for its current corpus, but the corpus should continue growing as genuinely different anonymized timetable formats appear.
 - Progressive row windowing substantially limits DOM work; true viewport virtualization could provide another improvement for schedules containing thousands of visible rows.
-- Local health-route throughput does not represent authenticated Gmail, Firestore, or public-network performance.
 
 These are explicit engineering boundaries rather than hidden assumptions.
-
-## License
-
-No license is currently provided. All rights are reserved unless a license is added to the repository.

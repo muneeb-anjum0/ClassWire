@@ -627,7 +627,7 @@
   }
 }
 
-/* Mobile quick actions — compact command deck */
+/* Mobile quick actions: compact command deck */
 @media (max-width: 768px) {
   .quick-mobile {
     overflow: hidden;
