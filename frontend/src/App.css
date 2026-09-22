@@ -77,6 +77,16 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.app-loading {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  background: var(--page-bg);
+  font-size: 14px;
+}
+
 button,
 input {
   font: inherit;

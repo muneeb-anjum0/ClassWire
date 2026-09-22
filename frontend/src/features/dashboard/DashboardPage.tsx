@@ -1,7 +1,6 @@
 import React from 'react';
 import StatusIndicator from '../../components/StatusIndicator/StatusIndicator';
 import TimetableTable from '../../components/TimetableTable/TimetableTable';
-import LoginScreen from '../../components/LoginScreen/LoginScreen';
 import { useAuth } from '../../context/AuthContext';
 import SmartSearch from './SmartSearch';
 import { useDashboardController } from './useDashboardController';
@@ -9,10 +8,6 @@ import { useDashboardController } from './useDashboardController';
 export default function DashboardPage() {
   const auth = useAuth();
   const controller = useDashboardController(auth);
-
-  if (!auth.isAuthenticated) {
-    return <LoginScreen />;
-  }
 
   return (
     <div className="app-shell">

@@ -2,6 +2,7 @@
 .action-panel.surface-card {
   position: relative;
   overflow: visible;
+  padding: 1rem;
   border-radius: 2rem;
   border: 1px solid var(--theme-border);
   background: var(--theme-surface);

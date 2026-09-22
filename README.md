@@ -1,6 +1,6 @@
-# ClassWire
+# ClassWire — SZABIST Timetable Search
 
-> A multi-user, Gmail-integrated schedule intelligence platform that extracts inconsistent timetable data, normalizes it, stores it cost-efficiently, and supports natural-language schedule and faculty-availability queries.
+> A multi-user, Gmail-integrated SZABIST timetable platform that extracts inconsistent schedule data, normalizes it, stores it cost-efficiently, and supports natural-language class and faculty-availability queries.
 
 [![Live application](https://img.shields.io/badge/live-class--wire.vercel.app-111111?style=flat-square)](https://class-wire.vercel.app/)
 [![Security and quality](https://img.shields.io/github/actions/workflow/status/muneeb-anjum0/ClassWire/security.yml?branch=main&style=flat-square&label=quality)](https://github.com/muneeb-anjum0/ClassWire/actions/workflows/security.yml)
@@ -9,7 +9,7 @@
 
 **Live application:** [class-wire.vercel.app](https://class-wire.vercel.app/)
 
-ClassWire turns timetable emails into something students can actually query. Instead of manually scanning large, inconsistent schedule tables, a user can ask:
+ClassWire turns SZABIST Islamabad timetable emails into structured schedules that students can query. Instead of manually scanning large, inconsistent tables, a user can ask:
 
 - `Show BS(SE)-7A classes on Monday`
 - `When are Zainab Iftikhar and Hamza Imran free?`
@@ -61,14 +61,15 @@ The project began as a timetable scraper and evolved into a complete schedule-in
 | Startup | Backend application import measured at approximately **0.19 seconds** |
 | Browser startup | Authentication, configuration, and saved timetable consolidated into **one bootstrap request** |
 | Gmail refresh | Unchanged weekdays are reused; only changed timetable emails are downloaded and parsed |
-| Browser persistence | Large timetable results moved from synchronous `localStorage` to asynchronous IndexedDB |
+| Browser persistence | Large timetable results use IndexedDB through one reused connection, with synchronous storage retained only as a compatibility fallback |
 | Large result rendering | Initial DOM work is bounded to **60 schedule rows** and progressively expanded |
 | Parser benchmark | **100% row precision, row recall, and field accuracy** on the current checked-in labeled corpus |
-| Automated verification | **141 backend tests** and **18 frontend tests** passing at the time of this optimization release |
+| Search benchmark | A 40-query pass over **1,200 synthetic rows averaged 10.24 ms/query**; a repeated-result cache lookup averaged **0.001 ms** locally |
+| Automated verification | **183 backend tests** and **21 frontend tests** passing at the time of this optimization release |
 | Local health load test | **100/100 successful requests**, approximately **718 requests/second**, **25.5 ms average**, and **38.9 ms p95** at concurrency 20 |
-| Production payload | Frontend JavaScript approximately **300.9 kB raw / 96.7 kB gzip**; CSS approximately **46.4 kB raw / 9.8 kB gzip** |
+| Production payload | Initial JavaScript reduced from **300.9 kB / 96.7 kB gzip** to **203.9 kB / 65.0 kB gzip**; authenticated CSS is **27.6 kB / 6.4 kB gzip** and route styles load on demand |
 
-The load figures above were measured locally against the lightweight health route on the development machine. They establish a repeatable baseline, not a claim about public internet latency or Render cold starts.
+The search, cache, import, build, and load figures were measured locally. They are repeatable engineering baselines, not claims about public-network latency, Google APIs, Firestore, or Render cold starts.
 
 ### Optimization ledger
 
@@ -82,7 +83,7 @@ This table condenses the major changes into the problem each one addressed and t
 | DNS and TLS setup began late | Added backend DNS prefetch, preconnect, and an early non-blocking wake request | Render wake-up starts while the static page is loading |
 | Dashboard startup needed separate session, config, and timetable calls | Added one authenticated bootstrap contract | Fewer HTTP round trips and a consistent initial state |
 | Bootstrap could still perform separate Firestore calls | Read settings and timetable through one `get_all` RPC | One database network exchange on a cold process cache |
-| Large timetable JSON lived in synchronous `localStorage` | Introduced IndexedDB persistence with migration and fallback | Startup storage work no longer blocks the main thread for normal browsers |
+| Large timetable JSON lived in synchronous `localStorage` | Introduced IndexedDB persistence, legacy migration, and connection reuse | Startup storage work no longer blocks the main thread and repeated operations avoid reopening the database |
 | Returning to an open tab could lose useful context during refresh | Preserved successful React state and protected it from failed background requests | The last result stays visible across long-lived sessions and transient failures |
 | Hundreds of rows rendered twice for desktop/mobile layouts | Added progressive 60-row render windows | Bounded reconciliation and layout work for broad searches |
 | Every weekly refresh fetched every weekday email | Batched latest-message discovery and compared weekday message IDs | Only changed weekday messages are downloaded and parsed |
@@ -90,6 +91,9 @@ This table condenses the major changes into the problem each one addressed and t
 | Partial Gmail batch failure could silently produce an incomplete schedule | Retried failed parts and rejected unresolved batches | Availability answers are not built from silently missing weekdays |
 | Transient Gmail throttling caused immediate failures | Added timeout control and bounded exponential backoff with jitter | Better recovery from `429` and temporary `5xx` responses |
 | Repeated searches could repeatedly reach Gmail | Separated the reusable weekly source from the latest displayed search | Normal searches execute against cached normalized data |
+| Repeating an identical query still reran entity extraction and matching | Added a bounded, parser-versioned per-source result cache | Warm repeated queries reuse a deterministic answer in approximately 0.001 ms locally |
+| Every search synchronously rewrote a large Firestore result | Persisted only normalized timetable sources while retaining answers in per-user IndexedDB | Removed a database round trip and billed write from ordinary searches |
+| A stale-source fallback read the same Firestore document twice | Cached valid decoded sources before applying the freshness boundary | A stale fallback requires one document read instead of two |
 | Repeated Firestore reads increased latency and operation count | Added bounded token, settings, timetable, source, identity, and health TTL caches | Warm requests avoid unnecessary database reads |
 | Identical results created redundant Firestore writes | Added stable content hashes with volatile timestamp exclusion | Unchanged timetable and source documents are not rewritten |
 | Large repeated JSON structures consumed document space | Stored compact JSON as gzip-compressed byte payloads | Lower stored payload size and network transfer from Firestore |
@@ -106,6 +110,7 @@ This table condenses the major changes into the problem each one addressed and t
 | Custom schedules could contain hidden collisions | Added interval-based conflict detection | Overlapping classes are surfaced with exact courses, sections, and overlap time |
 | Multi-faculty questions could collapse to one person | Preserved canonical matches for every requested faculty member | Availability is calculated and displayed separately for each person |
 | Rapid searches and restores could overwrite newer state | Added request sequence ordering and synchronous in-flight guards | Older asynchronous responses cannot replace a newer answer |
+| A stale frontend parser constant invalidated current version-13 answers | Synchronized browser restoration with parser version 13 | Valid saved searches restore without an unnecessary API rerun |
 | Concurrent refreshes duplicated Gmail work | Added per-user refresh locks with guarded lock creation | Simultaneous requests share one refreshed source |
 | First concurrent Firestore access could race initialization | Added double-checked locking to the lazy store | Only one Firestore client is constructed per process |
 | Errors and latency were difficult to correlate | Added request IDs, `Server-Timing`, JSON logs, counters, averages, and p95 values | Production behavior is inspectable without a paid monitoring service |
@@ -117,6 +122,9 @@ This table condenses the major changes into the problem each one addressed and t
 | Hover effects introduced excessive motion | Replaced them with restrained background feedback | Lower visual distraction and no hover-driven layout movement |
 | Suggestions repeated too frequently | Added randomized generation backed by per-user suggestion history | “Try asking” prompts rotate without immediate repetition |
 | Public pages had weak search-engine context | Added canonical metadata, structured data, crawler directives, and a sitemap | Clear SZABIST timetable relevance and a consistent indexed identity |
+| The initial frontend shipped one large application bundle | Split login, legal, and authenticated dashboard routes and removed Axios/Tailwind runtime weight | Initial JavaScript gzip size fell by about 33%, with route code loaded only when needed |
+| The API client depended on a general-purpose HTTP library | Replaced it with a typed native Fetch client preserving credentials, timeouts, errors, and wake feedback | Smaller dependency graph and browser bundle with the same API contract |
+| Global CSS contained unused animations and utility rules | Removed dead effects and retained only active touch and reduced-motion behavior | Less CSS parsing and a smaller stylesheet without changing the interface |
 | Changes could reach production without complete verification | Protected `main` with backend, frontend, build, audit, and repository-guard checks | Deployments originate from reviewed, passing commits |
 
 ---
@@ -358,7 +366,7 @@ ClassWire uses Firestore as durable per-user storage and surrounds it with short
 | `users` | User ID | Normalized account identity and timestamps | Written once on first sign-in; directly addressable afterward |
 | `gmail_tokens` | User ID | Encrypted Google OAuth token payload | Five-minute memory cache; write only on authorization or refresh |
 | `user_settings` | User ID | Filters, timezone, timetable day, and delivery preferences | Five-minute memory cache; writes only on explicit changes |
-| `timetable_cache` | User ID | Gzip-compressed latest visible result | 60-second memory cache and content-hash write deduplication |
+| `timetable_cache` | User ID | Gzip-compressed latest parsed timetable | 60-second memory cache and content-hash write deduplication |
 | `timetable_source_cache` | User ID | Gzip-compressed normalized weekly source | 30-minute memory cache and content-hash write deduplication |
 
 Interactive reads use document IDs and therefore do not require composite indexes. The only collection-style access is the bounded daily-delivery scan.
@@ -369,18 +377,19 @@ Timetables contain many repeated keys and labels, making them highly compressibl
 
 ### Content-aware write suppression
 
-Before writing a timetable or source, a stable content hash is calculated. Volatile fields such as a search save timestamp do not force a new write when the actual result is unchanged. Matching hashes skip Firestore writes entirely.
+Before writing a parsed timetable or normalized source, a stable content hash is calculated. Matching hashes skip Firestore writes entirely.
 
-This is especially important for repeated searches, automatic refreshes, and users reopening the same result.
+Interactive search answers are intentionally not written to Firestore. They are cached in process for repeated-query speed and stored in the user’s IndexedDB for restoration, while the durable normalized source remains available for cross-process searches.
 
 ### Multi-layer caching
 
 | Layer | Purpose |
 | --- | --- |
 | React state | Keeps the active result visible while the tab remains open |
-| IndexedDB | Restores the last successful timetable asynchronously across visits |
-| In-process TTL cache | Avoids repeated token, setting, source, and timetable document reads |
-| Firestore | Durable cross-device and cross-process persistence |
+| IndexedDB | Restores the last successful timetable or search asynchronously across visits through one reused connection |
+| Query-result TTL cache | Reuses deterministic answers for repeated normalized queries against the same parser/source version |
+| Service TTL caches | Avoid repeated token, setting, source, and timetable document reads |
+| Firestore | Durable cross-device persistence for settings, parsed timetables, and normalized weekly sources |
 | Gmail | Authoritative source reached only when the normalized weekly source must refresh |
 
 Existing `localStorage` timetable entries are migrated into IndexedDB. If IndexedDB is unavailable, the cache gracefully falls back rather than breaking the application.
@@ -447,7 +456,7 @@ The interface was redesigned around a compact conversational search workflow rat
 
 ### Search composer
 
-- ChatGPT-inspired centered empty state and compact result state;
+- centered empty state that transitions into a compact result workspace;
 - recent searches stored per user;
 - context-aware randomized suggestions;
 - suggestion-history rotation to avoid immediate repetition;
@@ -556,7 +565,7 @@ The in-process metric registry tracks:
 - Gmail messages fetched;
 - search-source tier: memory, Firestore, Gmail, or stale fallback;
 - Firestore reads, writes, and account-document deletions;
-- token, settings, timetable, and source cache hits.
+- token, settings, timetable, source, and repeated-query cache hits.
 
 A secret-protected metrics route exposes snapshots for diagnostics. Counters intentionally reset when a Render process restarts; the design avoids external monitoring charges while still making live behavior inspectable.
 
@@ -566,7 +575,8 @@ Instead of attempting to infer a cloud invoice, ClassWire counts the database an
 
 - normal searches use cached normalized rows and require no Gmail read;
 - repeated document reads are absorbed by TTL caches;
-- unchanged result writes are suppressed by hashes;
+- ordinary searches create no Firestore write;
+- unchanged timetable and source writes are suppressed by hashes;
 - only changed weekday emails are fetched;
 - browser restoration uses IndexedDB and requires no server response to paint the last result;
 - one bootstrap request replaces several browser/API round trips.
@@ -592,6 +602,7 @@ The backend suite covers:
 - multi-faculty availability;
 - additive custom schedules and intersections;
 - explicit course-to-section binding without unrelated-section leakage;
+- a 40-query adversarial acceptance matrix covering aliases, misspellings, relative days, credit semantics, repeated course families, ambiguous faculty names, multi-section customization, and overlap conflicts;
 - conflict detection and query plans;
 - latest-per-weekday Gmail selection;
 - incremental reuse of unchanged weekdays;
@@ -609,6 +620,7 @@ The frontend suite covers:
 - protection against stale responses overwriting new searches;
 - Social Sciences grouping;
 - lab-title presentation;
+- native Fetch credentials, JSON serialization, and API-error behavior;
 - bounded 60-row rendering and progressive expansion.
 
 ### Continuous integration
@@ -673,6 +685,7 @@ Result
 | Layer | Technology | Why it fits ClassWire |
 | --- | --- | --- |
 | Client | React 19, TypeScript, Vite | Fast static delivery, typed state, and lightweight component testing |
+| HTTP transport | Native Fetch API | Credentialed JSON requests, timeouts, and typed errors without a general-purpose client dependency |
 | Browser storage | IndexedDB | Asynchronous persistence for large timetable payloads |
 | API | Flask, Gunicorn | Small cold-start surface and straightforward authenticated routes |
 | Database | Cloud Firestore | Simple per-user documents and inexpensive direct document access |
@@ -720,24 +733,6 @@ ClassWire is heavily optimized for its current workload, but its measurements ar
 - Local health-route throughput does not represent authenticated Gmail, Firestore, or public-network performance.
 
 These are explicit engineering boundaries rather than hidden assumptions.
-
----
-
-## Project summary
-
-ClassWire demonstrates more than HTML scraping. It combines:
-
-- resilient semi-structured data extraction;
-- incremental synchronization;
-- multi-layer caching;
-- cost-aware Firestore persistence;
-- deterministic natural-language interpretation;
-- faculty availability and schedule-conflict computation;
-- responsive conversational UX;
-- privacy-conscious Google integration;
-- observable, tested, and deployable production architecture.
-
-The result is a timetable system that remains fast when the backend is warm, useful when the network is temporarily unavailable, economical under repeated use, and maintainable as source emails evolve.
 
 ## License
 

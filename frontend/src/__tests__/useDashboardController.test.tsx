@@ -31,7 +31,7 @@ const makeSearchData = (query: string, answer: string, items: TimetableData['ite
     unique_faculty: 0,
   },
   search: {
-    parser_version: 10,
+    parser_version: 13,
     query,
     answer,
     intent: 'schedule',

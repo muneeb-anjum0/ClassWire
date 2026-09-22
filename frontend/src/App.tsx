@@ -1,14 +1,16 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import './App.css';
-import LegalPage from './components/LegalPage/LegalPage';
-import { AuthProvider } from './context/AuthContext';
-import DashboardPage from './features/dashboard/DashboardPage';
+import { AuthProvider, useAuth } from './context/AuthContext';
+
+const DashboardPage = lazy(() => import('./features/dashboard/DashboardPage'));
+const LegalPage = lazy(() => import('./components/LegalPage/LegalPage'));
+const LoginScreen = lazy(() => import('./components/LoginScreen/LoginScreen'));
 
 const SITE_URL = 'https://class-wire.vercel.app';
 const PAGE_METADATA: Record<string, { title: string; description: string }> = {
   '/': {
-    title: 'SZABIST Timetable Search & Class Schedule | ClassWire',
-    description: 'Search SZABIST class schedules, courses, sections, and faculty availability from timetable emails with ClassWire.',
+    title: 'SZABIST Timetable & Class Schedule Search | ClassWire',
+    description: 'Search SZABIST Islamabad timetables, class schedules, courses, sections, and faculty availability from your timetable emails.',
   },
   '/privacy': {
     title: 'Privacy Policy | ClassWire',
@@ -23,6 +25,17 @@ const PAGE_METADATA: Record<string, { title: string; description: string }> = {
 const updateMetaContent = (selector: string, value: string) => {
   document.querySelector<HTMLMetaElement>(selector)?.setAttribute('content', value);
 };
+
+const PageFallback = () => (
+  <main className="app-loading" aria-label="Loading ClassWire">
+    <span>ClassWire</span>
+  </main>
+);
+
+function AuthenticatedApp() {
+  const auth = useAuth();
+  return auth.isAuthenticated ? <DashboardPage /> : <LoginScreen />;
+}
 
 function App() {
   const pathName = typeof window === 'undefined' ? '/' : window.location.pathname;
@@ -41,16 +54,18 @@ function App() {
   }, [metadata.description, metadata.title, pathName]);
 
   if (pathName === '/privacy') {
-    return <LegalPage kind="privacy" />;
+    return <Suspense fallback={<PageFallback />}><LegalPage kind="privacy" /></Suspense>;
   }
 
   if (pathName === '/terms') {
-    return <LegalPage kind="terms" />;
+    return <Suspense fallback={<PageFallback />}><LegalPage kind="terms" /></Suspense>;
   }
 
   return (
     <AuthProvider>
-      <DashboardPage />
+      <Suspense fallback={<PageFallback />}>
+        <AuthenticatedApp />
+      </Suspense>
     </AuthProvider>
   );
 }

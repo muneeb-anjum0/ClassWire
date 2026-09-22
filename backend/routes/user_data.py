@@ -32,6 +32,13 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
     # source for normal searches; users can include "refresh", "latest", or
     # "update" to bypass this cache explicitly.
     search_source_cache = TTLCache[str, dict](ttl_seconds=1800, max_entries=128)
+    # Query interpretation is deterministic for a given in-memory weekly
+    # source. Reuse repeated searches (including browser retries and restored
+    # recent searches) without repeating entity extraction and row matching.
+    search_result_cache = TTLCache[tuple[str, str, int, str], dict](
+        ttl_seconds=1800,
+        max_entries=128,
+    )
     refresh_locks = TTLCache[str, threading.Lock](ttl_seconds=3600, max_entries=256)
     refresh_locks_guard = threading.Lock()
     search_limiter = TokenBucketRateLimiter(capacity=10, refill_per_second=2)
@@ -416,10 +423,26 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
                     "timestamp": current_timestamp(),
                 }), 409
 
-            from scraper.smart_search import search_timetable
-            search_started = time.perf_counter()
-            search_result = search_timetable(query, source_items)
-            observe("search.parse_and_match", (time.perf_counter() - search_started) * 1000)
+            from scraper.smart_search import PARSER_VERSION, normalize, search_timetable
+            normalized_query = normalize(query)
+            message_ids = source.get("message_ids") or [source.get("message_id")]
+            source_revision = "|".join(str(value) for value in message_ids if value)
+            if not source_revision:
+                source_revision = f"{source.get('for_date', '')}:{len(source_items)}:{id(source)}"
+            result_cache_key = (user["id"], source_revision, PARSER_VERSION, normalized_query)
+            cached_search_result = search_result_cache.get(result_cache_key)
+            if cached_search_result is not None:
+                # The route changes only top-level response metadata, so a
+                # shallow copy safely reuses unchanged match lists and avoids
+                # duplicating hundreds of row dictionaries in memory.
+                search_result = dict(cached_search_result)
+                increment("search.result_cache.hit")
+            else:
+                search_started = time.perf_counter()
+                search_result = search_timetable(query, source_items)
+                observe("search.parse_and_match", (time.perf_counter() - search_started) * 1000)
+                search_result_cache.set(result_cache_key, dict(search_result))
+                increment("search.result_cache.miss")
             increment(f"search.source.{source_tier}")
             increment("search.matched_rows", len(search_result.get("items") or []))
             search_result["query"] = query
@@ -452,8 +475,11 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
                     "unique_faculty": len({item.get("faculty") for item in matched_items if item.get("faculty")}),
                 },
             }
-            if not store.save_timetable_cache(user["id"], data):
-                logger.warning("Could not persist the latest search for user %s", user["id"])
+            # The normalized source remains persisted server-side. Search
+            # answers are kept in IndexedDB by the browser instead of writing
+            # a large Firestore document for every query. This removes a
+            # database round trip from the response path and avoids turning a
+            # read-only interaction into a billed write.
             message = search_result["answer"]
             if source_was_stale:
                 message += " Using your last saved timetable because Gmail refresh is currently unavailable."

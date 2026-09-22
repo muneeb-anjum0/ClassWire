@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import axios from 'axios';
-import { apiService } from '../../services/api';
+import { apiService, getApiErrorMessage } from '../../services/api';
 import { ConfigData, TimetableData } from '../../types/api';
 import {
   buildConfigAfterSemesterUpdate,
@@ -29,7 +28,7 @@ export const useDashboardController = ({
   logout,
   user,
 }: DashboardAuthState) => {
-  const SEARCH_PARSER_VERSION = 10;
+  const SEARCH_PARSER_VERSION = 13;
   const ui = useDashboardUiState(logout);
   const statusToast = useDashboardStatusToast();
   const showStatus = statusToast.showStatus;
@@ -269,9 +268,7 @@ export const useDashboardController = ({
       if (requestSequence !== dataRequestSequence.current) return;
       setTimetableData(null);
       setIsSmartResult(true);
-      const apiMessage = axios.isAxiosError(error)
-        ? error.response?.data?.error || error.response?.data?.message
-        : undefined;
+      const apiMessage = getApiErrorMessage(error);
       showStatus('error', apiMessage || (error instanceof Error ? error.message : 'Search failed'));
     } finally {
       searchInFlight.current = false;
