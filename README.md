@@ -1,262 +1,740 @@
-# ClassWire - SZABIST Timetable Search
+# ClassWire
 
-ClassWire is a fast, searchable **SZABIST timetable and class-schedule app** for students. It connects to Gmail with read-only OAuth access, converts SZABIST timetable emails into structured schedules, and lets students search courses, sections, faculty availability, labs, and weekly classes using natural language.
+> A multi-user, Gmail-integrated schedule intelligence platform that extracts inconsistent timetable data, normalizes it, stores it cost-efficiently, and supports natural-language schedule and faculty-availability queries.
 
-**Live app:** [class-wire.vercel.app](https://class-wire.vercel.app/)
+[![Live application](https://img.shields.io/badge/live-class--wire.vercel.app-111111?style=flat-square)](https://class-wire.vercel.app/)
+[![Security and quality](https://img.shields.io/github/actions/workflow/status/muneeb-anjum0/ClassWire/security.yml?branch=main&style=flat-square&label=quality)](https://github.com/muneeb-anjum0/ClassWire/actions/workflows/security.yml)
+[![React](https://img.shields.io/badge/React-19-149eca?style=flat-square)](frontend/)
+[![Python](https://img.shields.io/badge/Python-Flask-3776ab?style=flat-square)](backend/)
 
-ClassWire is an independent student utility and is not an official SZABIST service.
+**Live application:** [class-wire.vercel.app](https://class-wire.vercel.app/)
 
-## Features
-
-- Natural-language SZABIST timetable search for sections, courses, faculty, weekdays, and course codes
-- Faculty availability calculation across university hours
-- Theory, lab, and final-year-project classification from credit-hour notation
-- Header-aware HTML parsing with fallback heuristics for inconsistent email layouts
-- Gmail OAuth with read-only access and encrypted token storage
-- Per-user semester, subject, and faculty filters
-- Persistent restoration of the latest timetable or search result
-- Optional daily timetable delivery by email
-- In-memory and compressed Firestore caching to reduce API calls, latency, and storage costs
-- Incremental weekday refreshes that only download and parse changed Gmail messages
-- Explicit natural-language query plans and timetable conflict detection
-- IndexedDB browser persistence and bounded large-result rendering
-- Dependency-free structured request telemetry with latency and cache metrics
-- Responsive light and dark interfaces for desktop and mobile
-
-## SZABIST timetable search
-
-Students can search the weekly SZABIST class schedule with questions such as:
+ClassWire turns timetable emails into something students can actually query. Instead of manually scanning large, inconsistent schedule tables, a user can ask:
 
 - `Show BS(SE)-7A classes on Monday`
-- `When is Zainab Iftikhar free?`
-- `Show all 3-credit-hour courses`
-- `Find Software Quality Engineering and Testing classes for the entire week`
+- `When are Zainab Iftikhar and Hamza Imran free?`
+- `Show every 2-credit-hour theory course`
+- `I am from BSSE7A, but I also want Software Construction and Software Quality Engineering`
+- `Show the latest available timetable for the entire week`
 
-ClassWire understands common SZABIST section formats, course codes, theory and lab credit notation, multiple faculty members, and timetable data from the Islamabad campus email format.
+The result is a normalized timetable, an availability answer, or a custom cross-section schedule—with conflicting classes identified automatically.
 
-## Technology stack
+ClassWire is an independent student project and is not an official SZABIST service.
 
-| Layer | Technology |
+## Core capabilities
+
+- natural-language search across sections, courses, course codes, faculty, weekdays, class types, and credit hours;
+- latest-per-weekday timetable selection from Gmail rather than one fragile “latest email” assumption;
+- computed faculty availability within university hours;
+- custom schedules composed from a base section and courses offered to other sections;
+- automatic overlap detection for custom schedules;
+- per-user semester, subject, and faculty discovery filters;
+- persistent restoration of the last successful timetable or search;
+- optional daily timetable delivery;
+- responsive light and dark interfaces designed separately for desktop and mobile information density.
+
+## Contents
+
+- [Engineering outcomes](#engineering-outcomes)
+- [System architecture](#system-architecture)
+- [Timetable ingestion and parser intelligence](#timetable-ingestion-and-parser-intelligence)
+- [Incremental Gmail synchronization](#incremental-gmail-synchronization)
+- [Natural-language schedule intelligence](#natural-language-schedule-intelligence)
+- [Storage and database optimization](#storage-and-database-optimization)
+- [Startup and runtime performance](#startup-and-runtime-performance)
+- [Interface and experience](#interface-and-experience)
+- [Security and privacy engineering](#security-and-privacy-engineering)
+- [Reliability and background work](#reliability-and-background-work)
+- [Observability without paid monitoring](#observability-without-paid-monitoring)
+- [Verification strategy](#verification-strategy)
+- [Technology choices](#technology-choices)
+- [Current boundaries](#current-boundaries)
+
+---
+
+## Engineering outcomes
+
+The project began as a timetable scraper and evolved into a complete schedule-intelligence system. The current architecture focuses on four properties: low latency, low infrastructure cost, resilient parsing, and a clean search experience.
+
+| Area | Engineering outcome |
 | --- | --- |
-| Frontend | React 19, TypeScript, Vite, Axios |
-| Backend | Python, Flask, Gunicorn |
-| Data | Cloud Firestore |
-| Integrations | Gmail API, Google OAuth 2.0, SMTP |
-| Parsing | Beautiful Soup, lxml, deterministic parsing heuristics |
-| Testing | Pytest, Vitest, Testing Library |
+| Startup | Backend application import measured at approximately **0.19 seconds** |
+| Browser startup | Authentication, configuration, and saved timetable consolidated into **one bootstrap request** |
+| Gmail refresh | Unchanged weekdays are reused; only changed timetable emails are downloaded and parsed |
+| Browser persistence | Large timetable results moved from synchronous `localStorage` to asynchronous IndexedDB |
+| Large result rendering | Initial DOM work is bounded to **60 schedule rows** and progressively expanded |
+| Parser benchmark | **100% row precision, row recall, and field accuracy** on the current checked-in labeled corpus |
+| Automated verification | **129 backend tests** and **18 frontend tests** passing at the time of this optimization release |
+| Local health load test | **100/100 successful requests**, approximately **718 requests/second**, **25.5 ms average**, and **38.9 ms p95** at concurrency 20 |
+| Production payload | Frontend JavaScript approximately **300.9 kB raw / 96.7 kB gzip**; CSS approximately **46.4 kB raw / 9.8 kB gzip** |
 
-## Architecture
+The load figures above were measured locally against the lightweight health route on the development machine. They establish a repeatable baseline, not a claim about public internet latency or Render cold starts.
 
-The React client communicates exclusively with the Flask API. The backend owns authentication, Gmail access, SZABIST timetable parsing, search, caching, Firestore persistence, and optional email delivery. Browser clients never receive Gmail credentials or connect directly to Firestore.
+### Optimization ledger
 
-Timetable retrieval follows this path:
+This table condenses the major changes into the problem each one addressed and the practical effect it produced.
+
+| Original constraint | Optimization implemented | Practical effect |
+| --- | --- | --- |
+| Backend imported Firebase, scraper, and Gmail dependencies eagerly | Moved heavy integrations behind lazy request-time boundaries | Application import reduced to approximately 0.19 seconds on the measured machine |
+| Health checks could wake external dependencies | Made health a constant-time Flask-only route | Render can mark the web process ready without waiting for Firestore or Gmail |
+| Production performed a health probe before useful API work | Selected the known production API immediately and allowed the real request to wake it | Removed one blocking browser/network round trip |
+| DNS and TLS setup began late | Added backend DNS prefetch, preconnect, and an early non-blocking wake request | Render wake-up starts while the static page is loading |
+| Dashboard startup needed separate session, config, and timetable calls | Added one authenticated bootstrap contract | Fewer HTTP round trips and a consistent initial state |
+| Bootstrap could still perform separate Firestore calls | Read settings and timetable through one `get_all` RPC | One database network exchange on a cold process cache |
+| Large timetable JSON lived in synchronous `localStorage` | Introduced IndexedDB persistence with migration and fallback | Startup storage work no longer blocks the main thread for normal browsers |
+| Returning to an open tab could lose useful context during refresh | Preserved successful React state and protected it from failed background requests | The last result stays visible across long-lived sessions and transient failures |
+| Hundreds of rows rendered twice for desktop/mobile layouts | Added progressive 60-row render windows | Bounded reconciliation and layout work for broad searches |
+| Every weekly refresh fetched every weekday email | Batched latest-message discovery and compared weekday message IDs | Only changed weekday messages are downloaded and parsed |
+| Short Gmail age windows could omit a still-valid weekday | Used independent, unbounded latest-per-weekday queries | A new Monday can coexist with the latest available Tuesday from an older date |
+| Partial Gmail batch failure could silently produce an incomplete schedule | Retried failed parts and rejected unresolved batches | Availability answers are not built from silently missing weekdays |
+| Transient Gmail throttling caused immediate failures | Added timeout control and bounded exponential backoff with jitter | Better recovery from `429` and temporary `5xx` responses |
+| Repeated searches could repeatedly reach Gmail | Separated the reusable weekly source from the latest displayed search | Normal searches execute against cached normalized data |
+| Repeated Firestore reads increased latency and operation count | Added bounded token, settings, timetable, source, identity, and health TTL caches | Warm requests avoid unnecessary database reads |
+| Identical results created redundant Firestore writes | Added stable content hashes with volatile timestamp exclusion | Unchanged timetable and source documents are not rewritten |
+| Large repeated JSON structures consumed document space | Stored compact JSON as gzip-compressed byte payloads | Lower stored payload size and network transfer from Firestore |
+| Firestore document size failure could occur too late | Enforced a safe compressed-payload ceiling | Oversized data is rejected before an unsafe write |
+| Parser assumed stable table columns | Added header-aware semantic column mapping | Reordered timetable formats continue to parse correctly |
+| Empty HTML cells shifted subsequent values | Preserved cell positions and filled absent faculty as `TBD` | Room, time, campus, and faculty fields remain aligned |
+| Plain-text and malformed emails were unsupported | Added guarded row-block fallback parsing | Non-table bulletins can still produce normalized classes |
+| Headers, addresses, and footers appeared as phantom classes | Enforced course, section, and time invariants | Noise is rejected before persistence and search |
+| Duplicate timetable rows inflated counts | Added stable multi-field row identities | Exact duplicate classes collapse into one result |
+| Parser quality was anecdotal | Added versioned diagnostics and a labeled benchmark | Precision, recall, field accuracy, and rejection reasons are measurable |
+| One-credit theory, labs, and FYP entries were conflated | Interpreted both components of `(theory, practical)` credits | `(1,0)`, `(0,1)`, and `(0,3)` produce different class semantics |
+| Natural-language matching was difficult to debug | Returned an explicit query plan with recognized entities and combination mode | Search decisions are inspectable and testable |
+| Section plus extra-course questions behaved like strict filters | Added additive-language detection and union execution | Custom cross-section schedules match real registration planning |
+| Custom schedules could contain hidden collisions | Added interval-based conflict detection | Overlapping classes are surfaced with exact courses, sections, and overlap time |
+| Multi-faculty questions could collapse to one person | Preserved canonical matches for every requested faculty member | Availability is calculated and displayed separately for each person |
+| Rapid searches and restores could overwrite newer state | Added request sequence ordering and synchronous in-flight guards | Older asynchronous responses cannot replace a newer answer |
+| Concurrent refreshes duplicated Gmail work | Added per-user refresh locks with guarded lock creation | Simultaneous requests share one refreshed source |
+| First concurrent Firestore access could race initialization | Added double-checked locking to the lazy store | Only one Firestore client is constructed per process |
+| Errors and latency were difficult to correlate | Added request IDs, `Server-Timing`, JSON logs, counters, averages, and p95 values | Production behavior is inspectable without a paid monitoring service |
+| Health polling produced noisy logs | Counted health traffic but excluded routine successes from structured logs | Useful metrics without excessive log volume |
+| Daily delivery depended on a web-process daemon thread | Added a scheduled workflow and synchronous authenticated completion mode | Free, observable scheduling with a definitive success/failure result |
+| Account removal did not cover all retained state | Added token revocation, batched document deletion, cache eviction, session clearing, and IndexedDB cleanup | Explicit end-to-end deletion workflow |
+| Semester labels varied in size and color behavior | Added compact equal-geometry badges with stable color assignment | Consistent, low-noise scanning across desktop and mobile |
+| Mobile cards repeated metadata and consumed excessive height | Reworked cards into a compact column-oriented information hierarchy | More classes fit on screen without removing schedule details |
+| Hover effects introduced excessive motion | Replaced them with restrained background feedback | Lower visual distraction and no hover-driven layout movement |
+| Suggestions repeated too frequently | Added randomized generation backed by per-user suggestion history | “Try asking” prompts rotate without immediate repetition |
+| Public pages had weak search-engine context | Added canonical metadata, structured data, crawler directives, and a sitemap | Clear SZABIST timetable relevance and a consistent indexed identity |
+| Changes could reach production without complete verification | Protected `main` with backend, frontend, build, audit, and repository-guard checks | Deployments originate from reviewed, passing commits |
+
+---
+
+## System architecture
 
 ```mermaid
 flowchart LR
-  Browser[React + IndexedDB] -->|one bootstrap request| API[Flask API]
-  API --> Memory[TTL caches]
-  Memory --> Firestore[(Firestore)]
-  API -->|changed weekdays only| Gmail[Gmail API]
-  Gmail --> Parser[Versioned parser]
-  Parser --> Source[Normalized weekly source]
-  Source --> Search[Query planner + conflict detector]
-  Search --> Browser
+  U[Student] --> UI[React interface]
+  UI --> IDB[(IndexedDB cache)]
+  UI -->|single bootstrap request| API[Flask API]
+
+  API --> AUTH[Signed session and Google OAuth]
+  API --> MEM[Bounded TTL caches]
+  MEM --> FS[(Cloud Firestore)]
+
+  API -->|batched metadata lookup| GM[Gmail API]
+  GM -->|changed weekdays only| PARSER[Versioned timetable parser]
+  PARSER --> NORMAL[Normalized weekly source]
+  NORMAL --> FS
+
+  NORMAL --> PLAN[Query planner]
+  PLAN --> SEARCH[Entity matching and schedule engine]
+  SEARCH --> CONFLICT[Availability and conflict analysis]
+  CONFLICT --> UI
+
+  GH[GitHub Actions] -->|authenticated scheduled request| API
 ```
 
-1. The user signs in through Google OAuth with Gmail read-only permission.
-2. The backend locates the newest timetable email for each weekday using batched Gmail requests.
-3. Structured table parsing extracts canonical timetable rows; guarded heuristics handle nonstandard layouts.
-4. Message IDs are compared per weekday; unchanged days reuse their last parsed rows.
-5. Parsed source data is cached in memory and as compressed Firestore payloads.
-6. The authenticated bootstrap endpoint returns identity, settings, and the last result in one request.
-7. Natural-language queries run against the cached weekly source without repeatedly accessing Gmail.
+The browser never receives Gmail OAuth credentials and never connects directly to Firestore. Authentication, scraping, parsing, persistence, search interpretation, and automation all remain behind the Flask API.
 
-### Firestore schema and retention
+### Request lifecycle
 
-| Collection | Document ID | Contents | Read/write strategy |
-| --- | --- | --- | --- |
-| `users` | User ID | Account identity and timestamps | Read during session verification; one write on first sign-in |
-| `gmail_tokens` | User ID | Encrypted OAuth credentials | Five-minute memory cache; updated only after OAuth or token refresh |
-| `user_settings` | User ID | Filters, timezone, and delivery preferences | Five-minute memory cache; write only when preferences change |
-| `timetable_cache` | User ID | Gzip-compressed latest result | Content-hash write deduplication and 60-second memory cache |
-| `timetable_source_cache` | User ID | Gzip-compressed weekly source | Thirty-minute memory cache and content-hash write deduplication |
+1. A cached identity lets the interface paint immediately while the signed server session is verified.
+2. The bootstrap endpoint returns the verified user, configuration, latest timetable, and last-update timestamp together.
+3. IndexedDB can restore the last successful result before a slow network refresh completes.
+4. A search first checks the in-process weekly source cache, then the persisted Firestore source, and reaches Gmail only when necessary.
+5. Gmail is queried independently for the newest available message for each weekday.
+6. Message IDs are compared with the previously normalized source.
+7. Only changed weekday messages are downloaded, decoded, parsed, normalized, and persisted.
+8. The query planner extracts the requested day scope, sections, courses, faculty, credit hours, and class types.
+9. Matching rows are sorted, analyzed for overlaps, and returned with a human-readable answer.
 
-All lookups use document IDs, so no composite Firestore index is required for interactive requests. The optional daily-email scan uses a bounded collection scan; stale timetable documents carry `expires_at` timestamps and are also cleaned after seven days. Configure Firestore TTL on `expires_at` for automatic deletion. Account deletion revokes the Google token on a best-effort basis and removes all five user documents immediately.
+---
 
-### Observability and parser quality
+## Timetable ingestion and parser intelligence
 
-Every API response includes `X-Request-ID` and `Server-Timing`. The backend logs structured JSON request events without query text or timetable content. A protected `GET /api/metrics` endpoint (header `X-Automation-Secret`) reports in-process counters plus average and p95 latency without a paid monitoring service.
+University timetable emails are not stable data feeds. They may contain reordered columns, empty cells, multiple tables, merged headings, inconsistent section formats, plain-text layouts, malformed faculty fields, or duplicate rows. ClassWire handles this as a data-normalization problem rather than relying on one fragile selector.
 
-Run the labeled parser benchmark with:
+### Structured parsing first
 
-```bash
-PYTHONPATH=backend backend/.venv/bin/python backend/scripts/benchmark_parser.py
-```
+When an HTML table is present, the parser reads headers and maps fields by meaning instead of assuming a fixed column position. This allows columns such as `Teacher`, `Faculty Name`, `Venue`, `Location`, `Class Time`, and `Timing` to move without breaking extraction.
 
-The report includes row precision, row recall, field accuracy, rejection counts, and the parser version. Add anonymized cases to `backend/tests/fixtures/parser_benchmark.json` whenever a new email layout is encountered.
+Structured parsing also preserves empty cells. An empty faculty column therefore becomes `TBD` rather than shifting the room, time, and campus into the wrong fields.
 
-Run the local concurrency smoke test with:
+### Guarded heuristic fallback
 
-```bash
-backend/.venv/bin/python backend/scripts/load_test.py --requests 200 --concurrency 20
-```
+If no usable table exists, the email is flattened into row-like text blocks and processed by a deterministic fallback parser. A candidate is accepted only when it satisfies minimum class invariants:
 
-To measure the authenticated bootstrap path, pass `--url http://localhost:5001/api/bootstrap` and an exported development session cookie through `--cookie`. The tool reports throughput, average latency, p95 latency, failures, and maximum latency; it does not call a paid monitoring or billing service.
+- recognizable course identity;
+- recognizable section or semester identity;
+- a valid time interval;
+- sufficiently coherent row structure.
 
-## Prerequisites
+Slot headings, campus addresses, email footers, incomplete rows, and other fragments are rejected before they enter the searchable dataset.
 
-- Python 3.12 or newer
-- Node.js 22 or newer
-- A Firebase project with Cloud Firestore enabled
-- Google OAuth web-application credentials with Gmail API access
-- Optional SMTP credentials for daily email delivery
+### Canonical normalization
 
-## Local installation
+Accepted rows are normalized into a shared representation containing the fields required by search and presentation:
 
-Clone the repository and install the backend:
-
-```bash
-git clone https://github.com/muneeb-anjum0/ClassWire.git
-cd ClassWire
-
-python -m venv backend/.venv
-source backend/.venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r backend/requirements.txt
-cp backend/.env.example backend/.env
-```
-
-On Windows PowerShell, activate the environment with:
-
-```powershell
-backend\.venv\Scripts\Activate.ps1
-Copy-Item backend\.env.example backend\.env
-```
-
-Install the frontend:
-
-```bash
-cd frontend
-npm ci
-cp .env.example .env
-cd ..
-```
-
-## Service configuration
-
-### Firebase
-
-Create a service account for a Firebase project with Cloud Firestore enabled. Configure either:
-
-- `FIREBASE_SERVICE_ACCOUNT_JSON` with the complete service-account JSON, or
-- `FIREBASE_SERVICE_ACCOUNT_PATH` with an absolute path to the JSON file.
-
-Set `FIREBASE_PROJECT_ID` to the Firebase project ID. Required collections are created automatically as the application stores users, encrypted Gmail tokens, settings, and caches.
-
-### Google OAuth
-
-Create OAuth 2.0 credentials for a Web application and enable the Gmail API. For local development, configure:
-
-- Authorized JavaScript origin: `http://localhost:5174`
-- Authorized redirect URI: `http://localhost:5001/api/auth/gmail/callback`
-
-Provide the OAuth client JSON through `CLIENT_SECRET_JSON`, or place it at `backend/credentials/client_secret.json`. Never commit the credential file.
-
-### Environment variables
-
-Use [`backend/.env.example`](backend/.env.example) and [`frontend/.env.example`](frontend/.env.example) as templates.
-
-| Variable | Purpose |
+| Field group | Examples |
 | --- | --- |
-| `FLASK_SECRET_KEY` | Signs server-side session cookies |
-| `TOKEN_ENCRYPTION_KEY` | Encrypts Gmail OAuth credentials before persistence |
-| `PUBLIC_BACKEND_URL` | Public backend origin used for OAuth callbacks |
-| `FRONTEND_ORIGINS` | Comma-separated browser origins allowed by CORS |
-| `FIREBASE_PROJECT_ID` | Firebase project identifier |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | Inline Firebase service-account JSON |
-| `CLIENT_SECRET_JSON` | Inline Google OAuth client JSON |
-| `AUTOMATION_SECRET` | Protects scheduled automation endpoints |
-| `GMAIL_QUERY_BASE` | Base Gmail query used to discover timetable messages |
-| `GMAIL_API_TIMEOUT_SECONDS` | Timeout applied to Gmail API requests |
-| `SMTP_*` | Optional SMTP delivery configuration |
-| `VITE_API_URL` | Backend URL used by the React client |
+| Academic identity | semester, section, course code, course title |
+| Schedule | weekday, start/end display time, room, campus |
+| People | canonical faculty name |
+| Classification | theory, lab, FYP, credit-hour components |
+| Provenance | message ID, parser version, source timestamp |
 
-Generate long, independent values for `FLASK_SECRET_KEY`, `TOKEN_ENCRYPTION_KEY`, and `AUTOMATION_SECRET` in production.
+Section variants such as `BSSE7A`, `BS (SE) - 7A`, and `BS(SE)-7A` resolve to a consistent searchable identity while retaining a readable display label.
 
-Daily delivery can run without a paid worker: the checked-in GitHub Actions schedule calls the synchronous automation endpoint and waits for a definitive result. Configure repository secrets `CLASSWIRE_BACKEND_URL` and `CLASSWIRE_AUTOMATION_SECRET`; the latter must match the backend's `AUTOMATION_SECRET`.
+### Credit-hour semantics
 
-## Running locally
+ClassWire interprets the timetable’s `(theory, practical)` notation explicitly:
 
-Start the backend from the repository root:
+| Notation | Meaning |
+| --- | --- |
+| `(3,0)`, `(2,0)`, `(1,0)` | Theory courses with the corresponding credit value |
+| `(0,1)` | Laboratory course |
+| `(0,3)` | Final-year project course |
 
-```bash
-backend/.venv/bin/python backend/app.py
+This prevents one-credit theory courses, labs, and FYP entries from being incorrectly grouped together simply because one component contains the number `1` or `3`.
+
+### Duplicate control and parser diagnostics
+
+Rows are deduplicated by a stable identity assembled from section, course, faculty, room, time, and campus. Parser-only raw fields are removed before API responses and Firestore persistence, reducing both payload size and storage cost.
+
+Every parsing pass records privacy-safe counters:
+
+- candidate rows;
+- accepted rows;
+- exact duplicates;
+- rows rejected for missing identity;
+- rows rejected for missing time;
+- rows excluded by configured filters;
+- parser version.
+
+No course name, faculty name, email body, or user query is placed in telemetry logs.
+
+### Labeled accuracy benchmark
+
+The repository includes an anonymized labeled parser corpus. The benchmark compares complete normalized row identities and individual fields, producing:
+
+- row precision;
+- row recall;
+- field accuracy;
+- rejection diagnostics;
+- parser-version metadata.
+
+At the time of this release, the checked-in corpus measures **1.0000 precision**, **1.0000 recall**, and **1.0000 field accuracy**. The ordinary parser test suite covers additional layouts and edge cases beyond the smaller benchmark corpus.
+
+---
+
+## Incremental Gmail synchronization
+
+The largest avoidable cost in the original pipeline was repeatedly downloading and reparsing six timetable emails when only one weekday had changed. ClassWire now treats each weekday as an independently versioned source.
+
+### Latest-by-weekday selection
+
+Six independent Gmail searches are issued in one batch—one for each supported weekday. Each query is intentionally unbounded by a short age window. As a result:
+
+- a newly published Monday timetable supersedes the previous Monday;
+- the latest Tuesday remains available even if no newer Tuesday email exists;
+- an older weekday is not discarded merely because another day was updated more recently.
+
+This produces a weekly schedule composed from the newest available source for each day rather than incorrectly assuming that all six messages arrive together.
+
+### Change detection
+
+The normalized weekly source stores a message ID per weekday. During refresh:
+
+1. Gmail returns the latest weekday message IDs.
+2. ClassWire compares them with the previous source.
+3. Matching weekdays reuse their normalized rows.
+4. Changed weekdays alone are fetched in full and reparsed.
+5. Removed or unavailable weekdays are not silently carried forward.
+
+The response records `changed_days`, `reused_days`, and `fetched_messages`, making refresh behavior measurable.
+
+### API resilience
+
+Gmail operations include:
+
+- batched list and message requests;
+- explicit request timeouts;
+- bounded exponential backoff with jitter for `429` and transient `5xx` responses;
+- retry of only failed batch components;
+- failure rather than silently returning an incomplete week;
+- persisted refreshed access tokens;
+- verification that the authorized Gmail identity matches the signed-in account.
+
+When Gmail is temporarily unavailable, search can fall back to the last persisted weekly source and clearly marks the answer as stale.
+
+---
+
+## Natural-language schedule intelligence
+
+The search system is deterministic, inspectable, and optimized for timetable language. It does not depend on a paid large-language-model request for each query.
+
+### Entity recognition
+
+The interpreter recognizes:
+
+- weekdays, including `today`, `tomorrow`, and `yesterday`;
+- semester and section variations;
+- faculty names with optional titles such as Dr., Mr., Professor, or Sir;
+- course names and course codes;
+- theory, lab, and FYP intent;
+- numeric and written credit-hour values;
+- whole-week and broad-schedule requests;
+- small spelling mistakes and compacted names.
+
+Canonical faculty matching combines formatting-only variants while avoiding unsafe assumptions—for example, a short name is not automatically treated as the same person as a longer, different identity.
+
+### Explicit query plans
+
+Every search result includes an internal query plan that exposes:
+
+- intent: schedule or faculty free time;
+- selected day scope;
+- intersection or union combination mode;
+- recognized sections;
+- recognized courses and codes;
+- recognized faculty;
+- class-type and credit-hour filters.
+
+This makes incorrect behavior diagnosable instead of hiding it behind an opaque search response.
+
+### Intersection and union semantics
+
+Normal filters use intersection semantics: a request for a course in a particular section returns that course only within that section.
+
+Additive language—such as `plus`, `also`, `along with`, `as well`, or `I am from ... but want to take ...`—creates a union plan. ClassWire then returns:
+
+- the complete base-section timetable; plus
+- explicitly requested courses from their respective sections.
+
+That behavior supports real course-planning questions rather than only simple database filtering.
+
+### Faculty availability
+
+Faculty availability is calculated from normalized class intervals within university hours. Overlapping or adjacent occupied intervals are merged before free gaps are generated, preventing duplicated or fragmented availability slots.
+
+Multi-faculty questions retain each recognized faculty member and return separate availability schedules rather than silently selecting one name.
+
+### Conflict detection
+
+Custom schedules are analyzed for time collisions. Each conflict contains:
+
+- weekday;
+- overlap interval;
+- both course titles;
+- both sections;
+- both original class times.
+
+The interface shows a low-noise warning when the generated schedule contains overlaps.
+
+---
+
+## Storage and database optimization
+
+ClassWire uses Firestore as durable per-user storage and surrounds it with short-lived in-process caches. The design minimizes reads and writes without allowing one user’s data to leak into another user’s result.
+
+### Firestore data model
+
+| Collection | Document identity | Stored responsibility | Optimization strategy |
+| --- | --- | --- | --- |
+| `users` | User ID | Normalized account identity and timestamps | Written once on first sign-in; directly addressable afterward |
+| `gmail_tokens` | User ID | Encrypted Google OAuth token payload | Five-minute memory cache; write only on authorization or refresh |
+| `user_settings` | User ID | Filters, timezone, timetable day, and delivery preferences | Five-minute memory cache; writes only on explicit changes |
+| `timetable_cache` | User ID | Gzip-compressed latest visible result | 60-second memory cache and content-hash write deduplication |
+| `timetable_source_cache` | User ID | Gzip-compressed normalized weekly source | 30-minute memory cache and content-hash write deduplication |
+
+Interactive reads use document IDs and therefore do not require composite indexes. The only collection-style access is the bounded daily-delivery scan.
+
+### Compressed document storage
+
+Timetables contain many repeated keys and labels, making them highly compressible. ClassWire serializes source and result documents into compact JSON and stores their gzip-compressed bytes. A safe payload ceiling prevents writes that approach Firestore’s document limit.
+
+### Content-aware write suppression
+
+Before writing a timetable or source, a stable content hash is calculated. Volatile fields such as a search save timestamp do not force a new write when the actual result is unchanged. Matching hashes skip Firestore writes entirely.
+
+This is especially important for repeated searches, automatic refreshes, and users reopening the same result.
+
+### Multi-layer caching
+
+| Layer | Purpose |
+| --- | --- |
+| React state | Keeps the active result visible while the tab remains open |
+| IndexedDB | Restores the last successful timetable asynchronously across visits |
+| In-process TTL cache | Avoids repeated token, setting, source, and timetable document reads |
+| Firestore | Durable cross-device and cross-process persistence |
+| Gmail | Authoritative source reached only when the normalized weekly source must refresh |
+
+Existing `localStorage` timetable entries are migrated into IndexedDB. If IndexedDB is unavailable, the cache gracefully falls back rather than breaking the application.
+
+### Retention and deletion
+
+Timetable and source documents receive an `expires_at` timestamp and are eligible for deletion after seven days. A cleanup path also removes stale cache documents independently of Firestore TTL.
+
+The account-deletion workflow:
+
+1. retrieves the user’s stored Google credential;
+2. attempts to revoke the refresh or access token with Google;
+3. deletes the user, token, settings, timetable, and source documents in one batch;
+4. removes corresponding in-process caches;
+5. clears the signed browser session and local IndexedDB result.
+
+---
+
+## Startup and runtime performance
+
+### Lazy backend initialization
+
+Heavy services are not initialized during module import. Firebase Admin, Firestore, scraper configuration, Gmail clients, and parser dependencies are loaded only when the relevant request needs them.
+
+The lazy Firestore wrapper uses double-checked locking, so concurrent first requests cannot accidentally construct multiple clients.
+
+### Lightweight health path
+
+The health endpoint performs no Gmail or Firestore network work. Render can determine that the process is alive as soon as Flask is ready, and the frontend can wake the backend without triggering database initialization.
+
+Routine health polling is counted but excluded from structured request logs, preventing liveness traffic from consuming log volume.
+
+### Consolidated bootstrap
+
+The initial authenticated dashboard previously required separate session, configuration, and timetable requests. The bootstrap endpoint combines all three responsibilities.
+
+On a cold Firestore cache, settings and timetable documents are fetched through one `get_all` RPC. On a warm process, both can be served from memory without a Firestore read.
+
+### Browser wake-up strategy
+
+The production client knows the authoritative backend origin and does not block the first useful request behind a redundant health probe. DNS prefetching, preconnection, and an early lightweight wake request begin while the page shell loads.
+
+Local development retains backend autodetection and retry behavior without adding that production round trip.
+
+### Render runtime tuning
+
+Gunicorn is configured for threaded request handling and uses shared memory for worker temporary files. Combined with the lazy import path, this reduces startup overhead and supports concurrent lightweight requests without unnecessarily multiplying expensive clients.
+
+### Bounded UI work
+
+Large queries can return hundreds of classes. Rendering every desktop and mobile representation at once creates avoidable layout and reconciliation work. ClassWire initially renders 60 rows and expands in 60-row windows while clearly showing the visible and total counts.
+
+The active result is never discarded merely because a background refresh fails. A user who returns to an open tab hours later continues to see the last successful timetable.
+
+### Compressed API delivery
+
+Large JSON responses are gzip-compressed when the browser advertises support and compression produces a smaller payload. Small responses avoid the compression overhead. API responses use explicit no-store browser semantics because authenticated timetable data should be restored through the controlled per-user cache rather than a shared HTTP cache.
+
+---
+
+## Interface and experience
+
+The interface was redesigned around a compact conversational search workflow rather than a conventional filter-heavy dashboard.
+
+### Search composer
+
+- ChatGPT-inspired centered empty state and compact result state;
+- recent searches stored per user;
+- context-aware randomized suggestions;
+- suggestion-history rotation to avoid immediate repetition;
+- removable individual recent searches and a clear-all action;
+- dismissible results that can be restored;
+- a clear control that resets the result and returns the composer to its centered state;
+- loading, stale-source, success, warning, and error feedback without leaving an old answer under a new query.
+
+### Timetable presentation
+
+- search summary and timetable aligned to the same content grid;
+- redundant class counts removed from nested mobile headings;
+- stable, compact semester badges with deterministic colors;
+- equal badge geometry for short and long semester names;
+- restrained row hover treatment without large motion or layout shifts;
+- consistent pluralization and day summaries;
+- custom-schedule conflict notice;
+- responsive desktop rows and compact mobile cards.
+
+### Mobile layout
+
+Mobile schedule cards prioritize course identity, then present time, faculty, and campus in a compact column-oriented information grid. Room badges remain visually separate and scannable. Spacing, type sizes, and metadata density are reduced without removing information.
+
+### Accessibility and motion
+
+Interactive controls have explicit labels, menus use menu roles, status messages expose appropriate live semantics, and keyboard dismissal is supported. Animations are small and functional; motion-heavy row effects were removed.
+
+### Typography and themes
+
+The application uses the Manrope variable font throughout, with a shared visual language across light and dark modes. Color is used as a quiet categorization aid rather than decoration.
+
+### Search discoverability
+
+The public shell includes SZABIST-focused page titles and descriptions, a canonical production URL, Open Graph metadata, structured application data, a sitemap, and crawler directives. The content clearly identifies ClassWire as an independent timetable utility while making its purpose understandable to search engines before authentication.
+
+---
+
+## Security and privacy engineering
+
+Security controls are built into the data flow rather than added only at the UI boundary.
+
+- Gmail permission is read-only.
+- OAuth tokens are encrypted before Firestore persistence.
+- Tokens are never returned to the browser.
+- Sessions use signed, HTTP-only cookies with production-only secure behavior.
+- OAuth state and PKCE verifier data are validated during callback handling.
+- The authenticated Gmail identity is checked against the signed-in account.
+- State-changing requests reject untrusted browser origins.
+- CORS is limited to configured frontend origins.
+- Expensive search and refresh operations use bounded per-user token-bucket limits.
+- Simultaneous refreshes for one user collapse behind a per-user lock.
+- Security headers restrict framing, MIME sniffing, referrer leakage, device permissions, and content sources.
+- Production startup rejects missing or obviously weak secrets.
+- Repository guards reject credential files, private keys, tokens, and common secret patterns.
+- Dependency audits and tests run on protected pull requests.
+- Account deletion removes retained application data and attempts Google token revocation.
+
+Error messages are deliberately useful without exposing stack traces, OAuth material, message contents, or another account’s identity.
+
+---
+
+## Reliability and background work
+
+### Stale-data resilience
+
+The last normalized source and last presented result serve different purposes. If Gmail refresh fails, the source can remain usable for search while the UI clearly reports that it is using saved data. A failed refresh does not erase a previously valid timetable.
+
+### Race prevention
+
+- one refresh lock per user prevents duplicate Gmail work;
+- synchronous request sequence numbers prevent an older response from overwriting a newer search;
+- a synchronous in-flight search guard blocks rapid duplicate submissions;
+- thread-safe lazy initialization protects shared backend clients;
+- cached results are scoped by normalized user email.
+
+### Background delivery without a paid worker
+
+Daily timetable delivery uses a scheduled GitHub Actions workflow and an authenticated synchronous automation endpoint. The scheduler waits for a definitive completion response instead of relying entirely on an untracked daemon thread inside a web request.
+
+Concurrency control prevents overlapping scheduled runs, and transient network failures are retried by the workflow.
+
+---
+
+## Observability without paid monitoring
+
+ClassWire includes lightweight, dependency-free telemetry designed for a small deployment.
+
+### Request tracing
+
+Every API response receives:
+
+- an `X-Request-ID` suitable for correlating failures;
+- a `Server-Timing` duration visible in browser developer tools.
+
+Non-health API requests produce structured JSON logs containing the route template, method, status, duration, request ID, and response size. User queries and timetable contents are excluded.
+
+### Runtime measurements
+
+The in-process metric registry tracks:
+
+- response count by route and status;
+- average and p95 route latency;
+- parser latency and accepted/rejected rows;
+- search interpretation and matching latency;
+- matched-row volume;
+- Gmail messages fetched;
+- search-source tier: memory, Firestore, Gmail, or stale fallback;
+- Firestore reads, writes, and account-document deletions;
+- token, settings, timetable, and source cache hits.
+
+A secret-protected metrics route exposes snapshots for diagnostics. Counters intentionally reset when a Render process restarts; the design avoids external monitoring charges while still making live behavior inspectable.
+
+### Cost visibility
+
+Instead of attempting to infer a cloud invoice, ClassWire counts the database and Gmail operations it controls. The dominant optimization is architectural:
+
+- normal searches use cached normalized rows and require no Gmail read;
+- repeated document reads are absorbed by TTL caches;
+- unchanged result writes are suppressed by hashes;
+- only changed weekday emails are fetched;
+- browser restoration uses IndexedDB and requires no server response to paint the last result;
+- one bootstrap request replaces several browser/API round trips.
+
+These counters make it possible to estimate cost from actual usage without embedding provider-specific pricing into application logic.
+
+---
+
+## Verification strategy
+
+ClassWire’s tests concentrate on failure modes that previously produced incorrect schedules, not only happy-path rendering.
+
+### Backend coverage
+
+The backend suite covers:
+
+- reordered and missing timetable columns;
+- multiple tables and nested rows;
+- malformed, incomplete, and duplicate entries;
+- Social Sciences and nonstandard semester formats;
+- credit-hour, lab, theory, and FYP interpretation;
+- typo-tolerant faculty and course matching;
+- multi-faculty availability;
+- additive custom schedules and intersections;
+- conflict detection and query plans;
+- latest-per-weekday Gmail selection;
+- incremental reuse of unchanged weekdays;
+- stale-source fallback;
+- cache compression and content hashing;
+- authentication, origin controls, rate limiting, bootstrap, telemetry headers, and account deletion.
+
+### Frontend coverage
+
+The frontend suite covers:
+
+- conversational result presentation;
+- recent and suggested search behavior;
+- preservation of cached results during failed refreshes;
+- protection against stale responses overwriting new searches;
+- Social Sciences grouping;
+- lab-title presentation;
+- bounded 60-row rendering and progressive expansion.
+
+### Continuous integration
+
+The protected `main` branch requires the checked-in quality workflow. It performs backend tests, frontend tests, a production TypeScript/Vite build, dependency auditing, and repository secret scanning before changes can merge.
+
+---
+
+## Search and data-flow examples
+
+### Standard section lookup
+
+```text
+Question
+  "BSSE7A timetable on Monday"
+
+Plan
+  intent: schedule
+  days: Monday
+  sections: BS(SE)-7A
+  combination: intersection
+
+Result
+  Only Monday rows belonging to BS(SE)-7A
 ```
 
-Start the frontend in another terminal:
+### Custom cross-section timetable
 
-```bash
-cd frontend
-npm run dev
+```text
+Question
+  "I am from BSSE7A, but I also want Software Construction and
+   Software Quality Engineering"
+
+Plan
+  base schedule: BS(SE)-7A
+  additions: both named courses from every matching section
+  combination: union
+
+Result
+  Base timetable + requested courses + detected time conflicts
 ```
 
-Open `http://localhost:5174`. The Flask API runs at `http://localhost:5001`.
+### Faculty availability
 
-## Quality checks
+```text
+Question
+  "When are Zainab Iftikhar and Hamza Imran free on Monday?"
 
-Run the complete backend verification:
+Plan
+  intent: free_time
+  days: Monday
+  faculty: both recognized identities
 
-```bash
-PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/tests
-backend/.venv/bin/python -m pip_audit --local
-backend/.venv/bin/python tools/repository_guard.py
+Result
+  Separate merged availability windows and supporting classes for each faculty member
 ```
 
-Run frontend tests, dependency auditing, and the production build:
+---
 
-```bash
-cd frontend
-npm test -- --run
-npm audit --audit-level=high
-npm run build
-```
+## Technology choices
 
-GitHub Actions runs the same security, backend, frontend, and build checks for pull requests and updates to `main`.
+| Layer | Technology | Why it fits ClassWire |
+| --- | --- | --- |
+| Client | React 19, TypeScript, Vite | Fast static delivery, typed state, and lightweight component testing |
+| Browser storage | IndexedDB | Asynchronous persistence for large timetable payloads |
+| API | Flask, Gunicorn | Small cold-start surface and straightforward authenticated routes |
+| Database | Cloud Firestore | Simple per-user documents and inexpensive direct document access |
+| Email source | Gmail API, Google OAuth 2.0 | Read-only access to the user’s authoritative timetable messages |
+| Parsing | Beautiful Soup, lxml, deterministic heuristics | Handles both structured tables and malformed HTML/text without per-query AI cost |
+| Testing | Pytest, Vitest, Testing Library | Fast backend, search, parser, hook, and component verification |
+| Automation | GitHub Actions | Scheduled delivery and CI without a paid background-worker service |
+| Hosting | Vercel and Render | Static frontend delivery with an independently deployable Python API |
 
-## Deployment
+---
 
-The backend is production-ready through the checked-in [`backend/Procfile`](backend/Procfile). Configure the deployment service to use `backend` as its root directory and provide all secrets through environment variables.
-
-Build the frontend with:
-
-```bash
-cd frontend
-npm ci
-npm run build
-```
-
-Deploy `frontend/dist` to a static hosting provider and set `VITE_API_URL` to the public backend URL before building. Add the deployed frontend origin and backend OAuth callback URL to the Google OAuth client configuration.
-
-## Security
-
-- Gmail access is read-only.
-- OAuth tokens are encrypted before being written to Firestore.
-- Authentication uses signed, HTTP-only session cookies.
-- State-changing browser requests are restricted by origin checks and CORS.
-- Expensive endpoints use bounded per-user rate limiting.
-- Repository checks reject tracked credentials, private keys, and common secret formats.
-- `.env`, OAuth client files, Firebase service accounts, app passwords, and refresh tokens must never be committed.
-
-## Repository layout
+## Repository map
 
 ```text
 ClassWire/
-├── backend/          Flask API, Gmail integration, parser, search, and persistence
-├── frontend/         React application and UI tests
-├── tools/            Repository security checks
-├── .github/          Continuous integration workflow
-└── README.md         Project documentation
+├── backend/
+│   ├── core/                 Authentication, caching, limits, telemetry, app setup
+│   ├── database/             Encrypted tokens and optimized Firestore persistence
+│   ├── routes/               User, search, config, automation, and lifecycle APIs
+│   ├── scraper/              Gmail synchronization, parsing, normalization, search
+│   ├── scripts/              Parser benchmarking and concurrency measurement
+│   └── tests/                Backend, parser, search, security, and storage tests
+├── frontend/
+│   └── src/
+│       ├── components/       Timetable, login, status, and shared UI
+│       ├── context/          Authenticated bootstrap and account lifecycle
+│       ├── features/         Dashboard and conversational search experience
+│       ├── services/         API client and IndexedDB persistence
+│       └── __tests__/        Hooks, search, grouping, and rendering tests
+├── .github/workflows/        Protected quality checks and scheduled delivery
+├── tools/                    Repository security guard
+└── README.md                 Engineering case study and project documentation
 ```
+
+---
+
+## Current boundaries
+
+ClassWire is heavily optimized for its current workload, but its measurements are intentionally presented with context:
+
+- Render free-tier cold-start delay is controlled by the hosting platform; ClassWire minimizes application startup work but cannot eliminate platform suspension.
+- In-process telemetry resets when a process restarts and is not a replacement for durable production tracing.
+- The labeled parser benchmark is accurate for its current corpus, but the corpus should continue growing as genuinely different anonymized timetable formats appear.
+- Progressive row windowing substantially limits DOM work; true viewport virtualization could provide another improvement for schedules containing thousands of visible rows.
+- Local health-route throughput does not represent authenticated Gmail, Firestore, or public-network performance.
+
+These are explicit engineering boundaries rather than hidden assumptions.
+
+---
+
+## Project summary
+
+ClassWire demonstrates more than HTML scraping. It combines:
+
+- resilient semi-structured data extraction;
+- incremental synchronization;
+- multi-layer caching;
+- cost-aware Firestore persistence;
+- deterministic natural-language interpretation;
+- faculty availability and schedule-conflict computation;
+- responsive conversational UX;
+- privacy-conscious Google integration;
+- observable, tested, and deployable production architecture.
+
+The result is a timetable system that remains fast when the backend is warm, useful when the network is temporarily unavailable, economical under repeated use, and maintainable as source emails evolve.
 
 ## License
 
