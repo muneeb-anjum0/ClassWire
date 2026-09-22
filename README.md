@@ -64,7 +64,7 @@ The project began as a timetable scraper and evolved into a complete schedule-in
 | Browser persistence | Large timetable results moved from synchronous `localStorage` to asynchronous IndexedDB |
 | Large result rendering | Initial DOM work is bounded to **60 schedule rows** and progressively expanded |
 | Parser benchmark | **100% row precision, row recall, and field accuracy** on the current checked-in labeled corpus |
-| Automated verification | **137 backend tests** and **18 frontend tests** passing at the time of this optimization release |
+| Automated verification | **140 backend tests** and **18 frontend tests** passing at the time of this optimization release |
 | Local health load test | **100/100 successful requests**, approximately **718 requests/second**, **25.5 ms average**, and **38.9 ms p95** at concurrency 20 |
 | Production payload | Frontend JavaScript approximately **300.9 kB raw / 96.7 kB gzip**; CSS approximately **46.4 kB raw / 9.8 kB gzip** |
 
@@ -426,7 +426,7 @@ Local development retains backend autodetection and retry behavior without addin
 
 ### Render runtime tuning
 
-Gunicorn is configured for threaded request handling and uses shared memory for worker temporary files. Combined with the lazy import path, this reduces startup overhead and supports concurrent lightweight requests without unnecessarily multiplying expensive clients.
+Gunicorn explicitly binds every interface to Render's assigned `PORT`, preventing successful builds from timing out during the platform's port scan. The same rule lives in both the process command and Gunicorn's automatically discovered configuration, so a dashboard command as minimal as `gunicorn app:app` remains safe. Startup and crash output is streamed into deployment logs, while threaded request handling and shared-memory worker temporary files support concurrent lightweight requests without unnecessarily multiplying expensive clients.
 
 ### Bounded UI work
 

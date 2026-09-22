@@ -1,1 +1,1 @@
-web: gunicorn --workers 1 --threads 4 --timeout 90 --keep-alive 5 --worker-tmp-dir /dev/shm --max-requests 1000 --max-requests-jitter 100 app:app
+web: gunicorn --config gunicorn.conf.py --bind 0.0.0.0:${PORT:-10000} app:app
