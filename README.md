@@ -64,7 +64,7 @@ The project began as a timetable scraper and evolved into a complete schedule-in
 | Browser persistence | Large timetable results moved from synchronous `localStorage` to asynchronous IndexedDB |
 | Large result rendering | Initial DOM work is bounded to **60 schedule rows** and progressively expanded |
 | Parser benchmark | **100% row precision, row recall, and field accuracy** on the current checked-in labeled corpus |
-| Automated verification | **129 backend tests** and **18 frontend tests** passing at the time of this optimization release |
+| Automated verification | **137 backend tests** and **18 frontend tests** passing at the time of this optimization release |
 | Local health load test | **100/100 successful requests**, approximately **718 requests/second**, **25.5 ms average**, and **38.9 ms p95** at concurrency 20 |
 | Production payload | Frontend JavaScript approximately **300.9 kB raw / 96.7 kB gzip**; CSS approximately **46.4 kB raw / 9.8 kB gzip** |
 
@@ -309,6 +309,7 @@ Every search result includes an internal query plan that exposes:
 - intersection or union combination mode;
 - recognized sections;
 - recognized courses and codes;
+- base-section and course-to-section selection bindings for custom schedules;
 - recognized faculty;
 - class-type and credit-hour filters.
 
@@ -589,6 +590,7 @@ The backend suite covers:
 - typo-tolerant faculty and course matching;
 - multi-faculty availability;
 - additive custom schedules and intersections;
+- explicit course-to-section binding without unrelated-section leakage;
 - conflict detection and query plans;
 - latest-per-weekday Gmail selection;
 - incremental reuse of unchanged weekdays;

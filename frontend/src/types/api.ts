@@ -38,6 +38,16 @@ export interface TimetableData {
       day_scope: string[];
       combination: 'intersection' | 'union';
       filters: Record<string, string[]>;
+      selection_scope?: {
+        base_sections: string[];
+        course_section_pairs: Array<{
+          section: string;
+          kind: 'course' | 'code';
+          value: string;
+        }>;
+        unpaired_courses: string[];
+        unpaired_codes: string[];
+      } | null;
     };
     conflict_count?: number;
     conflicts?: Array<{

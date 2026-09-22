@@ -12,7 +12,7 @@ from typing import Dict, List, Tuple
 from zoneinfo import ZoneInfo
 
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-PARSER_VERSION = 10
+PARSER_VERSION = 11
 DAY_START = 8 * 60
 DAY_END = 21 * 60 + 30
 NOISE = {
@@ -501,6 +501,7 @@ def _uses_additive_course_scope(query: str, entities: Dict[str, List[str]]) -> b
         r"\balong\s+with\b",
         r"\bplus\b",
         r"\balso\b",
+        r"\b(?:add|include|take)\b",
         r"\bbut\b.{0,80}\b(?:want|take|add|include)\b",
         r"\b(?:want|would\s+like)\s+to\s+(?:take|add|include)\b",
         r"\bi(?:\s+am|'m|m)\s+(?:from|in)\b",
@@ -508,21 +509,184 @@ def _uses_additive_course_scope(query: str, entities: Dict[str, List[str]]) -> b
     return any(re.search(pattern, lowered) for pattern in additive_language)
 
 
-def _matches_additive_course_scope(item: Dict, entities: Dict[str, List[str]]) -> bool:
-    """Match a base section OR an explicitly requested additional course."""
+def _entity_occurrences(query: str, value: str) -> List[Tuple[int, int]]:
+    """Locate punctuation-insensitive entity mentions in normalized query space."""
+    compact_query = normalize(query)
+    needle = normalize(value)
+    if not needle:
+        return []
+    occurrences = []
+    cursor = 0
+    while True:
+        start = compact_query.find(needle, cursor)
+        if start < 0:
+            return occurrences
+        occurrences.append((start, start + len(needle)))
+        cursor = start + 1
+
+
+def _additive_selection_scope(
+    query: str,
+    entities: Dict[str, List[str]],
+    items: List[Dict],
+) -> Dict[str, object]:
+    """Bind explicitly requested courses to their requested sections.
+
+    Natural-language custom schedules contain two different kinds of section:
+    the student's base section and a section that qualifies one additional
+    course. Flattening those into one list turns every named section into a
+    complete timetable and leaks unrelated rows. This plan retains those
+    relationships before filtering.
+    """
+    compact_query = normalize(query)
+    section_mentions = [
+        {"value": value, "start": start, "end": end}
+        for value in entities["sections"]
+        for start, end in _entity_occurrences(query, value)
+    ]
+    references = [
+        {"kind": kind, "value": value, "start": start, "end": end}
+        for kind, values in (("course", entities["courses"]), ("code", entities["codes"]))
+        for value in values
+        for start, end in _entity_occurrences(query, value)
+    ]
+    section_mentions.sort(key=lambda mention: (mention["start"], mention["end"]))
+    references.sort(key=lambda mention: (mention["start"], mention["end"]))
+
+    home_prefixes = (
+        "iamfrom", "imfrom", "iamin", "imin", "mysectionis", "mysemesteris",
+        "myclassis", "ienrolledin", "ibelongto",
+    )
+    home_suffixes = ("student", "timetable", "schedule")
+    base_sections: List[str] = []
+    base_mentions = set()
+    for mention in section_mentions:
+        before = compact_query[max(0, int(mention["start"]) - 32):int(mention["start"])]
+        after = compact_query[int(mention["end"]):int(mention["end"]) + 16]
+        if any(before.endswith(marker) for marker in home_prefixes) or any(
+            after.startswith(marker) for marker in home_suffixes
+        ):
+            value = str(mention["value"])
+            if value not in base_sections:
+                base_sections.append(value)
+            base_mentions.add((mention["start"], mention["end"], mention["value"]))
+
+    connector_words = {
+        "", "with", "from", "in", "at", "for", "of", "under", "section",
+        "fromsection", "insection", "withsection", "offeredby",
+    }
+    candidates = []
+    for section_index, section in enumerate(section_mentions):
+        if (section["start"], section["end"], section["value"]) in base_mentions:
+            continue
+        for reference_index, reference in enumerate(references):
+            if int(reference["end"]) <= int(section["start"]):
+                gap = compact_query[int(reference["end"]):int(section["start"])]
+                distance = int(section["start"]) - int(reference["end"])
+            elif int(section["end"]) <= int(reference["start"]):
+                gap = compact_query[int(section["end"]):int(reference["start"])]
+                distance = int(reference["start"]) - int(section["end"])
+            else:
+                continue
+            if gap in connector_words and distance <= 18:
+                candidates.append((distance, section_index, reference_index))
+
+    used_sections = set()
+    used_references = set()
+    pairs = []
+    for _, section_index, reference_index in sorted(candidates):
+        if section_index in used_sections or reference_index in used_references:
+            continue
+        section = section_mentions[section_index]
+        reference = references[reference_index]
+        pair = {
+            "section": str(section["value"]),
+            "kind": str(reference["kind"]),
+            "value": str(reference["value"]),
+        }
+        if pair not in pairs:
+            pairs.append(pair)
+        used_sections.add(section_index)
+        used_references.add(reference_index)
+
+    paired_sections = {pair["section"] for pair in pairs}
+    if not base_sections:
+        # Unpaired named sections retain the legacy meaning of complete
+        # section timetables. A query made entirely of qualified selections
+        # ("Course X with 5B") intentionally has no base timetable.
+        for mention in section_mentions:
+            value = str(mention["value"])
+            if value not in paired_sections and value not in base_sections:
+                base_sections.append(value)
+
+    paired_references = {(pair["kind"], pair["value"]) for pair in pairs}
+    # A user may name both the code and title of the same selected course.
+    # Treat both as consumed by the pair; leaving either one as a global
+    # addition would reintroduce that course from every other section.
+    for pair in pairs:
+        for item in items:
+            if normalize(pair["section"]) != normalize(_item_section(item)):
+                continue
+            pair_matches_item = (
+                pair["kind"] == "course"
+                and normalize(pair["value"]) == normalize(item.get("course_title") or item.get("course"))
+            ) or (
+                pair["kind"] == "code"
+                and normalize(pair["value"]) == normalize(item.get("course_code"))
+            )
+            if not pair_matches_item:
+                continue
+            paired_references.update(
+                ("course", value)
+                for value in entities["courses"]
+                if normalize(value) == normalize(item.get("course_title") or item.get("course"))
+            )
+            paired_references.update(
+                ("code", value)
+                for value in entities["codes"]
+                if normalize(value) == normalize(item.get("course_code"))
+            )
+    return {
+        "base_sections": base_sections,
+        "course_section_pairs": pairs,
+        "unpaired_courses": [
+            value for value in entities["courses"] if ("course", value) not in paired_references
+        ],
+        "unpaired_codes": [
+            value for value in entities["codes"] if ("code", value) not in paired_references
+        ],
+    }
+
+
+def _matches_additive_course_scope(
+    item: Dict,
+    entities: Dict[str, List[str]],
+    selection_scope: Dict[str, object],
+) -> bool:
+    """Match a base section or an explicitly scoped additional course."""
     section_match = any(
         normalize(value) == normalize(_item_section(item))
-        for value in entities["sections"]
+        for value in selection_scope["base_sections"]
     )
     course_match = any(
         normalize(value) == normalize(item.get("course_title") or item.get("course"))
-        for value in entities["courses"]
+        for value in selection_scope["unpaired_courses"]
     )
     code_match = any(
         normalize(value) == normalize(item.get("course_code"))
-        for value in entities["codes"]
+        for value in selection_scope["unpaired_codes"]
     )
-    if not (section_match or course_match or code_match):
+    pair_match = any(
+        normalize(pair["section"]) == normalize(_item_section(item))
+        and (
+            pair["kind"] == "course"
+            and normalize(pair["value"]) == normalize(item.get("course_title") or item.get("course"))
+            or pair["kind"] == "code"
+            and normalize(pair["value"]) == normalize(item.get("course_code"))
+        )
+        for pair in selection_scope["course_section_pairs"]
+    )
+    if not (section_match or course_match or code_match or pair_match):
         return False
 
     if entities["faculty"] and not any(
@@ -628,8 +792,9 @@ def search_timetable(query: str, items: List[Dict], reference_date: date | None 
     days = parse_days(query, reference_date)
     entities = find_entities(query, items)
     additive_course_scope = _uses_additive_course_scope(query, entities)
+    selection_scope = _additive_selection_scope(query, entities, items) if additive_course_scope else None
     matches_scope = (
-        (lambda item: _matches_additive_course_scope(item, entities))
+        (lambda item: _matches_additive_course_scope(item, entities, selection_scope))
         if additive_course_scope
         else (lambda item: _matches(item, entities))
     )
@@ -708,11 +873,15 @@ def search_timetable(query: str, items: List[Dict], reference_date: date | None 
             scope = days[0] if len(days) == 1 else "the selected week"
             answer = f"Found {len(matched)} scheduled {'class' if len(matched) == 1 else 'classes'} for {scope}."
         elif matched and additive_course_scope:
-            base = ", ".join(dict.fromkeys(entities["sections"]))
-            additions = ", ".join(dict.fromkeys(entities["courses"] + entities["codes"]))
+            base = ", ".join(selection_scope["base_sections"])
+            additions = [
+                f"{pair['value']} ({pair['section']})"
+                for pair in selection_scope["course_section_pairs"]
+            ] + selection_scope["unpaired_courses"] + selection_scope["unpaired_codes"]
+            requested_scope = f"{base} plus {', '.join(additions)}" if base else ", ".join(additions)
             answer = (
                 f"Found {len(matched)} {'class' if len(matched) == 1 else 'classes'} "
-                f"for {base} plus {additions}{day_suffix}."
+                f"for {requested_scope}{day_suffix}."
             )
         elif matched:
             answer = f"Found {len(matched)} {kind if len(matched) == 1 else kind + 'es'} for {subject}{day_suffix}."
@@ -740,6 +909,7 @@ def search_timetable(query: str, items: List[Dict], reference_date: date | None 
             "day_scope": days,
             "combination": "union" if additive_course_scope else "intersection",
             "filters": entities,
+            "selection_scope": selection_scope,
         },
         "conflicts": conflicts,
         "conflict_count": len(conflicts),
