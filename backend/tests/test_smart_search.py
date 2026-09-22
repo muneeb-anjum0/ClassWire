@@ -81,7 +81,7 @@ def test_short_honorific_name_is_not_renamed_or_merged_with_full_name():
         {"schedule_day": "Monday", "semester_display": "BSSE 8B", "course_title": "Data Science", "faculty": "Muhammad Qasim", "time": "02:00 PM - 03:30 PM"},
     ]
     exact = search_timetable("When is Muhammad Qasim free on Monday?", items)
-    assert exact["parser_version"] == 11
+    assert exact["parser_version"] == 12
     assert exact["entities"]["faculty"] == ["Muhammad Qasim"]
     assert {item["faculty"] for item in exact["items"]} == {"Muhammad Qasim"}
 
@@ -489,11 +489,12 @@ def test_custom_schedule_binds_each_course_to_its_explicit_section():
     assert result["query_plan"]["selection_scope"] == {
         "base_sections": ["BS(SE)-7A"],
         "course_section_pairs": [
-            {"section": "BS(SE)-5B", "kind": "course", "value": "Software Construction and Development"},
-            {"section": "BS(SE)-6A", "kind": "course", "value": "Software Quality Engineering and Testing"},
+            {"section": "BS(SE)-5B", "kind": "course", "value": "Software Construction and Development", "class_types": []},
+            {"section": "BS(SE)-6A", "kind": "course", "value": "Software Quality Engineering and Testing", "class_types": []},
         ],
         "unpaired_courses": [],
         "unpaired_codes": [],
+        "global_class_types": [],
     }
     assert result["answer"] == (
         "Found 4 classes for BS(SE)-7A plus Software Construction and Development (BS(SE)-5B), "
@@ -550,7 +551,7 @@ def test_custom_schedule_can_bind_a_course_code_to_a_specific_section():
     )
 
     assert result["query_plan"]["selection_scope"]["course_section_pairs"] == [
-        {"section": "BS(SE)-5B", "kind": "code", "value": "SEC 3604"},
+        {"section": "BS(SE)-5B", "kind": "code", "value": "SEC 3604", "class_types": []},
     ]
     assert {(item["semester_display"], item["course_code"]) for item in result["items"]} == {
         ("BS(SE)-7A", "SEC 7001"),
@@ -586,6 +587,39 @@ def test_qualified_courses_without_a_base_section_return_only_requested_pairs():
         ("BS(SE)-5B", "Software Construction and Development"),
         ("BS(SE)-6A", "Software Quality Engineering and Testing"),
     ]
+
+
+def test_course_type_qualifier_is_bound_to_its_course_section_pair_only():
+    items = [
+        {"schedule_day": "Monday", "semester_display": "BS(SE)-7A", "course_code": "SECL 7001", "course_title": "Core Seven A Lab", "course": "SECL 7001 Core Seven A Lab (0,1)", "time": "08:00 AM - 10:00 AM"},
+        {"schedule_day": "Monday", "semester_display": "BS(SE)-5A", "course_code": "SEC 3604", "course_title": "Software Construction and Development", "course": "SEC 3604 Software Construction and Development (2,0)", "time": "02:00 PM - 03:00 PM"},
+        {"schedule_day": "Monday", "semester_display": "BS(SE)-5B", "course_code": "SEC 3604", "course_title": "Software Construction and Development", "course": "SEC 3604 Software Construction and Development (2,0)", "time": "05:00 PM - 06:00 PM"},
+        {"schedule_day": "Tuesday", "semester_display": "BS(SE)-5B", "course_code": "SECL 3604", "course_title": "Software Construction and Development", "course": "SECL 3604 Software Construction and Development (0,1)", "time": "12:00 PM - 02:00 PM"},
+        {"schedule_day": "Wednesday", "semester_display": "BS(SE)-6A", "course_code": "SEC 3608", "course_title": "Software Quality Engineering and Testing", "course": "SEC 3608 Software Quality Engineering and Testing (3,0)", "time": "06:30 PM - 08:00 PM"},
+        {"schedule_day": "Wednesday", "semester_display": "BS(SE)-6B", "course_code": "SEC 3608", "course_title": "Software Quality Engineering and Testing", "course": "SEC 3608 Software Quality Engineering and Testing (3,0)", "time": "08:00 PM - 09:30 PM"},
+    ]
+
+    result = search_timetable(
+        "I am from BSSE7A but I want to take Software Construction and Development theory "
+        "with BSSE5B and Software Quality Engineering and testing with BSSE6A as well",
+        items,
+    )
+
+    assert [(item["semester_display"], item["course_code"]) for item in result["items"]] == [
+        ("BS(SE)-7A", "SECL 7001"),
+        ("BS(SE)-5B", "SEC 3604"),
+        ("BS(SE)-6A", "SEC 3608"),
+    ]
+    assert result["query_plan"]["selection_scope"] == {
+        "base_sections": ["BS(SE)-7A"],
+        "course_section_pairs": [
+            {"section": "BS(SE)-5B", "kind": "course", "value": "Software Construction and Development", "class_types": ["theory"]},
+            {"section": "BS(SE)-6A", "kind": "course", "value": "Software Quality Engineering and Testing", "class_types": []},
+        ],
+        "unpaired_courses": [],
+        "unpaired_codes": [],
+        "global_class_types": [],
+    }
 
 
 def test_section_and_course_without_additive_language_remains_an_intersection():

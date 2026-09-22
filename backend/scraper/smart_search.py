@@ -12,7 +12,7 @@ from typing import Dict, List, Tuple
 from zoneinfo import ZoneInfo
 
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-PARSER_VERSION = 11
+PARSER_VERSION = 12
 DAY_START = 8 * 60
 DAY_END = 21 * 60 + 30
 NOISE = {
@@ -575,6 +575,27 @@ def _additive_selection_scope(
         "", "with", "from", "in", "at", "for", "of", "under", "section",
         "fromsection", "insection", "withsection", "offeredby",
     }
+    qualifier_words = {
+        "theory": "theory",
+        "lab": "lab",
+        "labs": "lab",
+        "laboratory": "lab",
+        "laboratories": "lab",
+        "fyp": "fyp",
+        "finalyearproject": "fyp",
+    }
+
+    def binding_gap(value: str) -> Tuple[bool, List[str]]:
+        remaining = value
+        selected_types = []
+        for qualifier, class_type in sorted(qualifier_words.items(), key=lambda entry: -len(entry[0])):
+            if qualifier in remaining:
+                remaining = remaining.replace(qualifier, "")
+                if class_type not in selected_types:
+                    selected_types.append(class_type)
+        remaining = remaining.replace("classes", "").replace("class", "")
+        return remaining in connector_words, selected_types
+
     candidates = []
     for section_index, section in enumerate(section_mentions):
         if (section["start"], section["end"], section["value"]) in base_mentions:
@@ -588,13 +609,18 @@ def _additive_selection_scope(
                 distance = int(reference["start"]) - int(section["end"])
             else:
                 continue
-            if gap in connector_words and distance <= 18:
-                candidates.append((distance, section_index, reference_index))
+            valid_gap, local_class_types = binding_gap(gap)
+            reference_prefix = compact_query[max(0, int(reference["start"]) - 24):int(reference["start"])]
+            for qualifier, class_type in qualifier_words.items():
+                if reference_prefix.endswith(qualifier) and class_type not in local_class_types:
+                    local_class_types.append(class_type)
+            if valid_gap and distance <= 40:
+                candidates.append((distance, section_index, reference_index, local_class_types))
 
     used_sections = set()
     used_references = set()
     pairs = []
-    for _, section_index, reference_index in sorted(candidates):
+    for _, section_index, reference_index, local_class_types in sorted(candidates):
         if section_index in used_sections or reference_index in used_references:
             continue
         section = section_mentions[section_index]
@@ -603,11 +629,23 @@ def _additive_selection_scope(
             "section": str(section["value"]),
             "kind": str(reference["kind"]),
             "value": str(reference["value"]),
+            "class_types": local_class_types,
+            "_query_position": int(reference["start"]),
         }
-        if pair not in pairs:
+        if not any(
+            existing["section"] == pair["section"]
+            and existing["kind"] == pair["kind"]
+            and existing["value"] == pair["value"]
+            and existing["class_types"] == pair["class_types"]
+            for existing in pairs
+        ):
             pairs.append(pair)
         used_sections.add(section_index)
         used_references.add(reference_index)
+
+    pairs.sort(key=lambda pair: pair["_query_position"])
+    for pair in pairs:
+        pair.pop("_query_position", None)
 
     paired_sections = {pair["section"] for pair in pairs}
     if not base_sections:
@@ -646,6 +684,11 @@ def _additive_selection_scope(
                 for value in entities["codes"]
                 if normalize(value) == normalize(item.get("course_code"))
             )
+    paired_class_types = {
+        class_type
+        for pair in pairs
+        for class_type in pair["class_types"]
+    }
     return {
         "base_sections": base_sections,
         "course_section_pairs": pairs,
@@ -654,6 +697,9 @@ def _additive_selection_scope(
         ],
         "unpaired_codes": [
             value for value in entities["codes"] if ("code", value) not in paired_references
+        ],
+        "global_class_types": [
+            class_type for class_type in entities["class_types"] if class_type not in paired_class_types
         ],
     }
 
@@ -676,7 +722,10 @@ def _matches_additive_course_scope(
         normalize(value) == normalize(item.get("course_code"))
         for value in selection_scope["unpaired_codes"]
     )
-    pair_match = any(
+    matched_pairs = [
+        pair
+        for pair in selection_scope["course_section_pairs"]
+        if (
         normalize(pair["section"]) == normalize(_item_section(item))
         and (
             pair["kind"] == "course"
@@ -684,8 +733,9 @@ def _matches_additive_course_scope(
             or pair["kind"] == "code"
             and normalize(pair["value"]) == normalize(item.get("course_code"))
         )
-        for pair in selection_scope["course_section_pairs"]
-    )
+        )
+    ]
+    pair_match = bool(matched_pairs)
     if not (section_match or course_match or code_match or pair_match):
         return False
 
@@ -694,8 +744,15 @@ def _matches_additive_course_scope(
         for value in entities["faculty"]
     ):
         return False
-    if entities["class_types"] and _class_type(item) not in entities["class_types"]:
-        return False
+    if not section_match:
+        local_pair_types = {
+            class_type
+            for pair in matched_pairs
+            for class_type in pair["class_types"]
+        }
+        applicable_types = local_pair_types or set(selection_scope["global_class_types"])
+        if applicable_types and _class_type(item) not in applicable_types:
+            return False
     if entities["credit_hours"]:
         requested = {float(value) for value in entities["credit_hours"]}
         if _credit_hours(item) not in requested:

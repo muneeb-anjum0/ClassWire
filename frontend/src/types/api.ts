@@ -44,9 +44,11 @@ export interface TimetableData {
           section: string;
           kind: 'course' | 'code';
           value: string;
+          class_types: Array<'theory' | 'lab' | 'fyp'>;
         }>;
         unpaired_courses: string[];
         unpaired_codes: string[];
+        global_class_types: Array<'theory' | 'lab' | 'fyp'>;
       } | null;
     };
     conflict_count?: number;

@@ -316,7 +316,7 @@ class TestSearchEndpoint:
             '/api/search',
             json={
                 'query': (
-                    'I am from BSSE7A but I want to take Software Construction and Development '
+                    'I am from BSSE7A but I want to take Software Construction and Development theory '
                     'with BSSE5B and Software Quality Engineering and Testing with BSSE6A as well'
                 ),
                 'force_refresh': True,
@@ -333,8 +333,8 @@ class TestSearchEndpoint:
             ('BS(SE)-6A', 'SEC 3608'),
         ]
         assert payload['data']['search']['query_plan']['selection_scope']['course_section_pairs'] == [
-            {'section': 'BS(SE)-5B', 'kind': 'course', 'value': 'Software Construction and Development'},
-            {'section': 'BS(SE)-6A', 'kind': 'course', 'value': 'Software Quality Engineering and Testing'},
+            {'section': 'BS(SE)-5B', 'kind': 'course', 'value': 'Software Construction and Development', 'class_types': ['theory']},
+            {'section': 'BS(SE)-6A', 'kind': 'course', 'value': 'Software Quality Engineering and Testing', 'class_types': []},
         ]
         assert payload['data']['summary']['semester_breakdown'] == {
             'BS(SE)-7A': 2,
