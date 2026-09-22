@@ -294,6 +294,55 @@ class TestSearchEndpoint:
         mock_store.save_timetable_cache.assert_called_once()
 
     @patch('app.run_once')
+    def test_search_api_preserves_course_section_pairs_in_a_custom_schedule(self, mock_run_once, client, mock_store):
+        user = {'id': 'paired-custom-schedule-user', 'email': 'paired@example.com'}
+        items = [
+            {'schedule_day': 'Monday', 'semester_display': 'BS(SE)-7A', 'course_code': 'SEC 7001', 'course_title': 'Core Seven A', 'course': 'SEC 7001 Core Seven A (3,0)', 'time': '08:00 AM - 09:30 AM'},
+            {'schedule_day': 'Tuesday', 'semester_display': 'BS(SE)-7A', 'course_code': 'SEC 7002', 'course_title': 'Another Core Seven A', 'course': 'SEC 7002 Another Core Seven A (3,0)', 'time': '09:30 AM - 11:00 AM'},
+            {'schedule_day': 'Wednesday', 'semester_display': 'BS(SE)-5A', 'course_code': 'SEC 3604', 'course_title': 'Software Construction and Development', 'course': 'SEC 3604 Software Construction and Development (2,0)', 'time': '02:00 PM - 03:00 PM'},
+            {'schedule_day': 'Wednesday', 'semester_display': 'BS(SE)-5B', 'course_code': 'SEC 3604', 'course_title': 'Software Construction and Development', 'course': 'SEC 3604 Software Construction and Development (2,0)', 'time': '04:00 PM - 05:00 PM'},
+            {'schedule_day': 'Thursday', 'semester_display': 'BS(SE)-6A', 'course_code': 'SEC 3608', 'course_title': 'Software Quality Engineering and Testing', 'course': 'SEC 3608 Software Quality Engineering and Testing (3,0)', 'time': '02:00 PM - 03:30 PM'},
+            {'schedule_day': 'Friday', 'semester_display': 'BS(SE)-6B', 'course_code': 'SEC 3608', 'course_title': 'Software Quality Engineering and Testing', 'course': 'SEC 3608 Software Quality Engineering and Testing (3,0)', 'time': '06:00 PM - 07:30 PM'},
+        ]
+        source = {'items': items, 'for_day': 'Entire Week', 'summary': {}}
+        mock_store.get_or_create_user.return_value = user
+        mock_store.get_user_settings.return_value = {}
+        mock_store.get_search_source_cache.return_value = None
+        mock_store.save_search_source_cache.return_value = True
+        mock_store.save_timetable_cache.return_value = True
+        mock_run_once.return_value = {'success': True, 'data': source}
+
+        response = client.post(
+            '/api/search',
+            json={
+                'query': (
+                    'I am from BSSE7A but I want to take Software Construction and Development '
+                    'with BSSE5B and Software Quality Engineering and Testing with BSSE6A as well'
+                ),
+                'force_refresh': True,
+            },
+            headers={'X-User-Email': user['email']},
+        )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert [(item['semester_display'], item['course_code']) for item in payload['data']['items']] == [
+            ('BS(SE)-7A', 'SEC 7001'),
+            ('BS(SE)-7A', 'SEC 7002'),
+            ('BS(SE)-5B', 'SEC 3604'),
+            ('BS(SE)-6A', 'SEC 3608'),
+        ]
+        assert payload['data']['search']['query_plan']['selection_scope']['course_section_pairs'] == [
+            {'section': 'BS(SE)-5B', 'kind': 'course', 'value': 'Software Construction and Development'},
+            {'section': 'BS(SE)-6A', 'kind': 'course', 'value': 'Software Quality Engineering and Testing'},
+        ]
+        assert payload['data']['summary']['semester_breakdown'] == {
+            'BS(SE)-7A': 2,
+            'BS(SE)-5B': 1,
+            'BS(SE)-6A': 1,
+        }
+
+    @patch('app.run_once')
     def test_search_falls_back_to_stale_source_when_gmail_refresh_fails(self, mock_run_once, client, mock_store):
         user = {'id': 'stale-cache-user', 'email': 'stale@example.com'}
         item = {
