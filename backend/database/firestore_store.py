@@ -291,12 +291,16 @@ class FirestoreStore:
             return None
         if updated_at.tzinfo is None:
             updated_at = updated_at.replace(tzinfo=timezone.utc)
-        if max_age_seconds is not None and (_utc_now() - updated_at).total_seconds() > max_age_seconds:
-            return None
         source_data = _decode_json_payload(payload.get("source_gzip")) or payload.get("source_data")
         if isinstance(source_data, dict):
             self._source_hashes.set(user_id, _cache_content_hash(source_data))
             self._source_cache.set(user_id, (source_data, updated_at))
+        # Cache a valid stale source before applying the freshness boundary.
+        # The search route intentionally asks for a fresh source and then a
+        # stale fallback. Keeping the decoded value avoids a second Firestore
+        # read when the first document is merely older than the refresh TTL.
+        if max_age_seconds is not None and (_utc_now() - updated_at).total_seconds() > max_age_seconds:
+            return None
         return source_data if isinstance(source_data, dict) else None
 
     def get_bootstrap_data(self, user_id: str) -> Dict[str, Any]:

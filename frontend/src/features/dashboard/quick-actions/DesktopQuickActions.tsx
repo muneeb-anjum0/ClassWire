@@ -58,7 +58,7 @@ export default function DesktopQuickActions({
 
   return (
     <section
-      className={`surface-card p-4 action-panel ${!isQuickActionsExpanded ? 'action-panel--collapsed' : ''}`}
+      className={`surface-card action-panel ${!isQuickActionsExpanded ? 'action-panel--collapsed' : ''}`}
     >
       <div className="action-panel__header">
         <div className="action-panel__heading">
@@ -171,7 +171,7 @@ export default function DesktopQuickActions({
               onClick={onShowSemesterManager}
               className={`btn-pill btn-pill--neutral ${noSemestersConfigured ? 'btn-pill--attention' : ''}`}
             >
-              <img src="/setting.svg" alt="" className="theme-button-icon h-4 w-4 mr-2" />
+              <img src="/setting.svg" alt="" className="theme-button-icon" />
               Filters
               <span className="count-pill">{semesterCount}</span>
             </button>

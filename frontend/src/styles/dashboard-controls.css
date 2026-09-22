@@ -364,6 +364,12 @@ html[data-theme='dark'] .btn-pill--primary:hover:not(:disabled) {
   transition: filter 220ms ease, opacity 220ms ease, transform 170ms ease;
 }
 
+.theme-button-icon {
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.5rem;
+}
+
 html[data-theme='dark'] .theme-card-icon,
 html[data-theme='dark'] .theme-button-icon {
   filter: brightness(0) invert(1) contrast(0.95);

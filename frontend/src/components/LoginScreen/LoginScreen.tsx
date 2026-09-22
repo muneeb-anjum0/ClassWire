@@ -63,9 +63,9 @@ const LoginScreen: React.FC = () => {
     <main className="login-page">
       <section className="login-card">
         <div className="login-card__header">
-          <h1>Welcome to ClassWire</h1>
+          <h1>ClassWire: SZABIST timetable search</h1>
           <p className="login-copy">
-            Search and organize SZABIST class schedules from your timetable emails.
+            Search SZABIST Islamabad class schedules, courses, sections, and faculty availability from your timetable emails.
           </p>
         </div>
 

@@ -5,23 +5,34 @@ const STORE_NAME = 'timetables';
 const DATABASE_VERSION = 1;
 const LEGACY_PREFIX = 'classwire:v2:last-timetable:';
 const memoryCache = new Map<string, TimetableData>();
+let databasePromise: Promise<IDBDatabase | null> | null = null;
 
 const normalizeKey = (email?: string) => (email || 'anonymous').trim().toLowerCase();
 
-const openDatabase = (): Promise<IDBDatabase | null> => new Promise((resolve) => {
-  if (!('indexedDB' in window)) {
-    resolve(null);
-    return;
-  }
-  const request = window.indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
-  request.onupgradeneeded = () => {
-    if (!request.result.objectStoreNames.contains(STORE_NAME)) {
-      request.result.createObjectStore(STORE_NAME);
-    }
-  };
-  request.onsuccess = () => resolve(request.result);
-  request.onerror = () => resolve(null);
-});
+const openDatabase = (): Promise<IDBDatabase | null> => {
+  if (!('indexedDB' in window)) return Promise.resolve(null);
+  if (databasePromise) return databasePromise;
+  databasePromise = new Promise((resolve) => {
+    const request = window.indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(STORE_NAME)) {
+        request.result.createObjectStore(STORE_NAME);
+      }
+    };
+    request.onsuccess = () => {
+      request.result.onversionchange = () => {
+        request.result.close();
+        databasePromise = null;
+      };
+      resolve(request.result);
+    };
+    request.onerror = () => {
+      databasePromise = null;
+      resolve(null);
+    };
+  });
+  return databasePromise;
+};
 
 const transact = async <T>(mode: IDBTransactionMode, operation: (store: IDBObjectStore) => IDBRequest<T>) => {
   const database = await openDatabase();
@@ -31,8 +42,8 @@ const transact = async <T>(mode: IDBTransactionMode, operation: (store: IDBObjec
     const request = operation(transaction.objectStore(STORE_NAME));
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => resolve(undefined);
-    transaction.oncomplete = () => database.close();
-    transaction.onerror = () => database.close();
+    transaction.onerror = () => resolve(undefined);
+    transaction.onabort = () => resolve(undefined);
   });
 };
 
@@ -68,8 +79,8 @@ export const readTimetableCache = async (email?: string): Promise<TimetableData 
 export const writeTimetableCache = async (email: string | undefined, data: TimetableData): Promise<void> => {
   const key = normalizeKey(email);
   memoryCache.set(key, data);
-  const database = await openDatabase();
-  if (!database) {
+  const persistedKey = await transact<IDBValidKey>('readwrite', (store) => store.put(data, key));
+  if (persistedKey === undefined) {
     try {
       window.localStorage.setItem(`${LEGACY_PREFIX}${key}`, JSON.stringify(data));
     } catch {
@@ -77,8 +88,6 @@ export const writeTimetableCache = async (email: string | undefined, data: Timet
     }
     return;
   }
-  database.close();
-  await transact('readwrite', (store) => store.put(data, key));
   try {
     window.localStorage.removeItem(`${LEGACY_PREFIX}${key}`);
   } catch {

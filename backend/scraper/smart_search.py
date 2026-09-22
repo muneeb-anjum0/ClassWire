@@ -12,7 +12,7 @@ from typing import Dict, List, Tuple
 from zoneinfo import ZoneInfo
 
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-PARSER_VERSION = 12
+PARSER_VERSION = 13
 DAY_START = 8 * 60
 DAY_END = 21 * 60 + 30
 NOISE = {
@@ -604,9 +604,18 @@ def _additive_selection_scope(
             if int(reference["end"]) <= int(section["start"]):
                 gap = compact_query[int(reference["end"]):int(section["start"])]
                 distance = int(section["start"]) - int(reference["end"])
+                direction_penalty = 0
             elif int(section["end"]) <= int(reference["start"]):
                 gap = compact_query[int(section["end"]):int(reference["start"])]
                 distance = int(reference["start"]) - int(section["end"])
+                # Course-qualified selections are normally written as
+                # "COURSE from SECTION". Without a directional preference,
+                # the next course in a comma-separated list can sit directly
+                # after the previous section and steal that section because
+                # its raw character distance is zero. Keep section-first
+                # wording supported, but prefer the explicit reference-first
+                # binding when both interpretations are possible.
+                direction_penalty = 24
             else:
                 continue
             valid_gap, local_class_types = binding_gap(gap)
@@ -615,7 +624,12 @@ def _additive_selection_scope(
                 if reference_prefix.endswith(qualifier) and class_type not in local_class_types:
                     local_class_types.append(class_type)
             if valid_gap and distance <= 40:
-                candidates.append((distance, section_index, reference_index, local_class_types))
+                candidates.append((
+                    distance + direction_penalty,
+                    section_index,
+                    reference_index,
+                    local_class_types,
+                ))
 
     used_sections = set()
     used_references = set()

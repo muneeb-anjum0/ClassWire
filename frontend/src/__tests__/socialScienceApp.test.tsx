@@ -68,7 +68,6 @@ vi.mock('../services/api', () => {
       updateSemesters: vi.fn().mockResolvedValue({ success: true }),
       getBaseOrigin: () => 'http://localhost:5000',
       getGmailAuthUrl: vi.fn(),
-      _axiosInstance: {},
     },
   };
 });

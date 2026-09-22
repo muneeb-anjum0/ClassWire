@@ -291,7 +291,45 @@ class TestSearchEndpoint:
         assert data['items'] == [item]
         assert 'items' not in data['search']
         mock_store.save_search_source_cache.assert_called_once_with(mock_user['id'], source)
-        mock_store.save_timetable_cache.assert_called_once()
+        mock_store.save_timetable_cache.assert_not_called()
+
+    def test_repeated_search_reuses_the_parsed_result_without_a_firestore_write(self, client, mock_store):
+        from scraper.smart_search import search_timetable as real_search_timetable
+
+        user = {'id': 'repeated-search-user', 'email': 'repeat@example.com'}
+        source = {
+            'items': [{
+                'schedule_day': 'Monday',
+                'semester_display': 'BS(SE)-7A',
+                'course': 'SEC 3603 Software Project Management (3,0)',
+                'course_code': 'SEC 3603',
+                'course_title': 'Software Project Management',
+                'faculty': 'Muhammad Qasim',
+                'time': '02:00 PM - 03:30 PM',
+            }],
+            'for_day': 'Entire Week',
+            'summary': {},
+        }
+        mock_store.get_or_create_user.return_value = user
+        mock_store.get_search_source_cache.return_value = source
+
+        with patch('scraper.smart_search.search_timetable', wraps=real_search_timetable) as parser:
+            first = client.post(
+                '/api/search',
+                json={'query': 'BSSE7A classes on Monday'},
+                headers={'X-User-Email': user['email']},
+            )
+            second = client.post(
+                '/api/search',
+                json={'query': '  BSSE7A   classes on MONDAY  '},
+                headers={'X-User-Email': user['email']},
+            )
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert parser.call_count == 1
+        assert first.get_json()['data']['items'] == second.get_json()['data']['items']
+        mock_store.save_timetable_cache.assert_not_called()
 
     @patch('app.run_once')
     def test_search_api_preserves_course_section_pairs_in_a_custom_schedule(self, mock_run_once, client, mock_store):

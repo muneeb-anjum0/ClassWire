@@ -81,7 +81,7 @@ def test_short_honorific_name_is_not_renamed_or_merged_with_full_name():
         {"schedule_day": "Monday", "semester_display": "BSSE 8B", "course_title": "Data Science", "faculty": "Muhammad Qasim", "time": "02:00 PM - 03:30 PM"},
     ]
     exact = search_timetable("When is Muhammad Qasim free on Monday?", items)
-    assert exact["parser_version"] == 12
+    assert exact["parser_version"] == 13
     assert exact["entities"]["faculty"] == ["Muhammad Qasim"]
     assert {item["faculty"] for item in exact["items"]} == {"Muhammad Qasim"}
 
