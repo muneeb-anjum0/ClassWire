@@ -6,6 +6,12 @@
 /.pnp
 .pnp.js
 
+# generated test artifacts
+/coverage
+/frontend/coverage
+/.coverage
+/.pytest_cache
+**/.pytest_cache
 **/__pycache__
 *.py[cod]
 .venv/

@@ -112,6 +112,11 @@ def flexible_semester_match(target_semester: str, email_text: str, allowed_semes
     """
     if not target_semester or not allowed_semesters:
         return False
+
+    # The surrounding line can contain several sections. Matching it here would
+    # allow one permitted section to make every sibling section look permitted.
+    # Keep the parameter for compatibility, but decide from the candidate itself.
+    _ = email_text
     
     target_token = tokenize_semester(target_semester)
     
@@ -128,11 +133,7 @@ def flexible_semester_match(target_semester: str, email_text: str, allowed_semes
             if tokenize_semester(variation) == target_token:
                 return True
         
-        # Check if target semester appears in any variation of allowed semester
-        for variation in generate_semester_variations(allowed):
-            if variation.upper() in email_text.upper():
-                return True
-    
+
     return False
 
 def extract_all_semesters_from_line(line_text: str) -> List[str]:
@@ -235,36 +236,3 @@ def find_best_semester_match(email_text: str, allowed_semesters: List[str]) -> s
                 return normalize_semester(allowed)
     
     return ""
-
-# Test function to verify the system works
-def test_semester_matching():
-    """Test function to verify semester matching works correctly"""
-    test_cases = [
-        ("BS(CS)-1D", ["BS(CS)-1D"]),
-        ("BS (CS) -1D", ["BS(CS)-1D"]),
-        ("BS (CS)-1D", ["BS(CS)-1D"]),
-        ("BS(CS)-1D", ["BS(CS)-1D"]),
-        ("BS(CS) - 1D", ["BS(CS)-1D"]),
-        ("BS (CS) - 1 D", ["BS(CS)-1D"]),  # This was the problematic case
-        ("BS(SE)-4A", ["BS(SE)-4A"]),
-        ("BS (SE) - 4A", ["BS(SE)-4A"]),
-        ("BS( SE)-  4A", ["BS(SE)-4A"]),
-        ("BS(SE) - 4A", ["BS(SE)-4A"]),
-        ("BS (SE)- 4A", ["BS(SE)-4A"]),
-    ]
-    
-    print("Testing semester matching...")
-    for target, allowed in test_cases:
-        result = flexible_semester_match(target, f"Test email with {target}", allowed)
-        normalized = normalize_semester(target)
-        print(f"'{target}' -> '{normalized}' matches {allowed}: {result}")
-        
-        if not result:
-            print(f"  WARNING: Failed to match!")
-            variations = generate_semester_variations(allowed[0])
-            print(f"  Variations for '{allowed[0]}': {variations[:5]}...")  # Show first 5
-    
-    print("All tests completed!")
-
-if __name__ == "__main__":
-    test_semester_matching()
