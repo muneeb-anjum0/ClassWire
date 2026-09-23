@@ -62,6 +62,18 @@ class TTLCache(Generic[K, V]):
         with self._lock:
             self._entries.clear()
 
+    def discard_where(self, predicate: Callable[[K, V], bool]) -> int:
+        """Remove every cached value matching a key-value predicate."""
+        with self._lock:
+            matching_keys = [
+                key
+                for key, (_, value) in self._entries.items()
+                if predicate(key, value)
+            ]
+            for key in matching_keys:
+                self._entries.pop(key, None)
+            return len(matching_keys)
+
     def __len__(self) -> int:
         with self._lock:
             return len(self._entries)

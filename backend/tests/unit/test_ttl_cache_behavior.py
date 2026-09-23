@@ -49,3 +49,16 @@ def test_pop_does_not_return_expired_values():
     clock.now = 2
 
     assert cache.pop("state") is None
+
+
+def test_discard_where_removes_only_matching_entries():
+    cache = TTLCache[tuple[str, str], int](ttl_seconds=30)
+    cache.set(("student-a", "first"), 1)
+    cache.set(("student-a", "second"), 2)
+    cache.set(("student-b", "first"), 3)
+
+    removed = cache.discard_where(lambda key, _value: key[0] == "student-a")
+
+    assert removed == 2
+    assert cache.get(("student-a", "first")) is None
+    assert cache.get(("student-b", "first")) == 3

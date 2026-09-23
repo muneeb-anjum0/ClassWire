@@ -14,13 +14,38 @@
   border-top: 1px solid var(--border);
 }
 
+.conversation-day__header,
+.tw-mobile-day-head {
+  background-color: color-mix(in srgb, var(--surface-secondary) 78%, var(--surface));
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 8px,
+    rgb(0 0 0 / 10%) 8px,
+    rgb(0 0 0 / 10%) 9px
+  );
+  box-shadow: inset 0 1px var(--border), inset 0 -1px var(--border);
+}
+
+html[data-theme='dark'] .conversation-day__header,
+html[data-theme='dark'] .tw-mobile-day-head {
+  background-color: color-mix(in srgb, var(--surface-secondary) 88%, white 12%);
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 8px,
+    rgb(0 0 0 / 28%) 8px,
+    rgb(0 0 0 / 28%) 9px
+  );
+}
+
 .conversation-day__header {
   min-height: 58px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 4px;
+  padding: 0 12px;
 }
 
 .conversation-day__header h2 {
@@ -218,7 +243,7 @@ html[data-theme='dark'] .conversation-class__section {
 
   .tw-mobile-day-head {
     min-height: 36px;
-    padding: 0 2px;
+    padding: 0 10px;
   }
 
   .tw-mobile-day-head h2,
@@ -291,6 +316,45 @@ html[data-theme='dark'] .conversation-class__section {
     gap: 1px;
   }
 
+  .tw-card-badges {
+    max-width: 48%;
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0;
+  }
+
+  .tw-card-section {
+    max-width: 86px;
+    min-height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 3px 7px;
+    border: 1px solid color-mix(in srgb, var(--section-border, var(--border-strong)) 42%, var(--border));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--section-bg, var(--surface-secondary)) 48%, var(--surface));
+    color: var(--section-text, var(--text-secondary));
+    font-size: 9px;
+    font-weight: 650;
+    letter-spacing: -.01em;
+  }
+
+  .tw-card-section > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  html[data-theme='dark'] .tw-card-section {
+    border-color: color-mix(in srgb, var(--section-dark-border, var(--border-strong)) 48%, var(--border));
+    background: color-mix(in srgb, var(--section-dark-bg, var(--surface-secondary)) 45%, var(--surface));
+    color: var(--section-dark-text, var(--text-primary));
+  }
+
   .tw-course-code {
     color: var(--text-muted);
     font-size: 10px;
@@ -324,6 +388,23 @@ html[data-theme='dark'] .conversation-class__section {
 
   .tw-room-pill--online {
     color: var(--success);
+  }
+
+  .tw-card-badges .tw-room-pill {
+    width: 58px;
+    max-width: 58px;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: 999px 0 0 999px;
+  }
+
+  .tw-card-badges .tw-card-section {
+    margin-left: -1px;
+    border-radius: 0 999px 999px 0;
+  }
+
+  .tw-card-badges .tw-room-pill:only-child {
+    border-radius: 999px;
   }
 
   .tw-mobile-details {

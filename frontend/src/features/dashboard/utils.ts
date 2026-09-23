@@ -4,6 +4,13 @@ import { normalizeSemesterKey, normalizeSemesterLabel } from '../../utils/semest
 export const THEME_STORAGE_KEY = 'timetable-theme';
 export const STATUS_TOAST_DURATION_MS = 3600;
 export const STATUS_TOAST_FADE_MS = 280;
+export const SZABIST_ISLAMABAD_EMAIL_DOMAIN = 'szabist-isb.pk';
+
+export const isSzabistIslamabadEmail = (email: string | null | undefined) => {
+  if (typeof email !== 'string') return false;
+
+  return /^[^@\s]+@szabist-isb\.pk$/i.test(email.trim());
+};
 
 const getOrdinalSuffix = (day: number) => {
   if (day % 100 >= 11 && day % 100 <= 13) {

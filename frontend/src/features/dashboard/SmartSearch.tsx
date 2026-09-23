@@ -21,6 +21,7 @@ import {
   rememberSuggestions,
   removeRecentSearch,
 } from './smartSearchSuggestions';
+import { isSzabistIslamabadEmail } from './utils';
 import './smart-search.css';
 
 type Props = {
@@ -32,6 +33,7 @@ type Props = {
   data: TimetableData | null;
   userEmail?: string;
   onLogout: () => void;
+  onCancelLogout: () => void;
   onDeleteAccount?: () => Promise<void>;
   logoutConfirmArmed: boolean;
   theme: DashboardTheme;
@@ -49,6 +51,7 @@ export default function SmartSearch({
   data,
   userEmail,
   onLogout,
+  onCancelLogout,
   onDeleteAccount,
   logoutConfirmArmed,
   theme,
@@ -58,6 +61,8 @@ export default function SmartSearch({
   const [composerOpen, setComposerOpen] = useState(true);
   const [resultHidden, setResultHidden] = useState(false);
   const [deleteArmed, setDeleteArmed] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState('');
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const accountRef = useRef<HTMLDivElement>(null);
@@ -67,6 +72,7 @@ export default function SmartSearch({
   const resultKey = `${result?.query || ''}|${result?.saved_at || ''}|${result?.answer || ''}`;
   const hasContent = Boolean(result || data?.items?.length);
   const availability = result?.faculty_availability || [];
+  const accountConfirmation = logoutConfirmArmed ? 'logout' : deleteArmed ? 'delete' : null;
   const recentStorageKey = useMemo(
     () => `classwire:v3:recent-searches:${(userEmail || 'anonymous').toLocaleLowerCase()}`,
     [userEmail],
@@ -139,6 +145,21 @@ export default function SmartSearch({
     setComposerOpen(true);
   };
 
+  const confirmAccountDeletion = async () => {
+    if (!onDeleteAccount || isDeletingAccount) return;
+
+    setDeleteAccountError('');
+    setIsDeletingAccount(true);
+    try {
+      await onDeleteAccount();
+    } catch (error) {
+      setDeleteAccountError(
+        error instanceof Error ? error.message : 'Account data could not be deleted. Please try again.',
+      );
+      setIsDeletingAccount(false);
+    }
+  };
+
   const readableTime = (slot: string) => slot.replace(' – ', ' to ');
   const isAllDay = (freeSlots: string[]) => freeSlots.length === 1
     && freeSlots[0].replace(' – ', ' to ') === '8:00 AM to 9:30 PM';
@@ -176,12 +197,16 @@ export default function SmartSearch({
     if (!accountOpen && !composerOpen) return undefined;
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target as Node;
-      if (accountOpen && !accountRef.current?.contains(target)) setAccountOpen(false);
+      if (accountOpen && !accountRef.current?.contains(target)) {
+        setAccountOpen(false);
+        onCancelLogout();
+      }
       if (composerOpen && !composerRef.current?.contains(target)) setComposerOpen(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setAccountOpen(false);
+        onCancelLogout();
         setComposerOpen(false);
       }
     };
@@ -191,45 +216,127 @@ export default function SmartSearch({
       document.removeEventListener('mousedown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [accountOpen, composerOpen]);
+  }, [accountOpen, composerOpen, onCancelLogout]);
+
+  useEffect(() => {
+    if (accountOpen || isDeletingAccount) return;
+    setDeleteArmed(false);
+    setDeleteAccountError('');
+  }, [accountOpen, isDeletingAccount]);
 
   return <section className={`smart-search ${hasContent ? 'smart-search--compact' : 'smart-search--empty'}`}>
     <div className="smart-search__account" ref={accountRef}>
       <button
         type="button"
         className="smart-search__account-trigger"
-        onClick={() => setAccountOpen((open) => !open)}
+        onClick={() => {
+          if (accountOpen) onCancelLogout();
+          setAccountOpen((open) => !open);
+        }}
         aria-label="Open account menu"
         aria-expanded={accountOpen}
       ><UserRound aria-hidden="true" /></button>
       {accountOpen && <div className="smart-search__account-menu" role="menu">
         <div className="smart-search__account-email">
-          <span>Signed in as</span>
-          <strong>{userEmail || 'Google account'}</strong>
+          <span className="smart-search__account-identity-icon"><UserRound aria-hidden="true" /></span>
+          <span className="smart-search__account-identity-copy">
+            <span>{isSzabistIslamabadEmail(userEmail) ? 'SZABIST Islamabad account' : 'Connected Google account'}</span>
+            <strong>{userEmail || 'Google account'}</strong>
+          </span>
         </div>
-        <button type="button" role="menuitem" onClick={() => onThemeChange(theme === 'dark' ? 'light' : 'dark')}>
-          {theme === 'dark' ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
-          {theme === 'dark' ? 'Light mode' : 'Dark mode'}
-        </button>
-        <button type="button" role="menuitem" className={logoutConfirmArmed ? 'is-danger' : ''} onClick={onLogout}>
-          <LogOut aria-hidden="true" />
-          {logoutConfirmArmed ? 'Click again to sign out' : 'Sign out'}
-        </button>
-        {onDeleteAccount && <button
-          type="button"
-          role="menuitem"
-          className={deleteArmed ? 'is-danger' : ''}
-          onClick={() => {
-            if (!deleteArmed) {
-              setDeleteArmed(true);
-              return;
-            }
-            void onDeleteAccount();
-          }}
-        >
-          <Trash2 aria-hidden="true" />
-          {deleteArmed ? 'Confirm permanent deletion' : 'Delete account data'}
-        </button>}
+        <div className="smart-search__account-actions" role="presentation">
+          <button
+            type="button"
+            role="menuitem"
+            className="smart-search__account-action"
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            onClick={() => onThemeChange(theme === 'dark' ? 'light' : 'dark')}
+          >
+            <span className="smart-search__account-action-icon">
+              {theme === 'dark' ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+            </span>
+            <span className="smart-search__account-action-copy">
+              <strong>Appearance</strong>
+              <small>{theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}</small>
+            </span>
+            <span className="smart-search__account-action-value">{theme === 'dark' ? 'Dark' : 'Light'}</span>
+          </button>
+          {!accountConfirmation && <button
+            type="button"
+            role="menuitem"
+            aria-label="Sign out"
+            className="smart-search__account-action"
+            onClick={onLogout}
+          >
+            <span className="smart-search__account-action-icon"><LogOut aria-hidden="true" /></span>
+            <span className="smart-search__account-action-copy">
+              <strong>Sign out</strong>
+              <small>End this browser session</small>
+            </span>
+          </button>}
+          {!accountConfirmation && <div className="smart-search__account-divider" role="separator" />}
+          {onDeleteAccount && !accountConfirmation && <button
+            type="button"
+            role="menuitem"
+            aria-label="Delete account data"
+            className="smart-search__account-action smart-search__account-action--delete"
+            onClick={() => setDeleteArmed(true)}
+          >
+            <span className="smart-search__account-action-icon"><Trash2 aria-hidden="true" /></span>
+            <span className="smart-search__account-action-copy">
+              <strong>Delete account data</strong>
+              <small>Remove saved ClassWire information</small>
+            </span>
+          </button>}
+          {accountConfirmation && <div
+            className={`smart-search__account-confirmation smart-search__account-confirmation--${accountConfirmation}`}
+            role="alert"
+          >
+            <span className="smart-search__account-confirmation-header">
+              <span className="smart-search__account-confirmation-icon">
+                {accountConfirmation === 'logout' ? <LogOut aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
+              </span>
+              <span>
+                <strong>{accountConfirmation === 'logout' ? 'Sign out of ClassWire?' : 'Delete all account data?'}</strong>
+                <small>
+                  {accountConfirmation === 'logout'
+                    ? 'Your saved data will remain available next time.'
+                    : 'This permanently removes your timetable, settings, Gmail token, and search history.'}
+                </small>
+              </span>
+            </span>
+            {deleteAccountError && <p className="smart-search__account-confirmation-error" role="status">{deleteAccountError}</p>}
+            <div className="smart-search__account-confirmation-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  if (accountConfirmation === 'logout') onCancelLogout();
+                  else setDeleteArmed(false);
+                  setDeleteAccountError('');
+                }}
+                disabled={isDeletingAccount}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="smart-search__account-confirmation-submit"
+                onClick={() => {
+                  if (accountConfirmation === 'logout') onLogout();
+                  else void confirmAccountDeletion();
+                }}
+                disabled={isDeletingAccount}
+              >
+                {isDeletingAccount && <RefreshCw className="smart-search__delete-spinner" aria-hidden="true" />}
+                {isDeletingAccount
+                  ? 'Deleting...'
+                  : accountConfirmation === 'logout'
+                    ? 'Sign out'
+                    : 'Delete permanently'}
+              </button>
+            </div>
+          </div>}
+        </div>
       </div>}
     </div>
 
@@ -286,7 +393,7 @@ export default function SmartSearch({
           </div>
         </section>}
 
-        <section className="smart-search__discovery-section">
+        <section className="smart-search__discovery-section smart-search__discovery-section--suggestions">
           <header>
             <span>Try asking</span>
             <button type="button" onClick={() => rotateSuggestions()}>
@@ -304,48 +411,51 @@ export default function SmartSearch({
       </div>}
     </div>
 
-    {result && resultHidden && <div className="smart-search__answer smart-search__answer--hidden" role="status">
+    {result && <div
+      key={resultKey}
+      className={`smart-search__answer ${resultHidden ? 'smart-search__answer--hidden' : 'smart-search__answer--visible'}`}
+      role="status"
+    >
       <div className="smart-search__answer-header">
-        <div className="smart-search__answer-label">Search result hidden</div>
-        <button
+        <div className="smart-search__answer-label">{resultHidden ? 'Search result hidden' : 'Search result'}</div>
+        {resultHidden ? <button
           type="button"
           className="smart-search__show-result"
           onClick={() => setResultHidden(false)}
         >
           Show
-        </button>
-      </div>
-    </div>}
-
-    {result && !resultHidden && <div className="smart-search__answer">
-      <div className="smart-search__answer-header">
-        <div className="smart-search__answer-label">Search result</div>
-        <button type="button" onClick={() => setResultHidden(true)} aria-label="Hide search result">
+        </button> : <button type="button" onClick={() => setResultHidden(true)} aria-label="Hide search result">
           <X aria-hidden="true" />
-        </button>
+        </button>}
       </div>
-      {availability.length > 0 ? <div className="smart-search__availability">
-        {availability.map(({ faculty, slots }) => <section className="smart-search__faculty" key={faculty}>
-          <header>
-            <h3>{faculty}</h3>
-            <p>Free during university hours</p>
-          </header>
-          <div className="smart-search__days">
-            {Object.entries(slots)
-              .sort(([left], [right]) => WEEKDAY_ORDER.indexOf(left) - WEEKDAY_ORDER.indexOf(right))
-              .map(([day, freeSlots]) => <div className="smart-search__day" key={`${faculty}-${day}`}>
-                <strong>{day}</strong>
-                {freeSlots.length > 0
-                  ? <div className="smart-search__slots">
-                    {isAllDay(freeSlots)
-                      ? <span><b>All day</b><small>8:00 AM to 9:30 PM</small></span>
-                      : freeSlots.map((slot, index) => <span key={slot}>{freeSlots.length > 1 && <i>{index + 1}</i>}{readableTime(slot)}</span>)}
-                  </div>
-                  : <span className="smart-search__none">No free time</span>}
-              </div>)}
+      <div className="smart-search__answer-body" aria-hidden={resultHidden}>
+        <div className="smart-search__answer-body-inner">
+          <div className="smart-search__answer-content">
+            {availability.length > 0 ? <div className="smart-search__availability">
+              {availability.map(({ faculty, slots }) => <section className="smart-search__faculty" key={faculty}>
+                <header>
+                  <h3>{faculty}</h3>
+                  <p>Free during university hours</p>
+                </header>
+                <div className="smart-search__days">
+                  {Object.entries(slots)
+                    .sort(([left], [right]) => WEEKDAY_ORDER.indexOf(left) - WEEKDAY_ORDER.indexOf(right))
+                    .map(([day, freeSlots]) => <div className="smart-search__day" key={`${faculty}-${day}`}>
+                      <strong>{day}</strong>
+                      {freeSlots.length > 0
+                        ? <div className="smart-search__slots">
+                          {isAllDay(freeSlots)
+                            ? <span><b>All day</b><small>8:00 AM to 9:30 PM</small></span>
+                            : freeSlots.map((slot, index) => <span key={slot}>{freeSlots.length > 1 && <i>{index + 1}</i>}{readableTime(slot)}</span>)}
+                        </div>
+                        : <span className="smart-search__none">No free time</span>}
+                    </div>)}
+                </div>
+              </section>)}
+            </div> : <p>{result.answer}</p>}
           </div>
-        </section>)}
-      </div> : <p>{result.answer}</p>}
+        </div>
+      </div>
     </div>}
   </section>;
 }

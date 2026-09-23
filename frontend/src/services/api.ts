@@ -199,7 +199,7 @@ export const apiService = {
   ),
   getSession: () => request<{ success: boolean; user: { id: string; email: string } }>('/api/auth/session'),
   getBootstrap: () => request<BootstrapData>('/api/bootstrap'),
-  deleteAccount: async (): Promise<void> => { await request('/api/account', { method: 'DELETE' }); },
+  deleteAccount: () => request<{ success: true; message: string }>('/api/account', { method: 'DELETE' }),
   logout: async (): Promise<void> => { await request('/api/auth/logout', { method: 'POST' }); },
   healthCheck: () => request<ApiResponse>('/api/health'),
   getConfig: async (): Promise<ApiResponse<ConfigData>> => ({

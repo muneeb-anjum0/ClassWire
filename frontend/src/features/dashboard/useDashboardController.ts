@@ -18,6 +18,7 @@ import {
   formatLastUpdate,
   getDetectedSemesters,
   getFilteredTimetableItems,
+  isSzabistIslamabadEmail,
 } from './utils';
 
 export const useDashboardController = ({
@@ -96,6 +97,11 @@ export const useDashboardController = ({
       ? 'Updating...'
       : 'Run Scraper';
   const timetableDay = config?.timetable_day || 'Auto';
+  const accountDomainWarning = isAuthenticated &&
+    !loading &&
+    !isSzabistIslamabadEmail(user?.email)
+      ? 'You are signed in with a non-SZABIST account. Use your @szabist-isb.pk Google account to access SZABIST timetable emails.'
+      : '';
 
   const handleTimetableDayChange = async (day: string) => {
     const previousDay = timetableDay;
@@ -117,6 +123,7 @@ export const useDashboardController = ({
       await deleteAccount();
     } catch (error) {
       showStatus('error', error instanceof Error ? error.message : 'Could not delete account data');
+      throw error;
     }
   };
 
@@ -492,6 +499,7 @@ export const useDashboardController = ({
   }, [config, noSemestersConfigured, operationInProgress, isScraperRunning, showStatus, timetableData]);
 
   return {
+    accountDomainWarning,
     authLoading: loading && !user,
     cancelLogoutConfirm: ui.cancelLogoutConfirm,
     config,

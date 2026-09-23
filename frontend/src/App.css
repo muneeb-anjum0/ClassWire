@@ -119,6 +119,7 @@ a:focus-visible {
 }
 
 .schedule-panel {
+  --schedule-feedback-gap: 0.75rem;
   width: min(100%, 1240px);
   margin: 34px auto 0;
 }
@@ -141,14 +142,61 @@ a:focus-visible {
   letter-spacing: -0.025em;
 }
 
+.schedule-panel__header--striped {
+  padding-inline: 12px;
+  background-color: color-mix(in srgb, var(--surface-secondary) 78%, var(--surface));
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 8px,
+    rgb(0 0 0 / 10%) 8px,
+    rgb(0 0 0 / 10%) 9px
+  );
+  box-shadow: inset 0 1px var(--border), inset 0 -1px var(--border);
+}
+
+html[data-theme='dark'] .schedule-panel__header--striped {
+  background-color: color-mix(in srgb, var(--surface-secondary) 88%, white 12%);
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 8px,
+    rgb(0 0 0 / 28%) 8px,
+    rgb(0 0 0 / 28%) 9px
+  );
+}
+
+.schedule-status-slot {
+  --schedule-feedback-gap: 0.75rem;
+  width: min(100%, 1240px);
+  margin: 34px auto 0;
+}
+
 .schedule-panel__conflicts {
-  margin: 0.75rem 0;
-  border-left: 3px solid #d97706;
-  border-radius: 0 0.5rem 0.5rem 0;
-  background: color-mix(in srgb, #f59e0b 9%, transparent);
+  margin: var(--schedule-feedback-gap) 0;
+  background-color: color-mix(in srgb, #f59e0b 8%, var(--surface));
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 8px,
+    rgb(217 119 6 / 18%) 8px,
+    rgb(217 119 6 / 18%) 9px
+  );
+  box-shadow: inset 0 1px rgb(217 119 6 / 12%), inset 0 -1px rgb(217 119 6 / 12%);
   color: var(--text-secondary);
   padding: 0.65rem 0.8rem;
   font-size: 0.82rem;
+}
+
+html[data-theme='dark'] .schedule-panel__conflicts {
+  background-color: color-mix(in srgb, #f59e0b 13%, var(--surface));
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 8px,
+    rgb(245 158 11 / 32%) 8px,
+    rgb(245 158 11 / 32%) 9px
+  );
 }
 
 .schedule-panel__meta {
@@ -245,6 +293,10 @@ a:focus-visible {
     min-height: 56px;
     gap: 12px;
     padding-inline: 2px;
+  }
+
+  .schedule-panel__header--striped {
+    padding-inline: 10px;
   }
 
   .schedule-panel__header h2 {
