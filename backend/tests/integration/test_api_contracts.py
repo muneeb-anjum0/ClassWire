@@ -7,7 +7,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app import app, get_user_from_request
+from app import (
+    app,
+    build_auth_handoff_redirect_page,
+    get_user_from_request,
+    oauth_handoff_store,
+)
 from core.app_support import compress_large_json_response
 
 
@@ -69,6 +74,13 @@ class TestHealthEndpoint:
 
 
 class TestBootstrapEndpoint:
+    def test_logged_out_bootstrap_returns_an_explicit_guest_state(self, client):
+        response = client.get('/api/bootstrap')
+
+        assert response.status_code == 200
+        assert response.get_json()['authenticated'] is False
+        assert response.get_json()['user'] is None
+
     def test_bootstrap_returns_identity_and_cached_timetable(self, client, mock_store, mock_user):
         mock_store.get_or_create_user.return_value = mock_user
         mock_store.get_bootstrap_data.return_value = {
@@ -79,6 +91,7 @@ class TestBootstrapEndpoint:
         assert response.status_code == 200
         data = response.get_json()
         assert data['user']['email'] == mock_user['email']
+        assert data['authenticated'] is True
         assert 'config' not in data
         assert data['timetable']['for_day'] == 'Entire Week'
 
@@ -111,6 +124,45 @@ class TestAccountDeletion:
 
 
 class TestAuthentication:
+    def test_logged_out_session_check_is_not_an_error_response(self, client):
+        response = client.get('/api/auth/session')
+
+        assert response.status_code == 200
+        assert response.get_json() == {
+            'success': True,
+            'authenticated': False,
+            'user': None,
+        }
+
+    def test_oauth_handoff_creates_a_session_and_is_single_use(self, client):
+        oauth_handoff_store.store(
+            'one-time-handoff',
+            user_id='user-123',
+            user_email='Student@SZABIST-ISB.PK',
+        )
+
+        response = client.post('/api/auth/handoff', json={'token': 'one-time-handoff'})
+        session_response = client.get('/api/auth/session')
+        replay_response = client.post('/api/auth/handoff', json={'token': 'one-time-handoff'})
+
+        assert response.status_code == 200
+        assert response.get_json()['user'] == {
+            'id': 'user-123',
+            'email': 'student@szabist-isb.pk',
+        }
+        assert session_response.get_json()['authenticated'] is True
+        assert replay_response.status_code == 401
+
+    def test_oauth_handoff_redirect_keeps_the_token_out_of_the_request_query(self):
+        page = build_auth_handoff_redirect_page(
+            'https://class-wire.vercel.app',
+            {'auth': 'success', 'handoff': 'short-lived-token'},
+            'Redirecting',
+        )
+
+        assert 'https://class-wire.vercel.app/#auth=success&amp;handoff=short-lived-token' in page
+        assert 'https://class-wire.vercel.app/?auth=success' not in page
+
     def test_get_user_from_request_valid_header(self, mock_store, mock_user):
         mock_store.get_or_create_user.return_value = mock_user
 
@@ -148,7 +200,9 @@ class TestAuthenticationBoundary:
         finally:
             app.testing = original_testing
 
-        assert response.status_code == 401
+        assert response.status_code == 200
+        assert response.get_json()['authenticated'] is False
+        assert response.get_json()['user'] is None
 
 class TestDailyEmailToggle:
     def test_enable_daily_email_requires_personal_email(self, client, mock_store, mock_user):

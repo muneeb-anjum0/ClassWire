@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import json
 import os
+import secrets
 import urllib.parse
 import hmac
 from datetime import datetime
@@ -35,6 +36,7 @@ ensure_client_secrets_from_env()
 
 store = data_store
 oauth_state_store = TemporaryStateStore()
+oauth_handoff_store = TemporaryStateStore(ttl_seconds=120, max_entries=512)
 
 LOCAL_IP = get_local_ip()
 FRONTEND_PORT = int(os.environ.get("FRONTEND_PORT", 5174))
@@ -81,8 +83,9 @@ def build_popup_message_page(*, frontend_origin: str, payload: dict, close_delay
     """
 
 
-def build_mobile_redirect_page(frontend_url: str, params: dict, body_text: str) -> str:
-    redirect_url = f"{frontend_url}?{urllib.parse.urlencode(params)}"
+def build_auth_handoff_redirect_page(frontend_url: str, params: dict, body_text: str) -> str:
+    """Return OAuth results in the URL fragment so secrets do not reach access logs."""
+    redirect_url = f"{frontend_url}/#{urllib.parse.urlencode(params)}"
     safe_redirect = html.escape(redirect_url, quote=True)
     safe_body = html.escape(body_text)
     return f"""
@@ -92,7 +95,7 @@ def build_mobile_redirect_page(frontend_url: str, params: dict, body_text: str) 
     </head>
     <body>
       <script>
-        window.location.href = {json.dumps(redirect_url)};
+        window.location.replace({json.dumps(redirect_url)});
       </script>
       <p>{safe_body}</p>
     </body>
@@ -100,10 +103,12 @@ def build_mobile_redirect_page(frontend_url: str, params: dict, body_text: str) 
     """
 
 
-def is_mobile_request() -> bool:
-    user_agent = request.headers.get("User-Agent", "").lower()
-    mobile_markers = ["mobile", "android", "iphone", "ipad", "ipod", "blackberry", "opera mini"]
-    return any(marker in user_agent for marker in mobile_markers)
+def establish_user_session(user_id: str, user_email: str) -> None:
+    session.clear()
+    session.permanent = True
+    session["user_id"] = user_id
+    session["user_email"] = user_email.strip().lower()
+    session["user_identity_verified"] = True
 
 
 def resolve_frontend_origin(state_data: dict | None = None) -> str:
@@ -131,8 +136,14 @@ def get_user_from_request():
 def auth_session():
     user, error_response, status_code = authenticated_user(store, logger)
     if error_response:
+        if status_code == 401:
+            return jsonify({"success": True, "authenticated": False, "user": None})
         return error_response, status_code
-    return jsonify({"success": True, "user": {"id": user["id"], "email": user["email"]}})
+    return jsonify({
+        "success": True,
+        "authenticated": True,
+        "user": {"id": user["id"], "email": user["email"]},
+    })
 
 
 @app.route("/api/auth/logout", methods=["POST"])
@@ -203,12 +214,18 @@ def gmail_auth():
             prompt="consent",
         )
 
+        redirect_mode = request.args.get("redirect") == "1"
         try:
             session["auth_state"] = state
             code_verifier = getattr(flow, "code_verifier", None)
             if code_verifier:
                 session["code_verifier"] = code_verifier
-            oauth_state_store.store(state, code_verifier=code_verifier, frontend_origin=frontend_origin)
+            oauth_state_store.store(
+                state,
+                code_verifier=code_verifier,
+                frontend_origin=frontend_origin,
+                redirect_mode=redirect_mode,
+            )
         except Exception as error:
             logger.warning("Could not store session data for PKCE: %s", error)
 
@@ -283,18 +300,20 @@ def gmail_callback():
             },
         )
 
-        session.clear()
-        session.permanent = True
-        session["user_id"] = user["id"]
-        session["user_email"] = user_email.strip().lower()
-        session["user_identity_verified"] = True
+        establish_user_session(user["id"], user_email)
 
         frontend_origin = resolve_frontend_origin(state_data)
-        if is_mobile_request():
-            return build_mobile_redirect_page(
+        if (state_data or {}).get("redirect_mode"):
+            handoff_token = secrets.token_urlsafe(32)
+            oauth_handoff_store.store(
+                handoff_token,
+                user_id=user["id"],
+                user_email=user_email.strip().lower(),
+            )
+            return build_auth_handoff_redirect_page(
                 frontend_origin,
-                {"auth": "success", "user_id": user["id"], "email": user_email},
-                "Authentication successful! Redirecting...",
+                {"auth": "success", "handoff": handoff_token},
+                "Authentication successful. Redirecting...",
             )
 
         return build_popup_message_page(
@@ -308,8 +327,8 @@ def gmail_callback():
         state_data = state_data or oauth_state_store.pop(request.args.get("state"))
         frontend_origin = resolve_frontend_origin(state_data)
 
-        if is_mobile_request():
-            return build_mobile_redirect_page(
+        if (state_data or {}).get("redirect_mode"):
+            return build_auth_handoff_redirect_page(
                 frontend_origin,
                 {"auth": "error"},
                 "Authentication failed. Redirecting...",
@@ -321,6 +340,31 @@ def gmail_callback():
             close_delay_ms=2000,
             body_text="Authentication failed. Close this window and try again.",
         )
+
+
+@app.route("/api/auth/handoff", methods=["POST"])
+def auth_handoff():
+    """Exchange a short-lived OAuth result for a first-party signed session."""
+    payload = request.get_json(silent=True) or {}
+    token = payload.get("token")
+    if not isinstance(token, str) or not token.strip():
+        return jsonify({"success": False, "error": "Authentication handoff is required"}), 400
+
+    handoff = oauth_handoff_store.pop(token.strip())
+    if not handoff:
+        return jsonify({"success": False, "error": "Authentication handoff expired"}), 401
+
+    user_id = str(handoff.get("user_id") or "").strip()
+    user_email = str(handoff.get("user_email") or "").strip().lower()
+    if not user_id or not user_email:
+        return jsonify({"success": False, "error": "Invalid authentication handoff"}), 401
+
+    establish_user_session(user_id, user_email)
+    return jsonify({
+        "success": True,
+        "authenticated": True,
+        "user": {"id": user_id, "email": user_email},
+    })
 
 
 app.register_blueprint(

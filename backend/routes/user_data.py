@@ -308,10 +308,20 @@ def create_user_data_blueprint(*, logger, get_run_once, get_store):
         try:
             user, error_response, status_code = get_user_from_request()
             if error_response:
+                if status_code == 401:
+                    return jsonify({
+                        "success": True,
+                        "authenticated": False,
+                        "user": None,
+                        "timetable": None,
+                        "last_update": None,
+                        "timestamp": current_timestamp(),
+                    })
                 return error_response, status_code
             state = get_store().get_bootstrap_data(user["id"])
             return jsonify({
                 "success": True,
+                "authenticated": True,
                 "user": {"id": user["id"], "email": user["email"]},
                 "timetable": state.get("timetable"),
                 "last_update": state.get("last_update"),
