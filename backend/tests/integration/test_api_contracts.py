@@ -43,7 +43,14 @@ class TestHealthEndpoint:
         assert data['status'] == 'healthy'
         assert 'timestamp' in data
         assert data['config_loaded'] is True
+        assert data['revision']
         assert 'firestore_connected' not in data
+
+    def test_health_check_exposes_the_render_release_revision(self, client):
+        with patch.dict('os.environ', {'RENDER_GIT_COMMIT': '1234567890abcdef'}):
+            response = client.get('/api/health')
+
+        assert response.get_json()['revision'] == '1234567890ab'
 
     def test_large_json_responses_are_gzipped_when_supported(self):
         with app.test_request_context('/', headers={'Accept-Encoding': 'gzip, deflate'}):

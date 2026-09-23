@@ -160,6 +160,7 @@ def health_check():
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
             "config_loaded": True,
+            "revision": (os.environ.get("RENDER_GIT_COMMIT") or "local")[:12],
         }
     )
 
