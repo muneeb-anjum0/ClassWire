@@ -1,0 +1,69 @@
+ClassWire Restricted Source License
+Version 1.0, September 2026
+
+Copyright (c) 2026 Muneeb Anjum. All rights reserved.
+
+1. Ownership
+
+ClassWire, including its source code, object code, documentation, visual design,
+user interface, branding, text, diagrams, data structures, workflows, and other
+original materials, is proprietary material owned by the copyright holder.
+
+2. Limited permission to view
+
+Permission is granted only to view this repository and its contents for personal
+evaluation, academic review, or portfolio assessment. This permission does not
+include a right to use the software or any part of it in another project.
+
+3. Restrictions
+
+Without prior written permission from the copyright holder, you may not:
+
+a. copy, reproduce, download in bulk, republish, or distribute the software or
+   documentation, except for temporary technical copies made by the authorized
+   repository host solely to display the repository;
+b. modify, adapt, translate, reverse engineer, or create derivative works from
+   the software, interface, documentation, or protected implementation;
+c. run, deploy, host, demonstrate, sublicense, sell, rent, monetize, or provide
+   the software or any substantial part of it to another person;
+d. incorporate the source code, architecture diagrams, visual assets, written
+   material, or distinctive implementation into another product or service;
+e. remove or alter copyright, attribution, license, or ownership notices; or
+f. use the repository or its contents to train, fine-tune, benchmark, or supply
+   a machine-learning system or code-generation dataset.
+
+4. No implied rights
+
+No patent, trademark, trade-dress, database, publicity, or other rights are
+granted. Publication of the repository does not make ClassWire open source and
+does not waive any right held by the copyright holder.
+
+5. Ideas and applicable law
+
+This license reserves all rights available under applicable law in the specific
+expression, design, documentation, branding, and implementation of ClassWire.
+Nothing in this license claims an exclusive right over an abstract idea where
+such a right cannot legally exist.
+
+6. Written permission
+
+Any permission, commercial license, educational reuse, or exception must be
+granted in writing by the copyright holder and may be subject to separate terms.
+
+7. Termination
+
+Any permission granted by this license terminates automatically upon breach.
+After termination, all copies and derivative materials must be permanently
+deleted, subject to any preservation duty imposed by law.
+
+8. Disclaimer
+
+THE SOFTWARE AND DOCUMENTATION ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+KIND, EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR
+A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. TO THE MAXIMUM EXTENT
+PERMITTED BY LAW, THE COPYRIGHT HOLDER IS NOT LIABLE FOR ANY CLAIM, DAMAGES, OR
+OTHER LIABILITY ARISING FROM THE SOFTWARE OR ITS USE.
+
+9. Governing rights
+
+All rights not expressly granted are reserved by the copyright holder.

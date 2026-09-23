@@ -63,4 +63,60 @@ describe('timetable day headers', () => {
       'BS(SE)-7A',
     ]);
   });
+
+  it('groups and marks clashing classes in both responsive views', () => {
+    const earlyClash = {
+      ...classFor('Monday'),
+      semester_display: 'BS(SE)-7A',
+      course_title: 'Software Project Management',
+      time: '02:00 PM - 03:30 PM',
+    };
+    const unrelatedClass = {
+      ...classFor('Monday'),
+      semester_display: 'BS(SE)-5A',
+      course_title: 'Short Elective',
+      time: '02:30 PM - 03:00 PM',
+    };
+    const laterClash = {
+      ...classFor('Monday'),
+      semester_display: 'BS(SE)-6A',
+      course_title: 'Software Quality Engineering and Testing',
+      time: '03:00 PM - 04:00 PM',
+    };
+    const conflicts = [{
+      day: 'Monday',
+      overlap: '03:00 PM - 03:30 PM',
+      left: {
+        course: 'Software Project Management',
+        section: 'BS(SE)-7A',
+        time: '02:00 PM - 03:30 PM',
+      },
+      right: {
+        course: 'Software Quality Engineering and Testing',
+        section: 'BS(SE)-6A',
+        time: '03:00 PM - 04:00 PM',
+      },
+    }];
+    const { container } = render(
+      <TimetableTable items={[earlyClash, unrelatedClass, laterClash]} conflicts={conflicts} />,
+    );
+
+    const desktopRows = Array.from(container.querySelectorAll('.conversation-class'));
+    expect(desktopRows.map((row) => row.querySelector('strong')?.textContent)).toEqual([
+      'Software Project Management',
+      'Software Quality Engineering and Testing',
+      'Short Elective',
+    ]);
+    expect(desktopRows[0]).toHaveClass('conversation-class--conflict-start');
+    expect(desktopRows[1]).toHaveClass('conversation-class--conflict-end');
+    expect(desktopRows[0].getAttribute('data-conflict-group')).toBe(
+      desktopRows[1].getAttribute('data-conflict-group'),
+    );
+    expect(desktopRows[2]).not.toHaveClass('conversation-class--conflict');
+
+    const mobileCards = Array.from(container.querySelectorAll('.tw-mobile-day .tw-class-card'));
+    expect(mobileCards[0]).toHaveClass('tw-class-card--conflict-start');
+    expect(mobileCards[1]).toHaveClass('tw-class-card--conflict-end');
+    expect(mobileCards[2]).not.toHaveClass('tw-class-card--conflict');
+  });
 });
