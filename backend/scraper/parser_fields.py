@@ -1,7 +1,7 @@
 """Normalization and field extraction for timetable rows."""
 
 import re
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 from .parser_constants import *  # noqa: F403
 from .parser_rows import TIME_RE, collapse_whitespace as _collapse_whitespace
