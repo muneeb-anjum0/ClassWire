@@ -32,7 +32,7 @@ def build_plain_text(timetable: Dict) -> str:
             [
                 "No Classes Found",
                 "",
-                "No timetable email matched your configured semesters for this day.",
+                "No timetable email contained classes for this day.",
                 "ClassWire will check again at the next scheduled run.",
             ]
         )
@@ -84,7 +84,7 @@ def build_timetable_email_html(timetable: Dict, university_email: str) -> str:
             """
             <tr>
               <td colspan="5" style="padding:18px;color:#64748b;text-align:center;">
-                No classes were found for your configured semesters.
+                No classes were found for this day.
               </td>
             </tr>
             """
@@ -135,7 +135,7 @@ def build_timetable_email_html(timetable: Dict, university_email: str) -> str:
                 </div>
                 <h2 style="margin:14px 0 8px;color:#0f172a;font-size:26px;line-height:1.2;">No Classes Found</h2>
                 <p style="max-width:560px;margin:0 auto;color:#475569;font-size:15px;line-height:1.55;">
-                  ClassWire checked your Gmail for {escape_html(timetable.get('for_day', 'today'))} and did not find any matching classes for your configured semesters.
+                  ClassWire checked your Gmail for {escape_html(timetable.get('for_day', 'today'))} and did not find any matching classes.
                 </p>
                 <div style="margin-top:18px;display:inline-block;padding:10px 14px;border-radius:12px;background:#ffffff;color:#0f172a;border:1px solid #e2e8f0;font-size:14px;">
                   We will check again automatically at the next daily run.

@@ -33,14 +33,13 @@ def _target_empty_timetable(settings: Dict, error: str = '') -> Dict:
         'query': settings.get('gmail_query_base'),
         'message_id': None,
         'items': [],
-        'semesters': settings.get('allowed_semesters') or [],
         'summary': {
             'total_items': 0,
             'semester_breakdown': {},
             'unique_courses': 0,
             'unique_faculty': 0,
         },
-        'no_classes_reason': error or 'No timetable email matched the configured semesters.',
+        'no_classes_reason': error or 'No timetable email matched the requested schedule.',
     }
 
 
@@ -87,7 +86,6 @@ def send_daily_timetable_email_for_user(
 
     scrape_result = run_once(
         user_email=university_email,
-        show_table=False,
         user_id=user_id,
         user_settings=settings,
     )

@@ -1,9 +1,8 @@
 """Public timetable parsing interface."""
 
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List
 
-from .parser_fields import _semester_matches_filters
 from .parser_items import _build_item
 from .parser_rows import (
     html_to_text as _html_to_text,
@@ -15,10 +14,7 @@ from .parser_rows import (
 TIMETABLE_PARSER_VERSION = 2
 
 
-def parse_html_with_diagnostics(
-    html: str,
-    allowed_semesters: Optional[List[str]] = None,
-) -> tuple[List[Dict], Dict[str, int]]:
+def parse_html_with_diagnostics(html: str) -> tuple[List[Dict], Dict[str, int]]:
     """Parse a bulletin and return cheap, privacy-safe quality counters.
 
     The counters deliberately contain no timetable text. They make parser
@@ -31,25 +27,20 @@ def parse_html_with_diagnostics(
         "duplicate_rows": 0,
         "rejected_missing_identity": 0,
         "rejected_missing_time": 0,
-        "rejected_semester_filter": 0,
     }
     if not html:
         return [], diagnostics
-    items = _parse_html(html, allowed_semesters, diagnostics)
+    items = _parse_html(html, diagnostics)
     return items, diagnostics
 
 
-def parse_html_with_advanced_pandas(html: str, allowed_semesters: Optional[List[str]] = None) -> List[Dict]:
-    """Parse a timetable email body into structured schedule items.
-
-    The legacy function name is preserved for compatibility with the rest of
-    the backend, but the implementation no longer depends on tables or pandas.
-    """
-    items, _ = parse_html_with_diagnostics(html, allowed_semesters)
+def parse_timetable_html(html: str) -> List[Dict]:
+    """Parse a timetable email body into structured schedule items."""
+    items, _ = parse_html_with_diagnostics(html)
     return items
 
 
-def _parse_html(html: str, allowed_semesters: Optional[List[str]], diagnostics: Dict[str, int]) -> List[Dict]:
+def _parse_html(html: str, diagnostics: Dict[str, int]) -> List[Dict]:
 
     text = ""
     # Prefer parsing actual HTML tables when present because many emails use
@@ -103,28 +94,8 @@ def _parse_html(html: str, allowed_semesters: Optional[List[str]], diagnostics: 
             if identity in seen:
                 diagnostics["duplicate_rows"] += 1
                 continue
-            if _semester_matches_filters(
-                [
-                    str(cand.get("semester", "")),
-                    str(cand.get("semester_display", "")),
-                    str(cand.get("semester_original", "")),
-                ],
-                allowed_semesters,
-            ):
-                items.append(cand)
-                seen.add(identity)
-                diagnostics["accepted_rows"] += 1
-            else:
-                diagnostics["rejected_semester_filter"] += 1
+            items.append(cand)
+            seen.add(identity)
+            diagnostics["accepted_rows"] += 1
 
     return items
-
-class AdvancedTableParser:
-    """Compatibility wrapper used by older debug helpers.
-
-    The parser no longer extracts HTML tables. It now returns structured row
-    dictionaries from the plain-text timetable bulletin.
-    """
-
-    def extract_tables_from_html(self, html: str):
-        return parse_html_with_advanced_pandas(html)

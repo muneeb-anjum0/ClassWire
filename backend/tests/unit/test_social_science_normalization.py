@@ -1,4 +1,4 @@
-from scraper.timetable_parser import parse_html_with_advanced_pandas
+from scraper.timetable_parser import parse_timetable_html
 
 
 def _build_table_row(cells):
@@ -44,7 +44,7 @@ def _sample_social_sciences_html():
 
 def test_social_sciences_slash_expansion_no_filter():
     html = _sample_social_sciences_html()
-    items = parse_html_with_advanced_pandas(html)
+    items = parse_timetable_html(html)
     # Expect expansion: each slash-separated section should produce separate items
     semesters = {it.get("semester_display") for it in items}
     assert any("BSSS 1" in s for s in semesters)
@@ -53,15 +53,13 @@ def test_social_sciences_slash_expansion_no_filter():
     assert any("BS Psychology 2" in s for s in semesters)
 
 
-def test_social_sciences_filter_bsss1():
-    html = _sample_social_sciences_html()
-    items = parse_html_with_advanced_pandas(html, allowed_semesters=["BSSS 1"])
-    assert len(items) >= 1
-    assert any((it.get("semester_display") and "BSSS 1" in it.get("semester_display")) for it in items)
+def test_parser_returns_every_section_without_configuration():
+    items = parse_timetable_html(_sample_social_sciences_html())
 
-
-def test_social_sciences_filter_bspy1():
-    html = _sample_social_sciences_html()
-    items = parse_html_with_advanced_pandas(html, allowed_semesters=["BS Psychology 1"])
-    assert len(items) >= 1
-    assert any((it.get("semester_display") and "BS Psychology 1" in it.get("semester_display")) for it in items)
+    assert len(items) == 4
+    assert {item["semester_display"] for item in items} == {
+        "BSSS 1",
+        "BS Psychology 1",
+        "BSSS 2",
+        "BS Psychology 2",
+    }

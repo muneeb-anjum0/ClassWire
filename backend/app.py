@@ -48,13 +48,6 @@ def run_once(*args, **kwargs):
     return scrape_once(*args, **kwargs)
 
 
-def get_settings():
-    """Keep Pydantic and scraper configuration off the cold-start path."""
-    from scraper.config import settings
-
-    return settings
-
-
 def build_popup_message_page(*, frontend_origin: str, payload: dict, close_delay_ms: int, body_text: str) -> str:
     target_origins = json.dumps(
         [
@@ -335,7 +328,6 @@ app.register_blueprint(
     create_user_data_blueprint(
         logger=logger,
         get_run_once=lambda: run_once,
-        get_settings=get_settings,
         get_store=lambda: store,
     )
 )

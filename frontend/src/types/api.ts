@@ -16,7 +16,6 @@ export interface TimetableData {
   query: string;
   message_id: string | null;
   items: TimetableItem[];
-  semesters: string[];
   summary: {
     total_items: number;
     semester_breakdown: Record<string, number>;
@@ -71,7 +70,6 @@ export interface TimetableData {
 export interface BootstrapData {
   success: boolean;
   user: { id: string; email: string };
-  config: ConfigData;
   timetable: TimetableData | null;
   last_update: string | null;
   timestamp: string;
@@ -84,42 +82,4 @@ export interface ApiResponse<T = any> {
   error?: string;
   timestamp: string;
   cached?: boolean;
-}
-
-export interface ConfigData {
-  gmail_query: string;
-  semester_filter: string[];
-  filter_mode?: 'semesters' | 'subjects' | 'faculty';
-  subject_filters?: string[];
-  faculty_filters?: string[];
-  timetable_day?: string;
-  personal_email?: string;
-  daily_email_enabled?: boolean;
-  daily_email_last_result?: {
-    status?: 'running' | 'scraping' | 'sending' | 'success' | 'error';
-    success?: boolean | null;
-    message?: string;
-    error?: string;
-    personal_email?: string;
-    items?: number;
-    send_result?: {
-      provider?: string;
-      message_id?: string;
-      thread_id?: string;
-      subject?: string;
-      from?: string;
-      to?: string;
-    };
-    started_at?: string;
-    finished_at?: string;
-  } | null;
-  schedule_time: string;
-  timezone: string;
-  max_results: number;
-}
-
-export interface StatusData {
-  timestamp: string;
-  cache_exists: boolean;
-  last_update: string | null;
 }

@@ -3,9 +3,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { TimetableData } from '../types/api';
 
 const apiMocks = vi.hoisted(() => ({
-  getConfig: vi.fn(),
   getLatestTimetable: vi.fn(),
-  getStatus: vi.fn(),
   initialize: vi.fn(),
   searchTimetable: vi.fn(),
 }));
@@ -23,7 +21,6 @@ const makeSearchData = (query: string, answer: string, items: TimetableData['ite
   query: '',
   message_id: null,
   items,
-  semesters: [],
   summary: {
     total_items: items.length,
     semester_breakdown: {},
@@ -45,16 +42,6 @@ const makeSearchData = (query: string, answer: string, items: TimetableData['ite
 beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
-  apiMocks.getConfig.mockResolvedValue({
-    success: true,
-    data: {
-      gmail_query: '',
-      semester_filter: [],
-      schedule_time: '00:00',
-      timezone: 'Asia/Karachi',
-      max_results: 50,
-    },
-  });
 });
 
 test('a user search supersedes a slower background result restore', async () => {
@@ -139,7 +126,6 @@ test('cached results render before session verification and survive a failed ref
   );
 
   await waitFor(() => expect(result.current.timetableData?.search?.query).toBe(cachedQuery));
-  expect(result.current.authLoading).toBe(false);
   expect(apiMocks.getLatestTimetable).not.toHaveBeenCalled();
 
   rerender({ loading: false });

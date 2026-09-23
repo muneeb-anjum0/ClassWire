@@ -15,20 +15,6 @@ export function useDashboardUiState(logout: () => void) {
 
     return getMatchMedia('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'light';
   });
-  const [isMobileQuickActions, setIsMobileQuickActions] = useState(() => {
-    if (typeof window === 'undefined') {
-      return false;
-    }
-
-    return getMatchMedia('(max-width: 768px)')?.matches ?? false;
-  });
-  const [isQuickActionsExpanded, setIsQuickActionsExpanded] = useState(() => {
-    if (typeof window === 'undefined') {
-      return true;
-    }
-
-    return !(getMatchMedia('(max-width: 768px)')?.matches ?? false);
-  });
   const [logoutConfirmArmed, setLogoutConfirmArmed] = useState(false);
   const logoutConfirmTimer = useRef<number | null>(null);
 
@@ -69,36 +55,10 @@ export function useDashboardUiState(logout: () => void) {
 
   useEffect(() => () => clearLogoutConfirmTimer(), []);
 
-  useEffect(() => {
-    const mobileQuery = getMatchMedia('(max-width: 768px)');
-    if (!mobileQuery) {
-      return;
-    }
-
-    const handleChange = (event: MediaQueryListEvent) => {
-      setIsMobileQuickActions(event.matches);
-      setIsQuickActionsExpanded(!event.matches);
-    };
-
-    setIsMobileQuickActions(mobileQuery.matches);
-    setIsQuickActionsExpanded(!mobileQuery.matches);
-
-    if (mobileQuery.addEventListener) {
-      mobileQuery.addEventListener('change', handleChange);
-      return () => mobileQuery.removeEventListener('change', handleChange);
-    }
-
-    mobileQuery.addListener(handleChange);
-    return () => mobileQuery.removeListener(handleChange);
-  }, []);
-
   return {
     cancelLogoutConfirm,
     handleLogoutClick,
-    isMobileQuickActions,
-    isQuickActionsExpanded,
     logoutConfirmArmed,
-    setIsQuickActionsExpanded,
     setTheme,
     theme,
   };

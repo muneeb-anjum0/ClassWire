@@ -26,7 +26,7 @@ from .user_data_support import (
 EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
 
-def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store):
+def create_user_data_blueprint(*, logger, get_run_once, get_store):
     blueprint = Blueprint("user_data", __name__)
     # The timetable emails change at most daily. Reuse the fully parsed weekly
     # source for normal searches; users can include "refresh", "latest", or
@@ -60,37 +60,6 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
 
     def get_user_from_request():
         return authenticated_user(get_store(), logger)
-
-    def config_payload(user_settings):
-        settings = get_settings()
-        return {
-            "gmail_query": user_settings.get("gmail_query_base", settings.gmail_query_base),
-            "semester_filter": user_settings.get("allowed_semesters", settings.allowed_semesters),
-            "filter_mode": user_settings.get("filter_mode", "semesters"),
-            "subject_filters": user_settings.get("subject_filters", []),
-            "faculty_filters": user_settings.get("faculty_filters", []),
-            "timetable_day": user_settings.get("timetable_day", "Auto"),
-            "personal_email": user_settings.get("personal_email", ""),
-            "daily_email_enabled": user_settings.get("daily_email_enabled", bool(user_settings.get("personal_email"))),
-            "daily_email_last_result": user_settings.get("daily_email_last_result"),
-            "schedule_time": f"{settings.check_hour_local:02d}:{settings.check_minute_local:02d}",
-            "timezone": user_settings.get("timezone", settings.tz),
-            "max_results": getattr(settings, "max_results_per_semester", 50),
-        }
-
-    @blueprint.route("/api/config", methods=["GET"])
-    def get_config():
-        try:
-            user, error_response, status_code = get_user_from_request()
-            if error_response:
-                return error_response, status_code
-
-            store = get_store()
-            user_settings = store.get_user_settings(user["id"])
-            return jsonify(config_payload(user_settings))
-        except Exception as error:
-            logger.error("Error loading config: %s", error)
-            return jsonify({"error": str(error)}), 500
 
     @blueprint.route("/api/config/personal-email", methods=["POST", "OPTIONS"])
     def update_personal_email():
@@ -174,159 +143,6 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
             logger.error("Error updating daily email setting: %s", error, exc_info=True)
             return jsonify({"success": False, "error": str(error)}), 500
 
-    @blueprint.route("/api/config/semesters", methods=["POST", "OPTIONS"])
-    def update_semesters():
-        if request.method == "OPTIONS":
-            return "", 200
-
-        try:
-            user, error_response, status_code = get_user_from_request()
-            if error_response:
-                return error_response, status_code
-
-            payload = request.get_json(silent=True) or {}
-            semesters = payload.get("semesters")
-            if semesters is None:
-                return jsonify({"error": "Missing semesters data"}), 400
-            if not isinstance(semesters, list):
-                return jsonify({"error": "Semesters must be a list"}), 400
-
-            store = get_store()
-            current_settings = store.get_user_settings(user["id"])
-            current_settings["allowed_semesters"] = semesters
-
-            if not store.save_user_settings(user["id"], current_settings):
-                return jsonify({"error": "Failed to save settings"}), 500
-
-            logger.info("Updated semesters for user %s: %s", user["email"], semesters)
-            return jsonify(
-                {
-                    "success": True,
-                    "message": f"Updated {len(semesters)} allowed semesters",
-                    "semesters": semesters,
-                }
-            )
-        except Exception as error:
-            logger.error("Error updating semesters: %s", error, exc_info=True)
-            return jsonify({"success": False, "error": str(error)}), 500
-
-    @blueprint.route("/api/config/discovery", methods=["POST", "OPTIONS"])
-    def update_discovery():
-        if request.method == "OPTIONS":
-            return "", 200
-        try:
-            user, error_response, status_code = get_user_from_request()
-            if error_response:
-                return error_response, status_code
-            payload = request.get_json(silent=True) or {}
-            mode = payload.get("filter_mode", "semesters")
-            semesters = payload.get("semesters", [])
-            subjects = payload.get("subjects", [])
-            faculty = payload.get("faculty", [])
-            if mode not in {"semesters", "subjects", "faculty"}:
-                return jsonify({"success": False, "error": "Invalid discovery mode"}), 400
-            if not isinstance(semesters, list) or not isinstance(subjects, list) or not isinstance(faculty, list):
-                return jsonify({"success": False, "error": "Filters must be lists"}), 400
-            cleaned_semesters = [str(value).strip() for value in semesters if str(value).strip()]
-            cleaned_subjects = [str(value).strip() for value in subjects if str(value).strip()]
-            cleaned_faculty = [str(value).strip() for value in faculty if str(value).strip()]
-            store = get_store()
-            current_settings = store.get_user_settings(user["id"])
-            current_settings.update({
-                "filter_mode": mode,
-                "allowed_semesters": cleaned_semesters,
-                "subject_filters": cleaned_subjects,
-                "faculty_filters": cleaned_faculty,
-            })
-            if not store.save_user_settings(user["id"], current_settings):
-                return jsonify({"success": False, "error": "Failed to save discovery settings"}), 500
-            return jsonify({
-                "success": True,
-                "filter_mode": mode,
-                "semesters": cleaned_semesters,
-                "subjects": cleaned_subjects,
-                "faculty": cleaned_faculty,
-                "message": f"Updated {len(cleaned_subjects if mode == 'subjects' else cleaned_faculty if mode == 'faculty' else cleaned_semesters)} filters",
-            })
-        except Exception as error:
-            logger.error("Error updating discovery settings: %s", error, exc_info=True)
-            return jsonify({"success": False, "error": str(error)}), 500
-
-    @blueprint.route("/api/config/timetable-day", methods=["POST", "OPTIONS"])
-    def update_timetable_day():
-        if request.method == "OPTIONS":
-            return "", 200
-        try:
-            user, error_response, status_code = get_user_from_request()
-            if error_response:
-                return error_response, status_code
-            day = (request.get_json(silent=True) or {}).get("timetable_day", "")
-            allowed_days = {"Auto", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Entire Week"}
-            if day not in allowed_days:
-                return jsonify({"success": False, "error": "Invalid timetable day"}), 400
-            store = get_store()
-            current_settings = store.get_user_settings(user["id"])
-            current_settings["timetable_day"] = day
-            if not store.save_user_settings(user["id"], current_settings):
-                return jsonify({"success": False, "error": "Failed to save timetable day"}), 500
-            return jsonify({"success": True, "timetable_day": day, "message": f"Timetable day set to {day}"})
-        except Exception as error:
-            logger.error("Error updating timetable day: %s", error, exc_info=True)
-            return jsonify({"success": False, "error": str(error)}), 500
-
-    @blueprint.route("/api/scrape", methods=["POST"])
-    def scrape_now():
-        try:
-            user, error_response, status_code = get_user_from_request()
-            if error_response:
-                return error_response, status_code
-
-            if not current_app.testing and not refresh_limiter.allow(f"scrape:{user['id']}"):
-                return jsonify({"success": False, "error": "Please wait before refreshing Gmail again"}), 429
-
-            logger.info("Starting manual scrape for user %s", user["email"])
-
-            force_refresh = request.json.get("force_refresh", False) if request.is_json else False
-            if force_refresh:
-                get_store().clear_user_cache(user["id"])
-
-            store = get_store()
-            result = get_run_once()(
-                user_email=user["email"],
-                show_table=False,
-                user_id=user["id"],
-                user_settings=store.get_user_settings(user["id"]),
-            )
-
-            if result and result.get("success"):
-                search_source_cache.pop(user["id"])
-                return jsonify(
-                    {
-                        "success": True,
-                        "message": "Scrape completed successfully",
-                        "data": result.get("data", []),
-                        "timestamp": current_timestamp(),
-                    }
-                )
-
-            return jsonify(
-                {
-                    "success": False,
-                    "message": "Scrape failed or no data found",
-                    "error": result.get("error") if result else "Unknown error",
-                    "timestamp": current_timestamp(),
-                }
-            ), 400
-        except Exception as error:
-            logger.error("Error during scrape: %s", error)
-            return jsonify(
-                {
-                    "success": False,
-                    "error": str(error),
-                    "timestamp": current_timestamp(),
-                }
-            ), 500
-
     @blueprint.route("/api/search", methods=["POST"])
     def smart_search():
         try:
@@ -377,15 +193,13 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
                         else:
                             search_settings = dict(store.get_user_settings(user["id"]))
                             search_settings.update({
-                                "filter_mode": "subjects",
-                                "subject_filters": [],
                                 "timetable_day": "Entire Week",
                                 "_save_cache": False,
                                 "_previous_source": stale_source,
                             })
                             scrape_result = get_run_once()(
                                 user_email=user["email"], user_id=user["id"],
-                                user_settings=search_settings, show_table=False,
+                                user_settings=search_settings,
                             )
                             if not scrape_result or not scrape_result.get("success"):
                                 if has_searchable_items(stale_source):
@@ -490,7 +304,7 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
 
     @blueprint.route("/api/bootstrap", methods=["GET"])
     def bootstrap():
-        """Return identity, settings and last result with one browser request."""
+        """Return identity and the last timetable with one browser request."""
         try:
             user, error_response, status_code = get_user_from_request()
             if error_response:
@@ -499,7 +313,6 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
             return jsonify({
                 "success": True,
                 "user": {"id": user["id"], "email": user["email"]},
-                "config": config_payload(state["settings"]),
                 "timetable": state.get("timetable"),
                 "last_update": state.get("last_update"),
                 "timestamp": current_timestamp(),
@@ -546,28 +359,6 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
         except Exception as error:
             logger.error("Account deletion failed: %s", error, exc_info=True)
             return jsonify({"success": False, "error": "Could not delete account data"}), 500
-
-    @blueprint.route("/api/cache/clear", methods=["POST"])
-    def clear_cache():
-        try:
-            user, error_response, status_code = get_user_from_request()
-            if error_response:
-                return error_response, status_code
-
-            if not get_store().clear_user_cache(user["id"]):
-                return jsonify({"success": False, "message": "Failed to clear cache"}), 500
-            search_source_cache.pop(user["id"])
-
-            return jsonify(
-                {
-                    "success": True,
-                    "message": "Cache cleared successfully",
-                    "timestamp": current_timestamp(),
-                }
-            )
-        except Exception as error:
-            logger.error("Error clearing cache: %s", error)
-            return jsonify({"success": False, "message": "Internal server error"}), 500
 
     @blueprint.route("/api/automation/send-daily-timetables", methods=["POST"])
     def send_daily_timetables_automation():
@@ -754,31 +545,6 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
             )
         except Exception as error:
             logger.error("Error reading cached data: %s", error)
-            return jsonify({"success": False, "error": str(error), "timestamp": current_timestamp()}), 500
-
-    @blueprint.route("/api/status", methods=["GET"])
-    def get_status():
-        try:
-            user, error_response, status_code = get_user_from_request()
-            user_id = user.get("id") if user else None
-            if error_response:
-                return error_response, status_code
-
-            latest_timestamp = get_store().get_latest_timetable_timestamp(user_id)
-            return jsonify(
-                {
-                    "success": True,
-                    "data": {
-                        "timestamp": current_timestamp(),
-                        "cache_exists": latest_timestamp is not None,
-                        "last_update": latest_timestamp,
-                        "source": "firestore" if latest_timestamp else "none",
-                    },
-                    "timestamp": current_timestamp(),
-                }
-            )
-        except Exception as error:
-            logger.error("Error getting status: %s", error)
             return jsonify({"success": False, "error": str(error), "timestamp": current_timestamp()}), 500
 
     return blueprint

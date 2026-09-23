@@ -37,10 +37,7 @@ export default function DashboardPage() {
       message={
         controller.isBackendWaking
           ? controller.message || 'Backend is waking up on Render. First request after inactivity can take about a minute.'
-          : controller.message ||
-            (controller.detectedSemesters.length > 0
-              ? `${controller.detectedSemesters.length} semester(s) configured`
-              : 'Ready to configure semesters')
+          : controller.message || 'Ready'
       }
       closing={controller.isStatusToastClosing}
       onDismiss={controller.dismissStatus}

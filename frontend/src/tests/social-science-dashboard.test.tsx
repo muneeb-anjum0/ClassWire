@@ -61,11 +61,12 @@ vi.mock('../services/api', () => {
     apiService: {
       initialize: vi.fn().mockResolvedValue('http://localhost:5000'),
       getSession: vi.fn().mockResolvedValue({ success: true, user: { id: 'test-user', email: '2380223@szabist-isb.pk' } }),
+      getBootstrap: vi.fn().mockResolvedValue({
+        success: true,
+        user: { id: 'test-user', email: '2380223@szabist-isb.pk' },
+        timetable: { items: mockItems },
+      }),
       getLatestTimetable: vi.fn().mockResolvedValue({ success: true, data: { items: mockItems }, cached: true }),
-      getConfig: vi.fn().mockResolvedValue({ success: true, data: { semester_filter: ['BSSS1', 'BS Psychology 1'] } }),
-      getStatus: vi.fn().mockResolvedValue({ success: true, data: {} }),
-      runScraper: vi.fn().mockResolvedValue({ success: true, data: { items: mockItems } }),
-      updateSemesters: vi.fn().mockResolvedValue({ success: true }),
       getBaseOrigin: () => 'http://localhost:5000',
       getGmailAuthUrl: vi.fn(),
     },

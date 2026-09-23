@@ -1,25 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiService, getApiErrorMessage } from '../../services/api';
-import { ConfigData, TimetableData } from '../../types/api';
-import {
-  buildConfigAfterSemesterUpdate,
-  withInitializeRetry,
-} from './dashboardApi';
-import { DashboardAuthState } from './dashboardControllerTypes';
-import { useDashboardStatusToast } from './useDashboardStatusToast';
-import { useDashboardEmailActions } from './useDashboardEmailActions';
-import { useDashboardUiState } from './useDashboardUiState';
 import {
   deleteTimetableCache,
   readTimetableCache,
   writeTimetableCache,
 } from '../../services/timetableCache';
-import {
-  formatLastUpdate,
-  getDetectedSemesters,
-  getFilteredTimetableItems,
-  isSzabistIslamabadEmail,
-} from './utils';
+import { TimetableData } from '../../types/api';
+import { withInitializeRetry } from './dashboardApi';
+import { DashboardAuthState } from './dashboardControllerTypes';
+import { useDashboardStatusToast } from './useDashboardStatusToast';
+import { useDashboardUiState } from './useDashboardUiState';
+import { expandSocialSciencesSemesterItems, isSzabistIslamabadEmail } from './utils';
+
+const SEARCH_PARSER_VERSION = 13;
 
 export const useDashboardController = ({
   bootstrap: authBootstrap,
@@ -29,230 +22,112 @@ export const useDashboardController = ({
   logout,
   user,
 }: DashboardAuthState) => {
-  const SEARCH_PARSER_VERSION = 13;
   const ui = useDashboardUiState(logout);
   const statusToast = useDashboardStatusToast();
   const showStatus = statusToast.showStatus;
   const [timetableData, setTimetableData] = useState<TimetableData | null>(null);
-  const [config, setConfig] = useState<ConfigData | null>(null);
-  const [, setIsLoading] = useState(false);
   const [isScraperRunning, setIsScraperRunning] = useState(false);
-  const [isSemesterUpdateRunning, setIsSemesterUpdateRunning] = useState(false);
-  const [lastUpdate, setLastUpdate] = useState<string | null>(null);
-  const [showSemesterManager, setShowSemesterManager] = useState(false);
   const [operationInProgress, setOperationInProgress] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isSmartResult, setIsSmartResult] = useState(false);
-  const searchStorageKey = `classwire:v2:last-search:${user?.email || 'anonymous'}`;
   const hydratedUser = useRef<string | null>(null);
   const bootstrappedUser = useRef<string | null>(null);
   const dataRequestSequence = useRef(0);
   const searchInFlight = useRef(false);
 
-  const readCachedTimetable = async (): Promise<TimetableData | null> => {
-    const parsed = await readTimetableCache(user?.email);
-    if (parsed?.search && parsed.search.parser_version !== SEARCH_PARSER_VERSION) return null;
-    return parsed;
-  };
-
-  const cacheTimetableLocally = (data: TimetableData) => {
-    void writeTimetableCache(user?.email, data);
-  };
-
-  const readSavedSearch = async (): Promise<TimetableData | null> => {
-    const parsed = await readTimetableCache(user?.email);
-    return parsed?.search?.query && parsed.search.parser_version === SEARCH_PARSER_VERSION ? parsed : null;
-  };
-
-  const saveSearchLocally = (data: TimetableData) => {
-    cacheTimetableLocally(data);
-  };
-
-  const configuredSemesters = useMemo(() => config?.semester_filter ?? [], [config]);
-  const detectedSemesters = useMemo(
-    () => getDetectedSemesters(timetableData, configuredSemesters),
-    [configuredSemesters, timetableData],
-  );
   const filteredItems = useMemo(
-    () => isSmartResult ? (timetableData?.items || []) : getFilteredTimetableItems(timetableData, config),
-    [config, isSmartResult, timetableData],
+    () => expandSocialSciencesSemesterItems(timetableData?.items || []),
+    [timetableData],
   );
-  const activeFilterCount = config?.filter_mode === 'subjects'
-    ? (config.subject_filters || []).length
-    : config?.filter_mode === 'faculty'
-      ? (config.faculty_filters || []).length
-      : configuredSemesters.length;
-  const noSemestersConfigured = activeFilterCount === 0;
-  const lastUpdateDisplay = formatLastUpdate(lastUpdate);
-  const loggedInLabel = ui.isMobileQuickActions
-    ? user?.email?.split('@')[0] || 'User'
-    : user?.email || 'Unknown user';
-  const quickActionsToggleLabel = ui.isQuickActionsExpanded
-    ? 'Collapse quick actions'
-    : 'Expand quick actions';
-  const semesterCount = activeFilterCount;
-  const runButtonText = isScraperRunning
-    ? 'Scraping...'
-    : isSemesterUpdateRunning
-      ? 'Updating...'
-      : 'Run Scraper';
-  const timetableDay = config?.timetable_day || 'Auto';
   const accountDomainWarning = isAuthenticated &&
     !loading &&
     !isSzabistIslamabadEmail(user?.email)
       ? 'You are signed in with a non-SZABIST account. Use your @szabist-isb.pk Google account to access SZABIST timetable emails.'
       : '';
 
-  const handleTimetableDayChange = async (day: string) => {
-    const previousDay = timetableDay;
-    setConfig((current) => current ? { ...current, timetable_day: day } : current);
-    try {
-      const response = await apiService.updateTimetableDay(day);
-      if (!response.success) throw new Error(response.error || 'Failed to save timetable day');
-      setTimetableData(null);
-      showStatus('success', day === 'Auto' ? 'Timetable day set to automatic' : `Timetable search set to ${day}`);
-    } catch (error) {
-      setConfig((current) => current ? { ...current, timetable_day: previousDay } : current);
-      showStatus('error', error instanceof Error ? error.message : 'Failed to save timetable day');
-    }
+  const readCachedTimetable = async (): Promise<TimetableData | null> => {
+    const cached = await readTimetableCache(user?.email);
+    if (cached?.search && cached.search.parser_version !== SEARCH_PARSER_VERSION) return null;
+    return cached;
   };
 
-  const handleDeleteAccount = async () => {
-    try {
-      showStatus('loading', 'Deleting your ClassWire data...');
-      await deleteAccount();
-    } catch (error) {
-      showStatus('error', error instanceof Error ? error.message : 'Could not delete account data');
-      throw error;
-    }
-  };
-
-  const loadConfig = async (): Promise<ConfigData | null> => {
-    try {
-      const response = await apiService.getConfig();
-      if (!response.success || !response.data) {
-        return null;
-      }
-
-      setConfig(response.data);
-      return response.data;
-    } catch (error) {
-      console.error('Error loading config:', error);
-      return null;
-    }
-  };
-
-  const checkStatus = async () => {
-    try {
-      const response = await withInitializeRetry(
-        () => apiService.getStatus(),
-        'Network error when fetching status, retrying after autodetect',
-      );
-
-      if (response.success && response.data) {
-        setLastUpdate(response.data.last_update);
-      }
-    } catch (error) {
-      console.error('Error checking status:', error);
-    }
+  const readSavedSearch = async (): Promise<TimetableData | null> => {
+    const cached = await readTimetableCache(user?.email);
+    return cached?.search?.query && cached.search.parser_version === SEARCH_PARSER_VERSION
+      ? cached
+      : null;
   };
 
   const applySuccessfulTimetable = (
     data: TimetableData,
-    timestamp?: string,
     message?: string,
     silent = false,
     status: 'success' | 'warning' = 'success',
   ) => {
     setTimetableData(data);
-    cacheTimetableLocally(data);
-    if (timestamp) {
-      setLastUpdate(timestamp);
-    }
+    void writeTimetableCache(user?.email, data);
     if (!silent) showStatus(status, message || 'Data loaded successfully');
   };
 
   const loadLatestTimetable = async (force = false, silent = false) => {
-    if (operationInProgress && !force) {
-      return;
-    }
+    if (operationInProgress && !force) return;
 
     const requestSequence = ++dataRequestSequence.current;
     try {
-      if (!silent) {
-        showStatus('warning', lastUpdate ? 'Loading cached data...' : 'Loading previous data...');
-      }
-      setIsLoading(true);
+      if (!silent) showStatus('warning', 'Loading your saved timetable...');
       setOperationInProgress(true);
-
       const response = await withInitializeRetry(
         () => apiService.getLatestTimetable(),
-        'Network error when fetching timetable, retrying after autodetect',
+        'Network error when fetching timetable, retrying after API initialization',
       );
       if (requestSequence !== dataRequestSequence.current) return;
 
-      if (response.success && response.data) {
-        if (response.data.search?.query && response.data.search.parser_version !== SEARCH_PARSER_VERSION) {
-          const staleQuery = response.data.search.query.trim();
-          // Re-run the saved query against the already cached source. Parser
-          // migrations must not trigger an expensive Gmail scrape.
-          const refreshed = await apiService.searchTimetable(staleQuery);
-          if (requestSequence !== dataRequestSequence.current) return;
-          if (refreshed.success && refreshed.data) {
-            setIsSmartResult(true);
-            setSearchQuery(staleQuery);
-            saveSearchLocally(refreshed.data);
-            applySuccessfulTimetable(
-              refreshed.data,
-              refreshed.timestamp,
-              'Updated your saved search',
-              silent,
-              refreshed.data.search?.recognized === false ? 'warning' : 'success',
-            );
-            return;
-          }
-        }
-        const locallySavedSearch = await readSavedSearch();
-        const restoredData = response.data.search ? response.data : (locallySavedSearch || response.data);
-        const restoredSearchQuery = restoredData.search?.query?.trim() || '';
-        setIsSmartResult(Boolean(restoredData.search));
-        setSearchQuery(restoredSearchQuery);
-        applySuccessfulTimetable(
-          restoredData,
-          response.timestamp,
-          restoredData.search ? 'Restored your last search' : response.cached ? 'Loaded cached data' : 'Data loaded successfully',
-          silent,
-        );
+      if (!response.success || !response.data) {
+        if (!silent) showStatus('warning', 'Search for a class to load your timetable.');
         return;
       }
 
-      showStatus('warning', 'No timetable data available. Try running a manual scrape.');
+      if (response.data.search?.query && response.data.search.parser_version !== SEARCH_PARSER_VERSION) {
+        const staleQuery = response.data.search.query.trim();
+        const refreshed = await apiService.searchTimetable(staleQuery);
+        if (requestSequence !== dataRequestSequence.current) return;
+        if (refreshed.success && refreshed.data) {
+          setSearchQuery(staleQuery);
+          applySuccessfulTimetable(
+            refreshed.data,
+            'Updated your saved search',
+            silent,
+            refreshed.data.search?.recognized === false ? 'warning' : 'success',
+          );
+          return;
+        }
+      }
+
+      const localSearch = await readSavedSearch();
+      const restoredData = response.data.search ? response.data : (localSearch || response.data);
+      setSearchQuery(restoredData.search?.query?.trim() || '');
+      applySuccessfulTimetable(
+        restoredData,
+        restoredData.search ? 'Restored your last search' : 'Loaded your saved timetable',
+        silent,
+      );
     } catch (error) {
       if (requestSequence !== dataRequestSequence.current) return;
       console.error('Error loading timetable:', error);
-      showStatus('error', 'Failed to load timetable data');
+      if (!silent) showStatus('error', 'Failed to load timetable data');
     } finally {
-      if (requestSequence === dataRequestSequence.current) {
-        setIsLoading(false);
-        setOperationInProgress(false);
-      }
+      if (requestSequence === dataRequestSequence.current) setOperationInProgress(false);
     }
   };
 
   const runSmartSearch = async (query = searchQuery) => {
     const cleaned = query.trim();
-    // A user search is allowed to supersede the background restore request.
-    // searchInFlight is synchronous, unlike React state, so rapid submits
-    // cannot create competing responses that overwrite one another.
     if (cleaned.length < 2 || searchInFlight.current || isScraperRunning) return;
+
     const requestSequence = ++dataRequestSequence.current;
     searchInFlight.current = true;
     try {
       setSearchQuery(cleaned);
-      // Never leave an older answer visible while a different query is in
-      // flight; that makes a correct input look as if it returned stale data.
       setTimetableData(null);
-      setIsSmartResult(true);
       setIsScraperRunning(true);
       setOperationInProgress(true);
       showStatus('loading', 'Searching your timetable...');
@@ -262,11 +137,8 @@ export const useDashboardController = ({
       if (response.data.search?.query?.trim() !== cleaned) {
         throw new Error('The search response did not match your question. Please try again.');
       }
-      setIsSmartResult(true);
-      saveSearchLocally(response.data);
       applySuccessfulTimetable(
         response.data,
-        response.timestamp,
         response.message,
         false,
         response.data.search?.recognized === false ? 'warning' : 'success',
@@ -274,7 +146,6 @@ export const useDashboardController = ({
     } catch (error) {
       if (requestSequence !== dataRequestSequence.current) return;
       setTimetableData(null);
-      setIsSmartResult(true);
       const apiMessage = getApiErrorMessage(error);
       showStatus('error', apiMessage || (error instanceof Error ? error.message : 'Search failed'));
     } finally {
@@ -291,171 +162,29 @@ export const useDashboardController = ({
     dataRequestSequence.current += 1;
     setSearchQuery('');
     setTimetableData(null);
-    setIsSmartResult(false);
     void deleteTimetableCache(user?.email);
     statusToast.setStatus('idle');
     statusToast.setMessage('');
   };
 
-  const executeScraper = async () => {
-    const response = await apiService.runScraper();
-    if (response.success && response.data) {
-      window.localStorage.removeItem(searchStorageKey);
-      setIsSmartResult(false);
-      setSearchQuery('');
-      applySuccessfulTimetable(
-        response.data,
-        response.timestamp,
-        response.message || 'Parser completed successfully',
-      );
-      await checkStatus();
-      return true;
-    }
-
-    showStatus('error', response.error || 'Parser failed');
-    setTimetableData(null);
-    return false;
-  };
-
-  const runScraper = async ({ skipSemesterValidation = false } = {}) => {
-    if (isScraperRunning || operationInProgress) {
-      return;
-    }
-
-    if (!skipSemesterValidation && activeFilterCount === 0) {
-      showStatus(
-        'error',
-        'No filters configured. Add semesters or subjects before running the parser.',
-      );
-      return;
-    }
-
+  const handleDeleteAccount = async () => {
     try {
-      setIsScraperRunning(true);
-      setIsLoading(true);
-      setOperationInProgress(true);
-      showStatus('loading', 'Running parser...');
-      await executeScraper();
+      showStatus('loading', 'Deleting your ClassWire data...');
+      await deleteAccount();
     } catch (error) {
-      console.error('Error running scraper:', error);
-      showStatus('error', 'Failed to run parser');
-      setTimetableData(null);
-    } finally {
-      setIsScraperRunning(false);
-      setIsLoading(false);
-      setOperationInProgress(false);
-    }
-  };
-
-  /* Email delivery actions live in useDashboardEmailActions. */
-  const emailActions = useDashboardEmailActions({
-    checkStatus,
-    config,
-    loadConfig,
-    operationInProgress,
-    setConfig,
-    showStatus,
-  });
-  const {
-    dailyEmailEnabled,
-    handleSavePersonalEmail,
-    handleSendTestEmail,
-    handleToggleDailyEmail,
-    isDailyEmailToggleSaving,
-    isPersonalEmailSaving,
-    isTestEmailSending,
-    personalEmail,
-    setPersonalEmail,
-  } = emailActions;
-
-  const handleSaveSemesters = async (newSemesters: string[]) => {
-    if (isSemesterUpdateRunning || operationInProgress) {
-      return;
-    }
-
-    try {
-      setIsSemesterUpdateRunning(true);
-      setIsLoading(true);
-      setOperationInProgress(true);
-      showStatus('loading', 'Updating semester settings...');
-
-      const response = await apiService.updateSemesters(newSemesters);
-      if (!response.success) {
-        showStatus('error', response.error || 'Failed to update semesters');
-        return;
-      }
-
-      setConfig((currentConfig) =>
-        buildConfigAfterSemesterUpdate(currentConfig, newSemesters, personalEmail),
-      );
-      await loadConfig();
-      setTimetableData(null);
-
-      if (newSemesters.length === 0) {
-        showStatus(
-          'warning',
-          'No semesters configured. Please add semesters to filter your schedule.',
-        );
-        return;
-      }
-
-      showStatus(
-        'success',
-        `Successfully updated ${newSemesters.length} semester(s). Running parser...`,
-      );
-      window.setTimeout(() => {
-        runScraper({ skipSemesterValidation: true });
-      }, 500);
-    } catch (error) {
-      console.error('Error updating semesters:', error);
-      showStatus('error', 'Failed to update semesters');
-    } finally {
-      setIsSemesterUpdateRunning(false);
-      setIsLoading(false);
-      setOperationInProgress(false);
-    }
-  };
-
-  const handleSaveDiscovery = async (mode: 'semesters' | 'subjects' | 'faculty', values: string[]) => {
-    if (isSemesterUpdateRunning || operationInProgress) return;
-    try {
-      setIsSemesterUpdateRunning(true);
-      setIsLoading(true);
-      setOperationInProgress(true);
-      showStatus('loading', 'Updating discovery filters...');
-      const semesters = mode === 'semesters' ? values : (config?.semester_filter || []);
-      const subjects = mode === 'subjects' ? values : (config?.subject_filters || []);
-      const faculty = mode === 'faculty' ? values : (config?.faculty_filters || []);
-      const response = await apiService.updateDiscovery(mode, semesters, subjects, faculty);
-      if (!response.success) throw new Error(response.error || 'Failed to update filters');
-      setConfig((current) => current ? { ...current, filter_mode: mode, semester_filter: semesters, subject_filters: subjects, faculty_filters: faculty } : current);
-      setTimetableData(null);
-      if (values.length === 0) {
-        showStatus('warning', `Add at least one ${mode === 'subjects' ? 'subject' : mode === 'faculty' ? 'faculty' : 'semester'} filter.`);
-        return;
-      }
-      showStatus('success', `Saved ${values.length} ${mode === 'subjects' ? 'subject' : mode === 'faculty' ? 'faculty' : 'semester'} filter(s). Running parser...`);
-      window.setTimeout(() => runScraper({ skipSemesterValidation: true }), 500);
-    } catch (error) {
-      showStatus('error', error instanceof Error ? error.message : 'Failed to update filters');
-    } finally {
-      setIsSemesterUpdateRunning(false);
-      setIsLoading(false);
-      setOperationInProgress(false);
+      showStatus('error', error instanceof Error ? error.message : 'Could not delete account data');
+      throw error;
     }
   };
 
   useEffect(() => {
     const userKey = user?.email?.trim().toLowerCase();
-    if (!isAuthenticated || !userKey || hydratedUser.current === userKey) {
-      return;
-    }
+    if (!isAuthenticated || !userKey || hydratedUser.current === userKey) return;
     hydratedUser.current = userKey;
 
     void readCachedTimetable().then((cached) => {
       if (!cached || hydratedUser.current !== userKey) return;
       setTimetableData(cached);
-      setIsSmartResult(Boolean(cached.search));
       setSearchQuery(cached.search?.query?.trim() || '');
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -463,91 +192,47 @@ export const useDashboardController = ({
 
   useEffect(() => {
     const userKey = user?.email?.trim().toLowerCase();
-    if (!isAuthenticated || loading || !userKey || bootstrappedUser.current === userKey) {
-      return;
-    }
+    if (!isAuthenticated || loading || !userKey || bootstrappedUser.current === userKey) return;
     bootstrappedUser.current = userKey;
 
-    const bootstrap = async () => {
+    void (async () => {
       const cached = await readCachedTimetable();
       if (authBootstrap?.user.email.toLowerCase() === userKey) {
-        setConfig(authBootstrap.config);
         if (authBootstrap.timetable) {
-          const serverData = authBootstrap.timetable;
-          const locallySavedSearch = await readSavedSearch();
-          const restoredData = serverData.search ? serverData : (locallySavedSearch || serverData);
-          setIsSmartResult(Boolean(restoredData.search));
+          const localSearch = await readSavedSearch();
+          const restoredData = authBootstrap.timetable.search
+            ? authBootstrap.timetable
+            : (localSearch || authBootstrap.timetable);
           setSearchQuery(restoredData.search?.query?.trim() || '');
-          applySuccessfulTimetable(restoredData, authBootstrap.last_update || authBootstrap.timestamp, undefined, true);
+          applySuccessfulTimetable(restoredData, undefined, true);
         }
         return;
       }
-      await Promise.allSettled([loadConfig(), loadLatestTimetable(true, Boolean(cached))]);
-    };
-
-    bootstrap();
+      await loadLatestTimetable(true, Boolean(cached));
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authBootstrap, isAuthenticated, loading, user?.email]);
 
-  useEffect(() => {
-    if (config && timetableData && noSemestersConfigured && !isScraperRunning && !operationInProgress) {
-      showStatus(
-        'warning',
-        'No semesters configured. Please add semesters to filter and organize your schedule.',
-      );
-    }
-  }, [config, noSemestersConfigured, operationInProgress, isScraperRunning, showStatus, timetableData]);
-
   return {
     accountDomainWarning,
-    authLoading: loading && !user,
     cancelLogoutConfirm: ui.cancelLogoutConfirm,
-    config,
-    dailyEmailEnabled,
-    detectedSemesters,
+    clearSmartSearch,
+    deleteAccount: handleDeleteAccount,
     dismissStatus: statusToast.dismissStatus,
     filteredItems,
     handleLogoutClick: ui.handleLogoutClick,
-    handleSavePersonalEmail,
-    handleSaveSemesters,
-    handleSaveDiscovery,
-    handleSendTestEmail,
-    handleToggleDailyEmail,
-    handleTimetableDayChange,
     isBackendWaking: statusToast.isBackendWaking,
-    isDailyEmailToggleSaving,
-    isMobileQuickActions: ui.isMobileQuickActions,
-    isPersonalEmailSaving,
-    isQuickActionsExpanded: ui.isQuickActionsExpanded,
     isScraperRunning,
-    isSemesterUpdateRunning,
     isStatusToastClosing: statusToast.isStatusToastClosing,
-    isTestEmailSending,
-    lastUpdateDisplay,
-    loggedInLabel,
     logoutConfirmArmed: ui.logoutConfirmArmed,
     message: statusToast.message,
-    noSemestersConfigured,
-    operationInProgress,
-    personalEmail,
-    quickActionsToggleLabel,
-    clearSmartSearch,
-    runButtonText,
-    runScraper,
     runSmartSearch,
     searchQuery,
     setSearchQuery,
-    semesterCount,
-    setIsQuickActionsExpanded: ui.setIsQuickActionsExpanded,
-    setPersonalEmail,
-    setShowSemesterManager,
     setTheme: ui.setTheme,
-    showSemesterManager,
     status: statusToast.status,
     theme: ui.theme,
     timetableData,
-    timetableDay,
     userEmail: user?.email,
-    deleteAccount: handleDeleteAccount,
   };
 };
