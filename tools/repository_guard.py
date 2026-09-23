@@ -11,8 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 ALLOWED_ROOTS = {
     ".github",
     ".gitignore",
+    "LICENSE",
     "README.md",
-    "TESTING.md",
     "backend",
     "docs",
     "frontend",

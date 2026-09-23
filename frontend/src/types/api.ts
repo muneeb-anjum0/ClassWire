@@ -51,12 +51,7 @@ export interface TimetableData {
       } | null;
     };
     conflict_count?: number;
-    conflicts?: Array<{
-      day: string;
-      overlap: string;
-      left: { course?: string; section?: string; time?: string };
-      right: { course?: string; section?: string; time?: string };
-    }>;
+    conflicts?: TimetableConflict[];
     days: string[];
     entities: Record<string, string[]>;
     free_slots: Record<string, string[]>;
@@ -65,6 +60,19 @@ export interface TimetableData {
       slots: Record<string, string[]>;
     }>;
   };
+}
+
+export interface TimetableConflictClass {
+  course?: string;
+  section?: string;
+  time?: string;
+}
+
+export interface TimetableConflict {
+  day: string;
+  overlap: string;
+  left: TimetableConflictClass;
+  right: TimetableConflictClass;
 }
 
 export interface BootstrapData {

@@ -97,7 +97,10 @@ export default function DashboardPage() {
                   </div>
                 )}
                 <div className="timetable-container">
-                  <TimetableTable items={controller.filteredItems} />
+                  <TimetableTable
+                    items={controller.filteredItems}
+                    conflicts={controller.timetableData.search?.conflicts}
+                  />
                 </div>
               </section>
             )}

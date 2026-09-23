@@ -82,6 +82,52 @@ html[data-theme='dark'] .tw-mobile-day-head {
   background: var(--surface-hover);
 }
 
+.conversation-class--conflict {
+  box-sizing: border-box;
+  border-right: 1px solid color-mix(in srgb, var(--danger) 44%, var(--border));
+  border-left: 1px solid color-mix(in srgb, var(--danger) 44%, var(--border));
+  background-color: color-mix(in srgb, var(--danger) 5%, var(--surface));
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 9px,
+    color-mix(in srgb, var(--danger) 18%, transparent) 9px,
+    color-mix(in srgb, var(--danger) 18%, transparent) 10px
+  );
+}
+
+.conversation-class--conflict:hover {
+  background-color: color-mix(in srgb, var(--danger) 9%, var(--surface));
+}
+
+.conversation-class--conflict-start,
+.conversation-class--conflict-single {
+  margin-top: 8px;
+  border-top-color: color-mix(in srgb, var(--danger) 58%, var(--border));
+}
+
+.conversation-class--conflict-middle,
+.conversation-class--conflict-end {
+  border-top-color: color-mix(in srgb, var(--danger) 34%, var(--border));
+}
+
+.conversation-class--conflict-end,
+.conversation-class--conflict-single {
+  margin-bottom: 8px;
+  box-shadow: inset 0 -1px color-mix(in srgb, var(--danger) 58%, var(--border));
+}
+
+html[data-theme='dark'] .conversation-class--conflict {
+  background-color: color-mix(in srgb, var(--danger) 11%, var(--surface));
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 9px,
+    color-mix(in srgb, var(--danger) 30%, transparent) 9px,
+    color-mix(in srgb, var(--danger) 30%, transparent) 10px
+  );
+}
+
 .conversation-class__time {
   color: var(--text-primary);
   font-size: 14px;
@@ -308,6 +354,49 @@ html[data-theme='dark'] .conversation-class__section {
     border: 1px solid var(--border);
     border-radius: 12px;
     background: var(--surface);
+  }
+
+  .tw-class-card--conflict {
+    border-color: color-mix(in srgb, var(--danger) 52%, var(--border));
+    background-color: color-mix(in srgb, var(--danger) 5%, var(--surface));
+    background-image: repeating-linear-gradient(
+      135deg,
+      transparent 0,
+      transparent 9px,
+      color-mix(in srgb, var(--danger) 18%, transparent) 9px,
+      color-mix(in srgb, var(--danger) 18%, transparent) 10px
+    );
+  }
+
+  .tw-class-card--conflict-start {
+    border-radius: 12px 12px 0 0;
+  }
+
+  .tw-class-card--conflict-middle,
+  .tw-class-card--conflict-end {
+    margin-top: -7px;
+    border-top-color: color-mix(in srgb, var(--danger) 34%, var(--border));
+    border-radius: 0;
+  }
+
+  .tw-class-card--conflict-end {
+    margin-bottom: 6px;
+    border-radius: 0 0 12px 12px;
+  }
+
+  .tw-class-card--conflict-single {
+    margin-block: 6px;
+  }
+
+  html[data-theme='dark'] .tw-class-card--conflict {
+    background-color: color-mix(in srgb, var(--danger) 11%, var(--surface));
+    background-image: repeating-linear-gradient(
+      135deg,
+      transparent 0,
+      transparent 9px,
+      color-mix(in srgb, var(--danger) 30%, transparent) 9px,
+      color-mix(in srgb, var(--danger) 30%, transparent) 10px
+    );
   }
 
   .tw-course-block {
