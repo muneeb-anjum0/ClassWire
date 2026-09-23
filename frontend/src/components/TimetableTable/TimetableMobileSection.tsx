@@ -1,4 +1,3 @@
-import React from 'react';
 import { TimetableItem } from '../../types/api';
 import { GroupedTimetable, getCourseMeta, getDisplayCampus, getDisplayCourseTitle, getDisplayFaculty, getDisplayRoom, getDisplayTime, getSectionColor, getSemesterLabel, renderHighlightedText, shouldHighlightRow, sortTimetableItems } from './timetableTableUtils';
 

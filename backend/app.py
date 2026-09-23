@@ -5,7 +5,6 @@ from __future__ import annotations
 import html
 import json
 import os
-import sys
 import urllib.parse
 import hmac
 from datetime import datetime

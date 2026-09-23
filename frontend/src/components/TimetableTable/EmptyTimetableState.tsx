@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function EmptyTimetableState() {
   return (
     <div className="tw-empty-state">
@@ -15,7 +13,7 @@ export default function EmptyTimetableState() {
       </div>
 
       <h3>No timetable data available</h3>
-      <p>Configure your semesters and refresh the data to see your schedule.</p>
+      <p>Search for a section, course, faculty member, or day to see its schedule.</p>
     </div>
   );
 }

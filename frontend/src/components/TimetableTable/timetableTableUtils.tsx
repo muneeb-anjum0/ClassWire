@@ -1,13 +1,14 @@
 import React from 'react';
 import { TimetableItem } from '../../types/api';
-import {
-  isValidData as validateData,
-  getCorrectedValue,
-  generateCourseTitle as generateTitle,
-} from '../../utils/courseCorrections';
 import { normalizeSemesterLabel } from '../../utils/semesterNormalization';
 
 export type GroupedTimetable = Record<string, TimetableItem[]>;
+
+const hasDisplayValue = (value: unknown): value is string => {
+  if (typeof value !== 'string') return false;
+  const normalized = value.trim().toLowerCase();
+  return Boolean(normalized && normalized !== 'null' && normalized !== 'undefined');
+};
 
 export const getSectionColor = (index: number): React.CSSProperties => {
   // Golden-angle spacing keeps adjacent semester labels visually distinct,
@@ -63,62 +64,32 @@ export const sortTimetableItems = (items: TimetableItem[]): TimetableItem[] =>
   [...items].sort(compareTimetableItems);
 
 export const getDisplayTime = (item: TimetableItem): string => {
-  if (validateData(item.time)) {
-    return item.time!;
-  }
-
-  return getCorrectedValue('time', item) || '-';
+  return hasDisplayValue(item.time) ? item.time.trim() : '-';
 };
 
 export const getDisplayRoom = (item: TimetableItem): string => {
-  let room = item.room;
-
-  if (room && room.toUpperCase() === 'TBD') {
-    room = 'Online';
-  }
-
-  if (item.course === 'CSCL 2205') {
-    return getCorrectedValue('room', item) || room || 'TBD';
-  }
-
-  if (validateData(room)) {
-    return room!;
-  }
-
-  return getCorrectedValue('room', item) || 'TBD';
+  return hasDisplayValue(item.room) ? item.room.trim() : 'TBD';
 };
 
 export const getDisplayCampus = (item: TimetableItem): string => {
-  const campus = item.campus;
-
-  if (validateData(campus)) {
-    const campusString = campus!.trim();
-    if (
-      campusString.toLowerCase().includes('szabist') &&
-      campusString.toLowerCase().includes('university')
-    ) {
-      return 'SZABIST University Campus';
-    }
-
-    return campusString;
-  }
-
-  return getCorrectedValue('campus', item) || '-';
+  return hasDisplayValue(item.campus) ? item.campus.trim() : '-';
 };
 
 export const getDisplayFaculty = (item: TimetableItem): string => {
-  if (validateData(item.faculty)) {
-    return item.faculty!;
-  }
-
-  return getCorrectedValue('faculty', item) || 'TBD';
+  return hasDisplayValue(item.faculty) ? item.faculty.trim() : 'TBD';
 };
 
 export const getSemesterLabel = (item: TimetableItem): string =>
   normalizeSemesterLabel(item.semester_display || item.semester || item.semester_key);
 
 export const getDisplayCourseTitle = (item: TimetableItem): string => {
-  const title = validateData(item.course_title) ? item.course_title! : generateTitle(item);
+  const title = hasDisplayValue(item.course_title)
+    ? item.course_title.trim()
+    : hasDisplayValue(item.course)
+      ? item.course.trim()
+      : hasDisplayValue(item.course_code)
+        ? item.course_code.trim()
+        : 'Untitled course';
   const courseIdentity = `${item.course || ''} ${item.course_code || ''}`;
   const isLab = /\blab\s*:/i.test(courseIdentity) || /\blab\b/i.test(String(item.course_type || ''));
   return isLab && !/\blab\s*$/i.test(title) ? `${title} Lab` : title;

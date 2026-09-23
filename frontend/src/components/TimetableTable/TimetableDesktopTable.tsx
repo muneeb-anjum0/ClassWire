@@ -1,4 +1,3 @@
-import React from 'react';
 import { TimetableItem } from '../../types/api';
 import {
   GroupedTimetable,

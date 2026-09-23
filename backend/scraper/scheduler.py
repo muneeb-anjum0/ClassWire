@@ -133,20 +133,18 @@ def _target_date(now_local: datetime, next_day_available_hour: int = 17) -> date
         # Target today's date
         return now_local
 
-def _build_query(base: str, day_name: str, newer_than_days: Optional[int] = None) -> str:
+def _build_query(base: str, day_name: str) -> str:
     # Some schedule emails visually contain "for Tuesday", but Gmail's index
     # splits that phrase across HTML nodes. Match the weekday in the subject as
     # the reliable path and retain the body phrase as a fallback.
-    age_filter = f" newer_than:{newer_than_days}d" if newer_than_days is not None else ""
-    return f'{base} {{subject:{day_name} "for {day_name}"}}{age_filter} -in:trash'
+    return f'{base} {{subject:{day_name} "for {day_name}"}} -in:trash'
 
 
-def _build_week_query(base: str, newer_than_days: Optional[int] = None) -> str:
+def _build_week_query(base: str) -> str:
     alternatives = " ".join(
         [*(f"subject:{day}" for day in WEEKDAY_NAMES[:6]), *(f'"for {day}"' for day in WEEKDAY_NAMES[:6])]
     )
-    age_filter = f" newer_than:{newer_than_days}d" if newer_than_days is not None else ""
-    return f"{base} {{{alternatives}}}{age_filter} -in:trash"
+    return f"{base} {{{alternatives}}} -in:trash"
 
 
 def _latest_messages_by_weekday(
