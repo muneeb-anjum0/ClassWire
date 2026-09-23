@@ -4,7 +4,6 @@ flask-cors>=6.0.5
 
 # Database
 firebase-admin>=6.5.0
-aiohttp>=3.14.1
 cryptography>=48.0.1
 idna>=3.18
 PyJWT>=2.13.0
@@ -17,7 +16,6 @@ httplib2>=0.22.0
 
 # HTML parsing and processing
 beautifulsoup4>=4.15.0
-lxml>=4.9.0
 
 # Configuration and environment management
 python-dotenv>=1.0.0

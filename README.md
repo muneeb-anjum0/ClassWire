@@ -63,8 +63,8 @@ The project began as a timetable scraper and evolved into a complete schedule-in
 | Gmail refresh | Unchanged weekdays are reused; only changed timetable emails are downloaded and parsed |
 | Browser persistence | Large timetable results use IndexedDB through one reused connection, with synchronous storage retained only as a compatibility fallback |
 | Large result rendering | Initial DOM work is bounded to **60 schedule rows** and progressively expanded |
-| Automated quality | **175 backend tests** and **47 frontend tests**, including a forty-query acceptance matrix |
-| Measured coverage | **71% backend branch-aware coverage** and **66.3% frontend line coverage** across the complete application surface |
+| Automated quality | **174 backend tests** and **49 frontend tests**, including a forty-query acceptance matrix |
+| Measured coverage | **63.2% backend branch-aware coverage** and **67.9% frontend line coverage** across the complete application surface |
 | Production payload | Initial JavaScript reduced from **300.9 kB / 96.7 kB gzip** to **202.4 kB / 64.6 kB gzip**; dashboard code and styles load on demand |
 
 The import, coverage, and build figures were measured locally. They are engineering baselines, not claims about public-network latency, Google APIs, Firestore, or Render cold starts.
@@ -379,7 +379,7 @@ Existing `localStorage` timetable entries are migrated into IndexedDB. If Indexe
 
 ### Retention and deletion
 
-Timetable and source documents receive an `expires_at` timestamp and are eligible for deletion after seven days. A cleanup path also removes stale cache documents independently of Firestore TTL.
+Timetable and source documents receive an `expires_at` timestamp and are eligible for deletion after seven days through Firestore TTL policy.
 
 The account-deletion workflow:
 
@@ -573,11 +573,11 @@ These counters make it possible to estimate cost from actual usage without embed
 ClassWire has a layered quality suite built around the failures that matter most for timetable software: missing rows, unrelated rows, incorrect section binding, ambiguous people, malformed source data, stale asynchronous state, and unsafe external-service behavior.
 
 - **84 unit tests** isolate parsing, natural-language interpretation, section normalization, cache expiry, rate limits, and production-server configuration.
-- **50 integration tests** exercise API contracts, Gmail message handling, latest-per-weekday selection, Firestore serialization, security boundaries, and daily-email delivery with deterministic service doubles.
+- **49 integration tests** exercise API contracts, Gmail message handling, latest-per-weekday selection, Firestore serialization, security boundaries, and daily-email delivery with deterministic service doubles.
 - **41 acceptance tests** validate representative timetable fixtures and forty exact natural-language scenarios. Each scenario rejects both missing and unexpected rows.
-- **47 frontend behavior tests** exercise accessible search interactions, API failures, result persistence, stale-request protection, large-result windowing, suggestions, and timetable presentation in a browser-like DOM.
+- **49 frontend behavior tests** exercise accessible search interactions, API failures, result persistence, stale-request protection, large-result windowing, suggestions, and timetable presentation in a browser-like DOM.
 
-The current suite contains **222 tests** in total. Backend coverage is measured with branch tracking and guarded at 61%; frontend coverage is guarded independently for statements, branches, functions, and lines. These are repository-wide floors, not selective numbers from only the easiest modules.
+The current suite contains **223 tests** in total. Backend coverage is measured with branch tracking and guarded at 61%; frontend coverage is guarded independently for statements, branches, functions, and lines. These are repository-wide floors, not selective numbers from only the easiest modules.
 
 Every pull request runs the complete quality suite, dependency audits, secret scanning, and the production build. The full test architecture, commands, fixture policy, and contribution rules are documented in [TESTING.md](TESTING.md).
 
@@ -644,7 +644,7 @@ Result
 | API | Flask, Gunicorn | Small cold-start surface and straightforward authenticated routes |
 | Database | Cloud Firestore | Simple per-user documents and inexpensive direct document access |
 | Email source | Gmail API, Google OAuth 2.0 | Read-only access to the user’s authoritative timetable messages |
-| Parsing | Beautiful Soup, lxml, deterministic heuristics | Handles both structured tables and malformed HTML/text without per-query AI cost |
+| Parsing | Beautiful Soup and deterministic heuristics | Handles both structured tables and malformed HTML/text without per-query AI cost |
 | Quality | Pytest, pytest-cov, Vitest, Testing Library | Layered unit, integration, acceptance, UI behavior, and coverage checks |
 | Automation | GitHub Actions | Scheduled delivery and CI without a paid background-worker service |
 | Hosting | Vercel and Render | Static frontend delivery with an independently deployable Python API |
@@ -660,7 +660,6 @@ ClassWire/
 │   ├── database/             Encrypted tokens and optimized Firestore persistence
 │   ├── routes/               User, search, config, automation, and lifecycle APIs
 │   ├── scraper/              Gmail synchronization, parsing, normalization, search
-│   ├── scripts/              Scheduled automation entry point
 │   └── tests/                Unit, integration, acceptance, and fixture suites
 ├── frontend/
 │   └── src/

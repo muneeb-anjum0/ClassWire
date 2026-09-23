@@ -3,7 +3,7 @@ name: Quality, security, and build
 on:
   pull_request:
   push:
-    branches: [main, master]
+    branches: [main]
 
 permissions:
   contents: read

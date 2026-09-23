@@ -27,10 +27,10 @@ The names describe behavior rather than implementation details. A failing path s
 | Layer | Current checks | Purpose |
 | --- | ---: | --- |
 | Backend unit | 84 | Small, deterministic checks around one behavior |
-| Backend integration | 50 | Contracts between ClassWire layers and controlled service doubles |
+| Backend integration | 49 | Contracts between ClassWire layers and controlled service doubles |
 | Backend acceptance | 41 | Exact parser output and end-user natural-language scenarios |
-| Frontend behavior | 47 | Browser-like interaction, state, API, and presentation checks |
-| **Total** | **222** | One coherent regression suite |
+| Frontend behavior | 49 | Browser-like interaction, state, API, and presentation checks |
+| **Total** | **223** | One coherent regression suite |
 
 ## What is protected
 

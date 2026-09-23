@@ -1,4 +1,3 @@
-import React from 'react';
 import StatusIndicator from '../../components/StatusIndicator/StatusIndicator';
 import TimetableTable from '../../components/TimetableTable/TimetableTable';
 import { useAuth } from '../../context/AuthContext';

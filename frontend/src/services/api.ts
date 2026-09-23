@@ -179,7 +179,6 @@ export const apiService = {
   getBootstrap: () => request<BootstrapData>('/api/bootstrap'),
   deleteAccount: () => request<{ success: true; message: string }>('/api/account', { method: 'DELETE' }),
   logout: async (): Promise<void> => { await request('/api/auth/logout', { method: 'POST' }); },
-  healthCheck: () => request<ApiResponse>('/api/health'),
   searchTimetable: (query: string, forceRefresh = false): Promise<ApiResponse<TimetableData>> =>
     request('/api/search', { method: 'POST', body: { query, force_refresh: forceRefresh } }),
   getLatestTimetable: () => request<ApiResponse<TimetableData>>('/api/timetable'),

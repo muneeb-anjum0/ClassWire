@@ -10,15 +10,7 @@ from scraper.scheduler import (
 from scraper.timetable_parser import TIMETABLE_PARSER_VERSION
 
 
-def test_weekday_query_matches_subject_and_body_variants():
-    query = _build_query('subject:"Class Schedule" in:inbox', "Tuesday", 7)
-
-    assert "{subject:Tuesday \"for Tuesday\"}" in query
-    assert "newer_than:7d" in query
-    assert "-in:trash" in query
-
-
-def test_weekday_query_can_search_the_latest_available_email_without_an_age_limit():
+def test_weekday_query_matches_subject_and_body_variants_without_an_age_limit():
     query = _build_query('subject:"Class Schedule" in:inbox', "Tuesday")
 
     assert "{subject:Tuesday \"for Tuesday\"}" in query
@@ -55,12 +47,12 @@ def test_latest_weekday_messages_use_one_unbounded_query_per_day(monkeypatch):
 
 
 def test_week_query_collects_each_supported_day_in_one_gmail_search():
-    query = _build_week_query('subject:"Class Schedule" in:inbox', 14)
+    query = _build_week_query('subject:"Class Schedule" in:inbox')
 
     assert "subject:Monday" in query
     assert "subject:Saturday" in query
     assert '"for Tuesday"' in query
-    assert "newer_than:14d" in query
+    assert "newer_than:" not in query
 
 
 def test_day_detection_uses_whole_words_only():

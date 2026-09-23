@@ -236,15 +236,6 @@ class FirestoreStore:
             )
         return cache_data
 
-    def clear_user_cache(self, user_id: str) -> bool:
-        self.cache.document(user_id).delete()
-        self.source_cache.document(user_id).delete()
-        self._timetable_hashes.pop(user_id)
-        self._timetable_cache.pop(user_id)
-        self._source_cache.pop(user_id)
-        self._source_hashes.pop(user_id)
-        return True
-
     def save_search_source_cache(self, user_id: str, source_data: Dict[str, Any]) -> bool:
         """Persist the compact weekly source so process restarts do not rescrape Gmail."""
         content_hash = _cache_content_hash(source_data)
@@ -429,26 +420,6 @@ class FirestoreStore:
             logger.warning("Daily email configured for missing user_id=%s", missing_user_id)
 
         return configured_users
-
-    def cleanup_old_cache(self) -> bool:
-        from google.cloud.firestore_v1.base_query import FieldFilter
-
-        cutoff = _utc_now() - timedelta(days=CACHE_RETENTION_DAYS)
-        batch = self.client.batch()
-        pending = 0
-        for collection in (self.cache, self.source_cache):
-            stale_docs = collection.where(filter=FieldFilter("updated_at", "<", cutoff)).stream()
-            for cache_doc in stale_docs:
-                batch.delete(cache_doc.reference)
-                pending += 1
-                if pending == 450:
-                    batch.commit()
-                    batch = self.client.batch()
-                    pending = 0
-        if pending:
-            batch.commit()
-        return True
-
 
 class LazyFirestoreStore:
     """Create the Firestore store only when the app actually needs it."""

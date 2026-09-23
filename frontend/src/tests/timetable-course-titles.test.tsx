@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   getCourseMeta,
+  getDisplayCampus,
   getDisplayCourseTitle,
+  getDisplayRoom,
+  getDisplayTime,
   sortTimetableItems,
 } from '../components/TimetableTable/timetableTableUtils';
 
@@ -64,5 +67,24 @@ describe('timetable presentation order', () => {
       '06:30 PM - 08:00 PM',
       '-',
     ]);
+  });
+});
+
+describe('parser output presentation', () => {
+  it('preserves the parser room and campus instead of applying old course overrides', () => {
+    const item = {
+      course: 'CSCL 2205',
+      room: 'NB-208',
+      campus: 'SZABIST H-8 Markaz Campus',
+    };
+
+    expect(getDisplayRoom(item)).toBe('NB-208');
+    expect(getDisplayCampus(item)).toBe('SZABIST H-8 Markaz Campus');
+  });
+
+  it('uses neutral placeholders instead of inventing timetable values', () => {
+    expect(getDisplayTime({})).toBe('-');
+    expect(getDisplayRoom({})).toBe('TBD');
+    expect(getDisplayCampus({})).toBe('-');
   });
 });
