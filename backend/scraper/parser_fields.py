@@ -37,28 +37,6 @@ def _normalize_semester_display(value: str) -> str:
 
     return cleaned
 
-def _semester_matches_filters(item_values: Sequence[str], allowed_semesters: Optional[List[str]]) -> bool:
-    if not allowed_semesters:
-        return True
-
-    item_keys = {_normalize_semester_key(value) for value in item_values if value}
-    item_keys.discard("")
-    if not item_keys:
-        return False
-
-    for allowed in allowed_semesters:
-        allowed_key = _normalize_semester_key(allowed)
-        if not allowed_key:
-            continue
-
-        for item_key in item_keys:
-            if item_key == allowed_key:
-                return True
-            if item_key.endswith(allowed_key) or allowed_key.endswith(item_key):
-                return True
-
-    return False
-
 def _is_name_token(token: str) -> bool:
     cleaned = token.strip().strip(",;:")
     if not cleaned:

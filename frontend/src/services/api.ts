@@ -1,4 +1,4 @@
-import { ApiResponse, TimetableData, ConfigData, StatusData, BootstrapData } from '../types/api';
+import { ApiResponse, TimetableData, BootstrapData } from '../types/api';
 
 export const BACKEND_WAKE_EVENT = 'backend-wake-state';
 const BACKEND_WAKE_DELAY_MS = 4500;
@@ -29,10 +29,8 @@ export const getApiErrorMessage = (error: unknown): string | undefined =>
     ? error.data?.error || error.data?.message || error.message
     : undefined;
 
-const getBackendWakeMessage = (path?: string) =>
-  path?.includes('/api/scrape')
-    ? 'Backend is waking up on Render. The parser will start as soon as the service is ready.'
-    : 'Backend is waking up on Render. First request after inactivity can take about a minute.';
+const getBackendWakeMessage = () =>
+  'Backend is waking up on Render. First request after inactivity can take about a minute.';
 
 const emitBackendWakeState = (active: boolean, message?: string) => {
   window.dispatchEvent(new CustomEvent(BACKEND_WAKE_EVENT, { detail: { active, message } }));
@@ -76,7 +74,7 @@ const request = async <T>(
   const controller = new AbortController();
   const timeoutTimer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const wakeTimer = window.setTimeout(() => {
-    emitBackendWakeState(true, getBackendWakeMessage(path));
+    emitBackendWakeState(true, getBackendWakeMessage());
   }, BACKEND_WAKE_DELAY_MS);
 
   try {
@@ -107,26 +105,6 @@ const request = async <T>(
     emitBackendWakeState(false);
   }
 };
-
-const rateLimiter = {
-  lastCalls: new Map<string, number>(),
-  minInterval: 1000,
-  shouldBlock(endpoint: string): boolean {
-    const now = Date.now();
-    const lastCall = this.lastCalls.get(endpoint);
-    if (lastCall && now - lastCall < this.minInterval) return true;
-    this.lastCalls.set(endpoint, now);
-    return false;
-  },
-};
-
-const withSettingsData = (responseData: any) => ({
-  ...responseData,
-  data: {
-    personal_email: responseData.personal_email,
-    daily_email_enabled: responseData.daily_email_enabled,
-  },
-});
 
 export const apiService = {
   initialize: async (): Promise<string> => {
@@ -202,47 +180,9 @@ export const apiService = {
   deleteAccount: () => request<{ success: true; message: string }>('/api/account', { method: 'DELETE' }),
   logout: async (): Promise<void> => { await request('/api/auth/logout', { method: 'POST' }); },
   healthCheck: () => request<ApiResponse>('/api/health'),
-  getConfig: async (): Promise<ApiResponse<ConfigData>> => ({
-    success: true,
-    data: await request<ConfigData>('/api/config'),
-    timestamp: new Date().toISOString(),
-  }),
-
-  updateSemesters: async (semesters: string[]): Promise<ApiResponse> => {
-    if (rateLimiter.shouldBlock('/api/config/semesters')) throw new Error('Please wait before updating semesters again');
-    return request('/api/config/semesters', { method: 'POST', body: { semesters } });
-  },
-  updateDiscovery: (
-    filterMode: 'semesters' | 'subjects' | 'faculty',
-    semesters: string[],
-    subjects: string[],
-    faculty: string[],
-  ): Promise<ApiResponse> => request('/api/config/discovery', {
-    method: 'POST',
-    body: { filter_mode: filterMode, semesters, subjects, faculty },
-  }),
-  updateTimetableDay: (timetableDay: string): Promise<ApiResponse<{ timetable_day: string }>> =>
-    request('/api/config/timetable-day', { method: 'POST', body: { timetable_day: timetableDay } }),
-  updatePersonalEmail: async (personalEmail: string): Promise<ApiResponse<{ personal_email: string; daily_email_enabled: boolean }>> => {
-    if (rateLimiter.shouldBlock('/api/config/personal-email')) throw new Error('Please wait before updating your email again');
-    return withSettingsData(await request('/api/config/personal-email', { method: 'POST', body: { personal_email: personalEmail } }));
-  },
-  updateDailyEmailEnabled: async (enabled: boolean): Promise<ApiResponse<{ personal_email: string; daily_email_enabled: boolean }>> => {
-    if (rateLimiter.shouldBlock('/api/config/daily-email-enabled')) throw new Error('Please wait before updating daily email delivery again');
-    return withSettingsData(await request('/api/config/daily-email-enabled', { method: 'POST', body: { daily_email_enabled: enabled } }));
-  },
-  sendTestTimetableEmail: async (): Promise<ApiResponse<{ items: number; personal_email: string }>> => {
-    if (rateLimiter.shouldBlock('/api/automation/send-test-timetable-email')) throw new Error('Please wait before sending another email');
-    return request('/api/automation/send-test-timetable-email', { method: 'POST' });
-  },
-  runScraper: async (): Promise<ApiResponse<TimetableData>> => {
-    if (rateLimiter.shouldBlock('/api/scrape')) throw new Error('Please wait before running the scraper again');
-    return request('/api/scrape', { method: 'POST' });
-  },
   searchTimetable: (query: string, forceRefresh = false): Promise<ApiResponse<TimetableData>> =>
     request('/api/search', { method: 'POST', body: { query, force_refresh: forceRefresh } }),
   getLatestTimetable: () => request<ApiResponse<TimetableData>>('/api/timetable'),
-  getStatus: () => request<ApiResponse<StatusData>>('/api/status'),
 };
 
 export default apiService;

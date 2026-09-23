@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import sys
@@ -29,7 +28,7 @@ from .gmail_client import (
 )
 from .timetable_parser import (
     TIMETABLE_PARSER_VERSION,
-    parse_html_with_advanced_pandas,
+    parse_timetable_html,
     parse_html_with_diagnostics,
 )
 
@@ -54,41 +53,6 @@ PUBLIC_ITEM_FIELDS = (
     "campus",
     "schedule_day",
 )
-
-def _normalize_subject(value: object) -> str:
-    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
-
-def _filter_subject_items(items, subject_filters):
-    needles = [_normalize_subject(value) for value in subject_filters]
-    needles = [value for value in needles if value]
-    if not needles:
-        return items
-    matched = []
-    for item in items:
-        fields = [item.get("course_code"), item.get("course_title"), item.get("course")]
-        normalized_fields = [_normalize_subject(value) for value in fields if value]
-        if any(needle in field or field in needle for needle in needles for field in normalized_fields):
-            matched.append(item)
-    return matched
-
-def _filter_faculty_items(items, faculty_filters):
-    needles = [_normalize_subject(value) for value in faculty_filters]
-    needles = [value for value in needles if value]
-    if not needles:
-        return items
-    return [
-        item for item in items
-        if any(needle in _normalize_subject(item.get("faculty")) for needle in needles)
-    ]
-
-
-def _apply_item_filters(items, filter_mode, subject_filters, faculty_filters):
-    if filter_mode == "subjects":
-        return _filter_subject_items(items, subject_filters)
-    if filter_mode == "faculty":
-        return _filter_faculty_items(items, faculty_filters)
-    return items
-
 
 def _compact_items(items):
     """Strip parser-only diagnostics before network and Firestore persistence."""
@@ -214,48 +178,18 @@ def _next_date_for_day(now_local: datetime, day_name: str) -> datetime:
     target_weekday = WEEKDAY_NAMES.index(day_name)
     return now_local + timedelta(days=(target_weekday - now_local.weekday()) % 7)
 
-def _save_json(doc: Dict, folder: str = "data/cache") -> str:
-    """Legacy function - still used for backward compatibility"""
-    os.makedirs(folder, exist_ok=True)
-    date_str = doc.get("for_date") or datetime.now().date().isoformat()
-    path = os.path.join(folder, f"schedule_{date_str}.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(doc, f, indent=2, ensure_ascii=False)
-    meta_path = os.path.join(folder, "last_checked.json")
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "last_message_id": doc.get("message_id"),
-                "last_run_at": datetime.utcnow().isoformat() + "Z",
-                "query_used": doc.get("query"),
-                "for_day": doc.get("for_day"),
-                "for_date": doc.get("for_date"),
-                "items_found": len(doc.get("items", [])),
-            },
-            f,
-            indent=2,
-            ensure_ascii=False,
-        )
-    return path
-
-def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional[str] = None, user_settings: Optional[Dict] = None) -> Dict:
+def run_once(user_email: str = "me", user_id: Optional[str] = None, user_settings: Optional[Dict] = None) -> Dict:
     """
     Run the scraper once for a specific user.
     
     Args:
         user_email: Gmail user email (for Gmail API)
-        show_table: Kept for legacy callers; the web app uses JSON responses.
         user_id: Firestore user ID for storing results
         user_settings: User-specific settings (overrides global settings)
     """
     from .config import settings
     
     try:
-        allowed_semesters = user_settings.get('allowed_semesters', settings.allowed_semesters) if user_settings else settings.allowed_semesters
-        filter_mode = user_settings.get('filter_mode', 'semesters') if user_settings else 'semesters'
-        subject_filters = user_settings.get('subject_filters', []) if user_settings else []
-        faculty_filters = user_settings.get('faculty_filters', []) if user_settings else []
-        parser_semesters = allowed_semesters if filter_mode == 'semesters' else None
         gmail_query_base = user_settings.get('gmail_query_base', settings.gmail_query_base) if user_settings else settings.gmail_query_base
         timezone = user_settings.get('timezone', settings.tz) if user_settings else settings.tz
         next_day_available_hour = user_settings.get('next_day_available_hour', settings.next_day_available_hour) if user_settings else settings.next_day_available_hour
@@ -401,7 +335,7 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
                     received_at_by_day[day_name] = _message_received_at(message)
                     html = get_message_html_from_message(message) or ""
                     parser_started = time.perf_counter()
-                    day_items, diagnostics = parse_html_with_diagnostics(html, parser_semesters)
+                    day_items, diagnostics = parse_html_with_diagnostics(html)
                     observe("parser.timetable", (time.perf_counter() - parser_started) * 1000)
                     increment("parser.rows_accepted", diagnostics.get("accepted_rows", 0))
                     increment(
@@ -409,7 +343,6 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
                         diagnostics.get("rejected_missing_identity", 0)
                         + diagnostics.get("rejected_missing_time", 0),
                     )
-                    day_items = _apply_item_filters(day_items, filter_mode, subject_filters, faculty_filters)
                     parser_diagnostics[day_name] = {**diagnostics, "reused": False}
                 for item in day_items:
                     item["schedule_day"] = day_name
@@ -419,7 +352,7 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
             doc = {
                 "for_day": "Entire Week", "for_date": now_local.date().isoformat(),
                 "query": query, "message_id": message_ids[0] if message_ids else None,
-                "message_ids": message_ids, "items": items, "semesters": allowed_semesters,
+                "message_ids": message_ids, "items": items,
                 "message_ids_by_day": message_ids_by_day,
                 "source_received_at_by_day": received_at_by_day,
                 "parser_version": TIMETABLE_PARSER_VERSION,
@@ -434,8 +367,6 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
             if user_id and should_save_cache:
                 from database.firestore_store import data_store
                 data_store.save_timetable_cache(user_id, doc)
-            elif not user_id and should_save_cache:
-                _save_json(doc)
             return {"success": True, "data": doc, "message": f"Successfully found {len(items)} items for the week"}
 
         msgs = list_messages(service, user_id=user_email, query=query, max_results=1)
@@ -448,7 +379,6 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
                 "query": query,
                 "message_id": None,
                 "items": [],
-                "semesters": allowed_semesters,
                 "summary": {
                     "total_items": 0,
                     "semester_breakdown": {},
@@ -461,22 +391,12 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
             if user_id and should_save_cache:
                 from database.firestore_store import data_store
                 data_store.save_timetable_cache(user_id, doc)
-            elif not user_id and should_save_cache:
-                _save_json(doc)
-                
             return {"success": True, "data": doc, "message": "No messages found for today"}
 
         msg_id = msgs[0]["id"]
         html = get_message_html(service, user_id=user_email, msg_id=msg_id) or ""
         
-        items = _compact_items(
-            _apply_item_filters(
-                parse_html_with_advanced_pandas(html, parser_semesters),
-                filter_mode,
-                subject_filters,
-                faculty_filters,
-            )
-        )
+        items = _compact_items(parse_timetable_html(html))
 
         doc = {
             "for_day": for_day_name,
@@ -484,16 +404,12 @@ def run_once(user_email: str = "me", show_table: bool = False, user_id: Optional
             "query": query,
             "message_id": msg_id,
             "items": items,
-            "semesters": allowed_semesters,
             "summary": _summarize(items),
         }
         
         if user_id and should_save_cache:
             from database.firestore_store import data_store
             data_store.save_timetable_cache(user_id, doc)
-        elif not user_id and should_save_cache:
-            _save_json(doc)
-        
         summary = doc.get("summary", {})
         LOGGER.info(f"Successfully parsed {summary['total_items']} items for date {target_date.date()}")
         

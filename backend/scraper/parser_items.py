@@ -6,7 +6,6 @@ from typing import Dict, List, Optional
 from .parser_fields import (
     _normalize_semester_key,
     _normalize_semester_display,
-    _semester_matches_filters,
     _is_name_token,
     _is_section_token,
     _normalize_person_name,

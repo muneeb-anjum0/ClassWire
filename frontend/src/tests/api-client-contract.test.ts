@@ -10,7 +10,6 @@ describe('native API client', () => {
     const payload = {
       success: true,
       user: { id: 'student', email: 'student@szabist-isb.pk' },
-      config: {},
       timetable: null,
     };
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), {

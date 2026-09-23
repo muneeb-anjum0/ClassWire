@@ -69,10 +69,9 @@ class TestHealthEndpoint:
 
 
 class TestBootstrapEndpoint:
-    def test_bootstrap_combines_user_config_and_cached_timetable(self, client, mock_store, mock_user):
+    def test_bootstrap_returns_identity_and_cached_timetable(self, client, mock_store, mock_user):
         mock_store.get_or_create_user.return_value = mock_user
         mock_store.get_bootstrap_data.return_value = {
-            'settings': {'allowed_semesters': ['BS(SE)-7A']},
             'timetable': {'items': [], 'for_day': 'Entire Week'},
             'last_update': '2026-09-22T10:00:00Z',
         }
@@ -80,7 +79,7 @@ class TestBootstrapEndpoint:
         assert response.status_code == 200
         data = response.get_json()
         assert data['user']['email'] == mock_user['email']
-        assert data['config']['semester_filter'] == ['BS(SE)-7A']
+        assert 'config' not in data
         assert data['timetable']['for_day'] == 'Entire Week'
 
     def test_metrics_require_automation_secret(self, client):
@@ -140,46 +139,16 @@ class TestAuthentication:
             assert status is None
 
 
-class TestSemesterConfiguration:
-    def test_update_semesters_success(self, client, mock_store, mock_user):
-        mock_store.get_or_create_user.return_value = mock_user
-        mock_store.get_user_settings.return_value = {'allowed_semesters': []}
-        mock_store.save_user_settings.return_value = True
-
-        response = client.post(
-            '/api/config/semesters',
-            json={'semesters': ['BS (SE) - 5C']},
-            headers={'X-User-Email': 'test@example.com'},
-        )
-
-        assert response.status_code == 200
-        assert response.get_json()['success'] is True
-
-    def test_update_semesters_invalid_data(self, client, mock_store, mock_user):
-        mock_store.get_or_create_user.return_value = mock_user
-
-        response = client.post(
-            '/api/config/semesters',
-            json={'invalid': 'data'},
-            headers={'X-User-Email': 'test@example.com'},
-        )
-
-        assert response.status_code == 400
-
+class TestAuthenticationBoundary:
     def test_identity_header_is_ignored_outside_tests(self, client):
         original_testing = app.testing
         app.testing = False
         try:
-            response = client.get('/api/config', headers={'X-User-Email': 'spoofed@example.com'})
+            response = client.get('/api/bootstrap', headers={'X-User-Email': 'spoofed@example.com'})
         finally:
             app.testing = original_testing
 
         assert response.status_code == 401
-
-    def test_update_semesters_no_auth(self, client):
-        response = client.post('/api/config/semesters', json={'semesters': ['BS (SE) - 5C']})
-        assert response.status_code == 401
-
 
 class TestDailyEmailToggle:
     def test_enable_daily_email_requires_personal_email(self, client, mock_store, mock_user):
@@ -235,34 +204,6 @@ class TestDailyEmailToggle:
         assert mock_store.save_user_settings.call_args.args[1]['daily_email_enabled'] is False
 
 
-class TestScrapeEndpoint:
-    @patch('app.run_once')
-    def test_scrape_success(self, mock_run_once, client, mock_store, mock_user):
-        mock_store.get_or_create_user.return_value = mock_user
-        mock_store.get_user_settings.return_value = {'allowed_semesters': ['BS (SE) - 5C']}
-        mock_run_once.return_value = {
-            'success': True,
-            'data': [{'course': 'Test Course'}],
-        }
-
-        response = client.post('/api/scrape', headers={'X-User-Email': 'test@example.com'})
-        assert response.status_code == 200
-        assert response.get_json()['success'] is True
-
-    @patch('app.run_once')
-    def test_scrape_failure(self, mock_run_once, client, mock_store, mock_user):
-        mock_store.get_or_create_user.return_value = mock_user
-        mock_store.get_user_settings.return_value = {'allowed_semesters': ['BS (SE) - 5C']}
-        mock_run_once.return_value = {
-            'success': False,
-            'error': 'Test error',
-        }
-
-        response = client.post('/api/scrape', headers={'X-User-Email': 'test@example.com'})
-        assert response.status_code == 400
-        assert response.get_json()['success'] is False
-
-
 class TestSearchEndpoint:
     @patch('app.run_once')
     def test_search_persists_compact_source_and_does_not_duplicate_items(self, mock_run_once, client, mock_store, mock_user):
@@ -284,7 +225,6 @@ class TestSearchEndpoint:
             'message_id': 'message-1',
             'message_ids': ['message-1'],
             'items': [item],
-            'semesters': [],
             'summary': {},
         }
         mock_store.get_or_create_user.return_value = mock_user

@@ -42,7 +42,6 @@ function setDashboardState(overrides: Record<string, unknown> = {}) {
     accountDomainWarning: '',
     clearSmartSearch: vi.fn(),
     deleteAccount: vi.fn(),
-    detectedSemesters: [],
     dismissStatus: vi.fn(),
     filteredItems: items,
     handleLogoutClick: vi.fn(),

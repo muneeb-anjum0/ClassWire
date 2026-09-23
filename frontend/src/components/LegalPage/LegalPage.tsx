@@ -17,11 +17,11 @@ const privacySections = [
   },
   {
     title: 'Information We Process',
-    body: 'The app may process your Google account email address, selected Gmail message metadata and content needed to find timetable emails, configured semesters, generated timetable entries, personal delivery email address, and automation delivery status.',
+    body: 'The app may process your Google account email address, selected Gmail message metadata and content needed to find timetable emails, generated timetable entries, personal delivery email address, and automation delivery status.',
   },
   {
     title: 'How We Use Your Data',
-    body: 'Your data is used to authenticate your session, find and parse timetable emails, show your class schedule, remember your semester preferences, and send optional daily timetable emails. ClassWire does not sell your data or use it for advertising.',
+    body: 'Your data is used to authenticate your session, find and parse timetable emails, answer schedule searches, show your class schedule, and send optional daily timetable emails. ClassWire does not sell your data or use it for advertising.',
   },
   {
     title: 'Google User Data',
@@ -29,7 +29,7 @@ const privacySections = [
   },
   {
     title: 'Storage And Security',
-    body: 'Configuration data may be stored in the backend database so your timetable settings continue working across sessions. OAuth credentials and delivery secrets are handled server-side. Avoid sharing credentials or refresh tokens publicly.',
+    body: 'Timetable cache and optional delivery settings may be stored in the backend database so enabled features continue working across sessions. OAuth credentials and delivery secrets are handled server-side. Avoid sharing credentials or refresh tokens publicly.',
   },
   {
     title: 'Your Choices',

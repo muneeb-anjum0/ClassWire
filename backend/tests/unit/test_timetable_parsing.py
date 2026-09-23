@@ -1,4 +1,4 @@
-from scraper.timetable_parser import parse_html_with_advanced_pandas
+from scraper.timetable_parser import parse_timetable_html
 
 
 def test_parser_avoids_department_noise_in_semester_display():
@@ -7,7 +7,7 @@ def test_parser_avoids_department_noise_in_semester_display():
         'Muhammad Taseer ul Islam 201 08:00 PM - 09:30 PM SZABIST University H-8/4 ISB Campus'
     )
 
-    items = parse_html_with_advanced_pandas(email_body)
+    items = parse_timetable_html(email_body)
     assert len(items) == 1
 
     item = items[0]
@@ -25,7 +25,7 @@ def test_parser_uses_headers_when_columns_are_reordered_and_serial_is_missing():
     </table>
     """
 
-    items = parse_html_with_advanced_pandas(html)
+    items = parse_timetable_html(html)
 
     assert len(items) == 1
     assert items[0]["semester_display"] == "BS(CS)-1A"
@@ -49,7 +49,7 @@ def test_parser_combines_multiple_timetable_tables_without_duplicate_nested_rows
     </div>
     """
 
-    items = parse_html_with_advanced_pandas(html)
+    items = parse_timetable_html(html)
 
     assert len(items) == 2
     assert {item["course_title"] for item in items} == {"Programming", "Databases"}
@@ -62,7 +62,7 @@ def test_parser_extracts_meeting_room_and_keeps_faculty_clean():
         '05:00 PM - 08:00 PM SZABIST University H-8/4 ISB Campus'
     )
 
-    items = parse_html_with_advanced_pandas(email_body)
+    items = parse_timetable_html(email_body)
     assert len(items) == 1
 
     item = items[0]
@@ -78,7 +78,7 @@ def test_parser_extracts_psy_lab_room():
         'Maria Rafique Psy Lab 05:00 PM - 08:00 PM SZABIST University H-8/4 ISB Campus'
     )
 
-    items = parse_html_with_advanced_pandas(email_body)
+    items = parse_timetable_html(email_body)
     assert len(items) == 1
 
     item = items[0]
@@ -92,7 +92,7 @@ def test_parser_handles_tuesday_time_without_meridiem():
         '23\tComputer Sciences\tBSCS\tBSCS 5 A\tCSC 1215 Teachings of Holy Quran (0,0)\tMuhammad Hassaan Raza\tONLINE\t10:00 - 11:00\tSZABIST University\nH-8/4 ISB Campus'
     )
 
-    items = parse_html_with_advanced_pandas(email_body)
+    items = parse_timetable_html(email_body)
     assert len(items) == 1
     item = items[0]
     assert item['semester_display'] == 'BSCS 5 A'
@@ -105,7 +105,7 @@ def test_parser_handles_cancelled_room_with_date_line():
         '37\tSocial Sciences\tBSSS\tBSSS 2\tSS 1216 Intro to International Relations\tGulrukhsar Mujahid -\tCancelled\n30-04-2026\t08:00 AM - 11:00 AM\tSZABIST University\nH-8/4 ISB Campus'
     )
 
-    items = parse_html_with_advanced_pandas(email_body)
+    items = parse_timetable_html(email_body)
     assert len(items) == 1
     item = items[0]
     assert item['semester_display'] == 'BSSS 2'
@@ -118,7 +118,7 @@ def test_parser_handles_meeting_room_numbered_admin_block():
         '49\tManagement Sciences\tPhDMS\tPhD-1\tMS 6432 Strategic Entrepreneurial Marketing\tDr. Fahim A Khan\tMeeting Room 1\nAdmin Block\t06:30 PM - 09:30 PM\tSZABIST University\nH-8/4 ISB Campus'
     )
 
-    items = parse_html_with_advanced_pandas(email_body)
+    items = parse_timetable_html(email_body)
     assert len(items) == 1
     item = items[0]
     assert item['semester_display'] == 'PhD-1'
@@ -131,7 +131,7 @@ def test_parser_strips_faculty_prefix_from_room_values():
         '50\tManagement Sciences\tPhDMS\tPhD-1\tMS 6432 Strategic Entrepreneurial Marketing\tDr. Fahim A Khan\tDr. Fahim A Khan 206\t06:30 PM - 09:30 PM\tSZABIST University\nH-8/4 ISB Campus'
     )
 
-    items = parse_html_with_advanced_pandas(email_body)
+    items = parse_timetable_html(email_body)
     assert len(items) == 1
 
     item = items[0]
@@ -144,7 +144,7 @@ def test_parser_moves_leading_room_name_into_faculty():
         '51\tComputer Sciences\tBSSE\tBSSE 5 A\tSECL 3604 Lab: Software Construction and Development (0,1)\tJawad\tNaseer Lab 01\t12:00 PM - 02:00 PM\tSZABIST University\nH-8/4 ISB Campus'
     )
 
-    items = parse_html_with_advanced_pandas(email_body)
+    items = parse_timetable_html(email_body)
     assert len(items) == 1
 
     item = items[0]
@@ -158,7 +158,7 @@ def test_parser_handles_conference_room_and_trailing_course_suffix():
         '45\tMedia Sciences\tBS Media\tBS Media 4 B\tMD 2428 Introduction to Advertising Strategy (3,0) B\tDr. Naila\t208\t02:20 PM - 05:20 PM\tSZABIST University\nH-8/4 ISB Campus'
     )
 
-    items = parse_html_with_advanced_pandas(email_body)
+    items = parse_timetable_html(email_body)
     assert len(items) == 2
     by_row = {item['row_number']: item for item in items}
 
@@ -174,7 +174,7 @@ def test_parser_strips_lab_prefix_from_course_titles():
         '31\tRobotics & AI\tBSAI\tBSAI 1 C\tCSCL 1103 Lab: Fundamentals of Programming (0,1)\tAnnas Khalid Khan\tLab 05\t08:00 AM - 10:00 AM\tSZABIST University\nH-8/4 ISB Campus'
     )
 
-    items = parse_html_with_advanced_pandas(email_body)
+    items = parse_timetable_html(email_body)
     assert len(items) == 3
     by_row = {item['row_number']: item for item in items}
 
@@ -189,7 +189,7 @@ def test_parser_splits_concatenated_course_code_and_title():
         '44\tMedia Sciences\tBS Media\tBS Media 4 B\tMD 2318 History of Commercial Art (3,0) B\tMasroor Ahmed\t206\t08:00 AM - 11:00 AM\tSZABIST University\nH-8/4 ISB Campus'
     )
 
-    items = parse_html_with_advanced_pandas(email_body)
+    items = parse_timetable_html(email_body)
     assert len(items) == 2
     by_row = {item['row_number']: item for item in items}
 
@@ -203,7 +203,7 @@ def test_parser_separates_course_title_from_faculty_in_flattened_rows():
         '33\tSocial Sciences\tBSSS\tBSSS 4 / BS Psychology 4\tSS 2418 Statistical Inferences\tDr. Syed Aziz Rasool\t203\t05:30 PM - 08:30 PM\tSZABIST University\nH-8/4 ISB Campus'
     )
 
-    items = parse_html_with_advanced_pandas(email_body)
+    items = parse_timetable_html(email_body)
     assert len(items) == 1
     item = items[0]
     assert item['semester_display'] == 'BS Psychology 4'
@@ -217,7 +217,7 @@ def test_parser_normalizes_bs_psychology_variants_to_one_group():
         '33 Social Sciences BSSS BSSS 4 / BS Psychology 4 SS 2418 Statistical Inferences Dr. Syed Aziz Rasool 203 05:30 PM - 08:30 PM SZABIST University H-8/4 ISB Campus'
     )
 
-    items = parse_html_with_advanced_pandas(email_body)
+    items = parse_timetable_html(email_body)
     assert len(items) == 2
     assert {item['semester_display'] for item in items} == {'BS Psychology 4'}
 
@@ -241,7 +241,7 @@ def test_parser_handles_tuesday_batch_variants_from_provided_sample():
         'H-8/4 ISB Campus'
     )
 
-    items = parse_html_with_advanced_pandas(email_body)
+    items = parse_timetable_html(email_body)
     assert len(items) == 4
 
     by_row = {item['row_number']: item for item in items}
@@ -264,7 +264,7 @@ def test_parser_handles_flattened_bsss_open_row_without_swallowing_course_title(
         '36 Social Sciences BSSS OPEN BSSS Open SS 4211 Psychological Testing Amber Gillani 204 05:30 PM - 08:30 PM SZABIST University H-8/4 ISB Campus'
     )
 
-    items = parse_html_with_advanced_pandas(email_body)
+    items = parse_timetable_html(email_body)
     assert len(items) == 1
 
     item = items[0]
@@ -307,7 +307,7 @@ def test_parser_normalizes_split_semester_variants_listed_by_user():
         'H-8/4 ISB Campus'
     )
 
-    items = parse_html_with_advanced_pandas(email_body)
+    items = parse_timetable_html(email_body)
     assert len(items) == 14
 
     by_row = {item['row_number']: item for item in items}
@@ -340,7 +340,7 @@ def test_html_table_preserves_empty_faculty_column_without_shifting_fields():
       <tr><td>1</td><td>Computing</td><td>BSSE</td><td>BS(SE)-2A</td><td>CSC 1201 Programming (3,0)</td><td></td><td>201</td><td>08:00 AM - 09:30 AM</td><td>SZABIST University Campus</td></tr>
     </table>
     '''
-    items = parse_html_with_advanced_pandas(html)
+    items = parse_timetable_html(html)
     assert len(items) == 1
     assert items[0]['faculty'] == 'TBD'
     assert items[0]['room'] == '201'
@@ -357,7 +357,7 @@ def test_html_table_ignores_slot_headers_addresses_and_incomplete_rows():
       <tr><td>2</td><td>Computing</td><td>BSSE</td><td>BS(SE)-2B</td><td></td><td>Ayesha Khan</td><td>202</td><td></td><td>SZABIST University Campus</td></tr>
     </table>
     '''
-    items = parse_html_with_advanced_pandas(html)
+    items = parse_timetable_html(html)
     assert len(items) == 1
     assert items[0]['course_title'] == 'Programming'
 
@@ -365,5 +365,5 @@ def test_html_table_ignores_slot_headers_addresses_and_incomplete_rows():
 def test_parser_removes_exact_duplicate_classes():
     row = ('1\tComputer Sciences\tBSSE\tBS(SE)-2A\tCSC 1201 Programming (3,0)\t'
            'Ayesha Khan\t201\t08:00 AM - 09:30 AM\tSZABIST University Campus')
-    items = parse_html_with_advanced_pandas(f'{row}\n{row.replace("1\\t", "2\\t", 1)}')
+    items = parse_timetable_html(f'{row}\n{row.replace("1\\t", "2\\t", 1)}')
     assert len(items) == 1

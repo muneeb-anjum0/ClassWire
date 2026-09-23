@@ -304,41 +304,28 @@ class FirestoreStore:
         return source_data if isinstance(source_data, dict) else None
 
     def get_bootstrap_data(self, user_id: str) -> Dict[str, Any]:
-        """Read settings and the last timetable in one Firestore RPC."""
-        cached_settings = self._settings_cache.get(user_id)
+        """Read the last timetable, using the in-process cache when available."""
         cached_timetable = self._timetable_cache.get(user_id)
-        if cached_settings is not None and cached_timetable is not None:
+        if cached_timetable is not None:
             return {
-                "settings": dict(cached_settings),
                 "timetable": cached_timetable[0],
                 "last_update": cached_timetable[1] or None,
             }
 
-        settings_ref = self.settings.document(user_id)
         cache_ref = self.cache.document(user_id)
-        snapshots = list(self.client.get_all([settings_ref, cache_ref]))
-        increment("firestore.read.bootstrap_documents", 2)
-        # Both documents intentionally share the user id, so use reference path
-        # rather than snapshot id to distinguish their collections.
-        by_path = {snapshot.reference.path: snapshot for snapshot in snapshots}
-        settings_snapshot = by_path.get(settings_ref.path)
-        cache_snapshot = by_path.get(cache_ref.path)
+        cache_snapshot = cache_ref.get()
+        increment("firestore.read.bootstrap_documents")
 
-        if cached_settings is None:
-            settings_payload = settings_snapshot.to_dict() if settings_snapshot and settings_snapshot.exists else {}
-            cached_settings = build_default_user_settings((settings_payload or {}).get("settings") or {})
-            self._settings_cache.set(user_id, dict(cached_settings))
-
-        timetable = cached_timetable[0] if cached_timetable else None
-        last_update = cached_timetable[1] if cached_timetable else None
-        if cached_timetable is None and cache_snapshot and cache_snapshot.exists:
+        timetable = None
+        last_update = None
+        if cache_snapshot.exists:
             payload = cache_snapshot.to_dict() or {}
             timetable = _decode_json_payload(payload.get("cache_gzip")) or payload.get("cache_data")
             last_update = _serialize_timestamp(payload.get("updated_at"))
             if isinstance(timetable, dict):
                 self._timetable_cache.set(user_id, (timetable, last_update or ""))
                 self._timetable_hashes.set(user_id, _cache_content_hash(timetable))
-        return {"settings": dict(cached_settings), "timetable": timetable, "last_update": last_update}
+        return {"timetable": timetable, "last_update": last_update}
 
     def delete_user_data(self, user_id: str) -> bool:
         """Permanently delete every document and in-process cache for a user."""

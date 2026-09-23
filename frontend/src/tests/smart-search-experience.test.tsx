@@ -44,7 +44,6 @@ test('a search answer can be hidden and restored without removing its data', asy
     query: 'When is Zainab free?',
     message_id: null,
     items: [],
-    semesters: [],
     summary: {
       total_items: 0,
       semester_breakdown: {},

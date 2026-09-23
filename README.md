@@ -28,7 +28,7 @@ ClassWire is an independent student project and is not an official SZABIST servi
 - computed faculty availability within university hours;
 - custom schedules composed from a base section and courses offered to other sections;
 - automatic overlap detection for custom schedules;
-- per-user semester, subject, and faculty discovery filters;
+- query-scoped section, subject, faculty, weekday, and class-type selection;
 - persistent restoration of the last successful timetable or search;
 - optional daily timetable delivery;
 - responsive light and dark interfaces designed separately for desktop and mobile information density.
@@ -59,13 +59,13 @@ The project began as a timetable scraper and evolved into a complete schedule-in
 | Area | Engineering outcome |
 | --- | --- |
 | Startup | Backend application import measured at approximately **0.19 seconds** |
-| Browser startup | Authentication, configuration, and saved timetable consolidated into **one bootstrap request** |
+| Browser startup | Authentication and the saved timetable consolidated into **one bootstrap request** |
 | Gmail refresh | Unchanged weekdays are reused; only changed timetable emails are downloaded and parsed |
 | Browser persistence | Large timetable results use IndexedDB through one reused connection, with synchronous storage retained only as a compatibility fallback |
 | Large result rendering | Initial DOM work is bounded to **60 schedule rows** and progressively expanded |
-| Automated quality | **198 backend tests** and **21 frontend tests**, including a forty-query acceptance matrix |
-| Measured coverage | **62.3% backend branch-aware coverage** and **52.4% frontend line coverage** across the complete application surface |
-| Production payload | Initial JavaScript reduced from **300.9 kB / 96.7 kB gzip** to **203.9 kB / 65.0 kB gzip**; authenticated CSS is **27.6 kB / 6.4 kB gzip** and route styles load on demand |
+| Automated quality | **175 backend tests** and **47 frontend tests**, including a forty-query acceptance matrix |
+| Measured coverage | **71% backend branch-aware coverage** and **66.3% frontend line coverage** across the complete application surface |
+| Production payload | Initial JavaScript reduced from **300.9 kB / 96.7 kB gzip** to **202.4 kB / 64.6 kB gzip**; dashboard code and styles load on demand |
 
 The import, coverage, and build figures were measured locally. They are engineering baselines, not claims about public-network latency, Google APIs, Firestore, or Render cold starts.
 
@@ -79,8 +79,9 @@ This table condenses the major changes into the problem each one addressed and t
 | Health checks could wake external dependencies | Made health a constant-time Flask-only route | Render can mark the web process ready without waiting for Firestore or Gmail |
 | Production performed a health probe before useful API work | Selected the known production API immediately and allowed the real request to wake it | Removed one blocking browser/network round trip |
 | DNS and TLS setup began late | Added backend DNS prefetch, preconnect, and an early non-blocking wake request | Render wake-up starts while the static page is loading |
-| Dashboard startup needed separate session, config, and timetable calls | Added one authenticated bootstrap contract | Fewer HTTP round trips and a consistent initial state |
-| Bootstrap could still perform separate Firestore calls | Read settings and timetable through one `get_all` RPC | One database network exchange on a cold process cache |
+| Dashboard startup needed separate session, configuration, and timetable calls | Replaced them with one authenticated bootstrap contract | Fewer HTTP round trips and a consistent initial state |
+| Bootstrap loaded settings that search did not use | Reduced bootstrap to identity plus one timetable document | One less Firestore document read and a smaller response |
+| Legacy filters could suppress valid search rows | Removed configuration-time semester, subject, and faculty filtering | Every normalized row is searchable and each query defines its own scope |
 | Large timetable JSON lived in synchronous `localStorage` | Introduced IndexedDB persistence, legacy migration, and connection reuse | Startup storage work no longer blocks the main thread and repeated operations avoid reopening the database |
 | Returning to an open tab could lose useful context during refresh | Preserved successful React state and protected it from failed background requests | The last result stays visible across long-lived sessions and transient failures |
 | Hundreds of rows rendered twice for desktop/mobile layouts | Added progressive 60-row render windows | Bounded reconciliation and layout work for broad searches |
@@ -156,7 +157,7 @@ The browser never receives Gmail OAuth credentials and never connects directly t
 ### Request lifecycle
 
 1. A cached identity lets the interface paint immediately while the signed server session is verified.
-2. The bootstrap endpoint returns the verified user, configuration, latest timetable, and last-update timestamp together.
+2. The bootstrap endpoint returns the verified user, latest timetable, and last-update timestamp together.
 3. IndexedDB can restore the last successful result before a slow network refresh completes.
 4. A search first checks the in-process weekly source cache, then the persisted Firestore source, and reaches Gmail only when necessary.
 5. Gmail is queried independently for the newest available message for each weekday.
@@ -225,7 +226,6 @@ Every parsing pass records privacy-safe counters:
 - exact duplicates;
 - rows rejected for missing identity;
 - rows rejected for missing time;
-- rows excluded by configured filters;
 - parser version.
 
 No course name, faculty name, email body, or user query is placed in telemetry logs.
@@ -348,7 +348,7 @@ ClassWire uses Firestore as durable per-user storage and surrounds it with short
 | --- | --- | --- | --- |
 | `users` | User ID | Normalized account identity and timestamps | Written once on first sign-in; directly addressable afterward |
 | `gmail_tokens` | User ID | Encrypted Google OAuth token payload | Five-minute memory cache; write only on authorization or refresh |
-| `user_settings` | User ID | Filters, timezone, timetable day, and delivery preferences | Five-minute memory cache; writes only on explicit changes |
+| `user_settings` | User ID | Timezone and optional delivery preferences | Five-minute memory cache; writes only on explicit changes |
 | `timetable_cache` | User ID | Gzip-compressed latest parsed timetable | 60-second memory cache and content-hash write deduplication |
 | `timetable_source_cache` | User ID | Gzip-compressed normalized weekly source | 30-minute memory cache and content-hash write deduplication |
 
@@ -407,9 +407,9 @@ Routine health polling is counted but excluded from structured request logs, pre
 
 ### Consolidated bootstrap
 
-The initial authenticated dashboard previously required separate session, configuration, and timetable requests. The bootstrap endpoint combines all three responsibilities.
+The initial authenticated dashboard previously required separate session, configuration, and timetable requests. Configuration-time filters are no longer part of the product, so bootstrap now returns only the verified identity and latest timetable state.
 
-On a cold Firestore cache, settings and timetable documents are fetched through one `get_all` RPC. On a warm process, both can be served from memory without a Firestore read.
+On a cold process cache, bootstrap reads one timetable document. On a warm process, the result is served from memory without a Firestore read.
 
 ### Browser wake-up strategy
 
@@ -572,12 +572,12 @@ These counters make it possible to estimate cost from actual usage without embed
 
 ClassWire has a layered quality suite built around the failures that matter most for timetable software: missing rows, unrelated rows, incorrect section binding, ambiguous people, malformed source data, stale asynchronous state, and unsafe external-service behavior.
 
-- **104 unit tests** isolate parsing, natural-language interpretation, semester normalization, subject filtering, cache expiry, rate limits, and production-server configuration.
-- **53 integration tests** exercise API contracts, Gmail message handling, latest-per-weekday selection, Firestore serialization, security boundaries, and daily-email delivery with deterministic service doubles.
+- **84 unit tests** isolate parsing, natural-language interpretation, section normalization, cache expiry, rate limits, and production-server configuration.
+- **50 integration tests** exercise API contracts, Gmail message handling, latest-per-weekday selection, Firestore serialization, security boundaries, and daily-email delivery with deterministic service doubles.
 - **41 acceptance tests** validate representative timetable fixtures and forty exact natural-language scenarios. Each scenario rejects both missing and unexpected rows.
-- **21 frontend behavior tests** exercise accessible search interactions, API failures, result persistence, stale-request protection, large-result windowing, suggestions, and timetable presentation in a browser-like DOM.
+- **47 frontend behavior tests** exercise accessible search interactions, API failures, result persistence, stale-request protection, large-result windowing, suggestions, and timetable presentation in a browser-like DOM.
 
-The current suite contains **219 tests** in total. Backend coverage is measured with branch tracking and guarded at 61%; frontend coverage is guarded independently for statements, branches, functions, and lines. These are repository-wide floors, not selective numbers from only the easiest modules.
+The current suite contains **222 tests** in total. Backend coverage is measured with branch tracking and guarded at 61%; frontend coverage is guarded independently for statements, branches, functions, and lines. These are repository-wide floors, not selective numbers from only the easiest modules.
 
 Every pull request runs the complete quality suite, dependency audits, secret scanning, and the production build. The full test architecture, commands, fixture policy, and contribution rules are documented in [TESTING.md](TESTING.md).
 

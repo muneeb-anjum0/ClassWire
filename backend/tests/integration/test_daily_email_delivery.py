@@ -57,7 +57,6 @@ def test_daily_email_sends_when_scraper_finds_no_messages(monkeypatch):
         {'id': 'user-1', 'email': 'student@example.com'},
         {
             'personal_email': 'personal@example.com',
-            'allowed_semesters': ['BS (SE) - 5C'],
             'daily_email_enabled': True,
         },
     )
@@ -101,7 +100,6 @@ def test_daily_email_falls_back_for_no_schedule_scraper_error(monkeypatch):
         {'id': 'user-1', 'email': 'student@example.com'},
         {
             'personal_email': 'personal@example.com',
-            'allowed_semesters': ['BS (SE) - 5C'],
             'timezone': 'Asia/Karachi',
             'next_day_available_hour': 17,
         },

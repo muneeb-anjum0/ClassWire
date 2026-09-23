@@ -6,7 +6,7 @@ ClassWire treats timetable extraction and natural-language search as correctness
 
 ```text
 backend/tests/
-├── unit/          Fast, isolated parser, search, cache, filtering, and runtime checks
+├── unit/          Fast, isolated parser, search, cache, and runtime checks
 ├── integration/   API, Gmail, Firestore, security, and delivery contracts with controlled doubles
 ├── acceptance/    Representative parser data and forty end-user search scenarios
 └── fixtures/      Small, anonymized timetable examples with explicit expected output
@@ -26,11 +26,11 @@ The names describe behavior rather than implementation details. A failing path s
 
 | Layer | Current checks | Purpose |
 | --- | ---: | --- |
-| Backend unit | 104 | Small, deterministic checks around one behavior |
-| Backend integration | 53 | Contracts between ClassWire layers and controlled service doubles |
+| Backend unit | 84 | Small, deterministic checks around one behavior |
+| Backend integration | 50 | Contracts between ClassWire layers and controlled service doubles |
 | Backend acceptance | 41 | Exact parser output and end-user natural-language scenarios |
-| Frontend behavior | 21 | Browser-like interaction, state, API, and presentation checks |
-| **Total** | **219** | One coherent regression suite |
+| Frontend behavior | 47 | Browser-like interaction, state, API, and presentation checks |
+| **Total** | **222** | One coherent regression suite |
 
 ## What is protected
 

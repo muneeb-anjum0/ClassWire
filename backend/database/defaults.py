@@ -6,13 +6,8 @@ from copy import deepcopy
 from typing import Any, Dict
 
 DEFAULT_USER_SETTINGS: Dict[str, Any] = {
-    "allowed_semesters": [],
-    "filter_mode": "semesters",
-    "subject_filters": [],
-    "faculty_filters": [],
     "timetable_day": "Auto",
     "gmail_query_base": 'subject:("Class Schedule" OR schedule) in:inbox',
-    "newer_than_days": 2,
     "timezone": "Asia/Karachi",
     "personal_email": "",
     "daily_email_enabled": False,
