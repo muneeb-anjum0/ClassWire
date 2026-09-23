@@ -1,17 +1,31 @@
 import React from 'react';
 import { TimetableItem } from '../../types/api';
-import { GroupedTimetable, getCourseMeta, getDisplayCampus, getDisplayCourseTitle, getDisplayFaculty, getDisplayRoom, getDisplayTime, getSectionColor, renderHighlightedText, shouldHighlightRow } from './timetableTableUtils';
+import { GroupedTimetable, getCourseMeta, getDisplayCampus, getDisplayCourseTitle, getDisplayFaculty, getDisplayRoom, getDisplayTime, getSectionColor, getSemesterLabel, renderHighlightedText, shouldHighlightRow, sortTimetableItems } from './timetableTableUtils';
 
 type Props = { grouped: GroupedTimetable; sortedSemesters: string[]; showDay: boolean };
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-function ClassCard({ item }: { item: TimetableItem }) {
+function ClassCard({
+  item,
+  sectionIndex,
+  showSectionBadge = false,
+}: {
+  item: TimetableItem;
+  sectionIndex: number;
+  showSectionBadge?: boolean;
+}) {
   const room = getDisplayRoom(item);
+  const section = getSemesterLabel(item);
   return <article className={`tw-class-card ${shouldHighlightRow(item) ? 'tw-class-card--cancelled' : ''}`}>
     <div className="tw-card-top"><div className="tw-course-block">
       <span className="tw-course-code">{renderHighlightedText(getCourseMeta(item))}</span>
       <h4>{renderHighlightedText(getDisplayCourseTitle(item))}</h4>
-    </div><span className={`tw-room-pill ${room.toLowerCase() === 'online' ? 'tw-room-pill--online' : ''}`} title={room}>{renderHighlightedText(room)}</span></div>
+    </div><div className="tw-card-badges">
+      <span className={`tw-room-pill ${room.toLowerCase() === 'online' ? 'tw-room-pill--online' : ''}`} title={room}>{renderHighlightedText(room)}</span>
+      {showSectionBadge && <span className="tw-card-section" style={getSectionColor(sectionIndex)} title={section}>
+        <span>{renderHighlightedText(section)}</span>
+      </span>}
+    </div></div>
     <div className="tw-mobile-details">
       <div className="tw-detail-row tw-detail-row--time"><span className="tw-detail-label">Time</span><span className="tw-detail-value">{renderHighlightedText(getDisplayTime(item))}</span></div>
       <div className="tw-detail-row tw-detail-row--faculty"><span className="tw-detail-label">Faculty</span><span className="tw-detail-value">{renderHighlightedText(getDisplayFaculty(item))}</span></div>
@@ -30,7 +44,7 @@ export default function TimetableMobileSection({ grouped, sortedSemesters, showD
         </span>
         {showCount && <span className="tw-count-pill">{items.length} {items.length === 1 ? 'class' : 'classes'}</span>}
       </div>
-      <div className="tw-mobile-card-list">{items.map((item, index) => <ClassCard key={`${key}-${item.course_code || item.course_title || item.course}-${item.time}-${index}`} item={item} />)}</div>
+      <div className="tw-mobile-card-list">{items.map((item, index) => <ClassCard key={`${key}-${item.course_code || item.course_title || item.course}-${item.time}-${index}`} item={item} sectionIndex={semesterIndexes.get(semester) ?? 0} />)}</div>
     </section>
   );
 
@@ -38,17 +52,30 @@ export default function TimetableMobileSection({ grouped, sortedSemesters, showD
 
   const days = DAY_ORDER.map((day) => ({
     day,
-    semesters: sortedSemesters
-      .map((semester) => ({ semester, items: grouped[semester].filter((item) => item.schedule_day === day) }))
-      .filter((entry) => entry.items.length),
-  })).filter((entry) => entry.semesters.length);
+    items: sortTimetableItems(
+      sortedSemesters.flatMap((semester) => grouped[semester].filter((item) => item.schedule_day === day)),
+    ),
+  })).filter((entry) => entry.items.length);
   const showDayHeaders = days.length > 1;
 
   return <div className="tw-mobile-view tw-mobile-view--weekly">
-    {days.map(({ day, semesters }) => {
+    {days.map(({ day, items }) => {
       return <section key={day} className={`tw-mobile-day tw-mobile-day--${day.toLowerCase()}`}>
-        {showDayHeaders && <div className="tw-mobile-day-head"><h2>{day}</h2></div>}
-        {semesters.map(({ semester, items }) => renderSemester(semester, items, `${day}-${semester}`, semesters.length > 1))}
+        {showDayHeaders && <div className="tw-mobile-day-head">
+          <h2>{day}</h2>
+          <span className="tw-count-pill">{items.length} {items.length === 1 ? 'class' : 'classes'}</span>
+        </div>}
+        <div className="tw-mobile-card-list">
+          {items.map((item, index) => {
+            const section = getSemesterLabel(item);
+            return <ClassCard
+              key={`${day}-${section}-${item.course_code || item.course_title || item.course}-${item.time}-${index}`}
+              item={item}
+              sectionIndex={semesterIndexes.get(section) ?? 0}
+              showSectionBadge
+            />;
+          })}
+        </div>
       </section>;
     })}
   </div>;

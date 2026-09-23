@@ -36,11 +36,30 @@
   background: transparent;
   color: var(--text-primary);
   cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
-.smart-search__account-trigger:hover,
-.smart-search__account-trigger[aria-expanded='true'] {
+.smart-search__account-trigger:hover {
   background: var(--surface-hover);
+}
+
+.smart-search__account-trigger[aria-expanded='true'] {
+  border-color: color-mix(in srgb, var(--text-primary) 32%, var(--border));
+  background-color: var(--surface-secondary);
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 6px,
+    rgb(0 0 0 / 9%) 6px,
+    rgb(0 0 0 / 9%) 7px
+  );
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--text-primary) 6%, transparent);
+  transform: translateY(-1px);
+}
+
+.smart-search__account-trigger:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--text-primary) 45%, transparent);
+  outline-offset: 3px;
 }
 
 .smart-search__account-trigger svg {
@@ -50,66 +69,323 @@
 
 .smart-search__account-menu {
   position: absolute;
-  top: 46px;
+  top: 48px;
   right: 0;
-  width: 248px;
-  padding: 8px;
+  width: 292px;
+  padding: 0;
+  overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--surface);
-  box-shadow: 0 8px 28px rgb(0 0 0 / 12%);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 15%), 0 2px 8px rgb(0 0 0 / 6%);
+  transform-origin: top right;
+  animation: account-menu-in 180ms cubic-bezier(.22, 1, .36, 1) both;
 }
 
 .smart-search__account-email {
   display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  min-height: 72px;
+  padding: 13px 14px;
+  background-color: color-mix(in srgb, var(--surface-secondary) 78%, var(--surface));
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 8px,
+    rgb(0 0 0 / 7%) 8px,
+    rgb(0 0 0 / 7%) 9px
+  );
+  box-shadow: inset 0 -1px var(--border);
+}
+
+.smart-search__account-identity-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 18%, var(--border));
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.smart-search__account-identity-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.smart-search__account-identity-copy {
+  min-width: 0;
+  display: grid;
   gap: 3px;
-  padding: 10px 10px 12px;
-  border-bottom: 1px solid var(--border);
 }
 
-.smart-search__account-email span {
+.smart-search__account-identity-copy > span {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 550;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
 }
 
-.smart-search__account-email strong {
+.smart-search__account-identity-copy strong {
   overflow: hidden;
   color: var(--text-primary);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.smart-search__account-menu > button {
-  width: 100%;
-  min-height: 40px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 4px;
-  padding: 8px 10px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-primary);
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
+.smart-search__account-actions {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
 }
 
-.smart-search__account-menu > button:hover {
+.smart-search__account-action {
+  width: 100%;
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease, transform 140ms ease;
+}
+
+.smart-search__account-action:hover {
+  border-color: color-mix(in srgb, var(--text-primary) 10%, var(--border));
+  background-color: var(--surface-secondary);
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 7px,
+    rgb(0 0 0 / 5%) 7px,
+    rgb(0 0 0 / 5%) 8px
+  );
+}
+
+.smart-search__account-action:active {
+  transform: scale(0.985);
+}
+
+.smart-search__account-action:focus-visible,
+.smart-search__account-confirmation-actions button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--text-primary) 40%, transparent);
+  outline-offset: 1px;
+}
+
+.smart-search__account-action-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--surface-secondary);
+  color: var(--text-secondary);
+}
+
+.smart-search__account-action-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.smart-search__account-action-copy strong {
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.smart-search__account-action-copy small {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smart-search__account-action-value {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.smart-search__account-action--delete:hover .smart-search__account-action-icon {
+  background: color-mix(in srgb, var(--danger) 11%, var(--surface));
+  color: var(--danger);
+}
+
+.smart-search__account-action--delete:hover {
+  border-color: color-mix(in srgb, var(--danger) 20%, var(--border));
+  color: var(--danger);
+}
+
+.smart-search__account-divider {
+  height: 1px;
+  margin: 4px 5px;
+  background: var(--border);
+}
+
+.smart-search__account-action svg {
+  width: 17px;
+  height: 17px;
+}
+
+.smart-search__account-confirmation {
+  --confirmation-accent: var(--text-primary);
+  position: relative;
+  display: grid;
+  gap: 12px;
+  overflow: hidden;
+  padding: 16px 12px 12px;
+  border: 1px solid color-mix(in srgb, var(--confirmation-accent) 18%, var(--border));
+  border-radius: 11px;
+  background: var(--surface);
+  box-shadow: 0 8px 22px rgb(0 0 0 / 7%);
+  animation: account-confirm-in 170ms cubic-bezier(.22, 1, .36, 1) both;
+}
+
+.smart-search__account-confirmation::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 5px;
+  background-color: color-mix(in srgb, var(--confirmation-accent) 9%, var(--surface));
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 5px,
+    color-mix(in srgb, var(--confirmation-accent) 34%, transparent) 5px,
+    color-mix(in srgb, var(--confirmation-accent) 34%, transparent) 6px
+  );
+  content: '';
+}
+
+.smart-search__account-confirmation--delete {
+  --confirmation-accent: var(--danger);
+}
+
+.smart-search__account-confirmation-header {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.smart-search__account-confirmation-header > span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.smart-search__account-confirmation-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--confirmation-accent) 9%, var(--surface));
+  color: var(--confirmation-accent);
+}
+
+.smart-search__account-confirmation-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.smart-search__account-confirmation-header strong {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.smart-search__account-confirmation-header small {
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.smart-search__account-confirmation-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.smart-search__account-confirmation-actions {
+  display: grid;
+  grid-template-columns: 0.75fr 1.25fr;
+  gap: 7px;
+}
+
+.smart-search__account-confirmation-actions button {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.smart-search__account-confirmation-actions button:hover:not(:disabled) {
   background: var(--surface-hover);
 }
 
-.smart-search__account-menu > button.is-danger {
-  color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 9%, transparent);
+.smart-search__account-confirmation-actions button:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
-.smart-search__account-menu svg {
-  width: 17px;
-  height: 17px;
+.smart-search__account-confirmation-actions .smart-search__account-confirmation-submit {
+  border-color: var(--confirmation-accent);
+  background: var(--confirmation-accent);
+  color: var(--surface);
+  font-weight: 600;
+}
+
+.smart-search__account-confirmation-actions .smart-search__account-confirmation-submit:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--confirmation-accent) 88%, var(--surface));
+}
+
+.smart-search__account-confirmation-actions button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.smart-search__delete-spinner {
+  animation: smart-search-spin 0.8s linear infinite;
+}
+
+@keyframes account-menu-in {
+  from { opacity: 0; transform: translateY(-7px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes account-confirm-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .smart-search__intro {
@@ -266,6 +542,30 @@
   border-top: 1px solid var(--border);
 }
 
+.smart-search__discovery-section--suggestions {
+  border-radius: 10px;
+  background-color: color-mix(in srgb, var(--surface-secondary) 78%, var(--surface));
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 8px,
+    rgb(0 0 0 / 10%) 8px,
+    rgb(0 0 0 / 10%) 9px
+  );
+  box-shadow: inset 0 1px var(--border), inset 0 -1px var(--border);
+}
+
+html[data-theme='dark'] .smart-search__discovery-section--suggestions {
+  background-color: color-mix(in srgb, var(--surface-secondary) 88%, white 12%);
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 8px,
+    rgb(0 0 0 / 28%) 8px,
+    rgb(0 0 0 / 28%) 9px
+  );
+}
+
 .smart-search__discovery-section > header {
   min-height: 34px;
   display: flex;
@@ -393,7 +693,16 @@
 .smart-search__answer {
   width: 100%;
   margin: 42px auto 0;
+  padding: 10px 4px 12px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-secondary) 38%, transparent);
   color: var(--text-secondary);
+  animation: smart-search-answer-in 300ms cubic-bezier(.22, 1, .36, 1) both;
+}
+
+html[data-theme='dark'] .smart-search__answer {
+  background: color-mix(in srgb, var(--surface-secondary) 55%, transparent);
 }
 
 .smart-search__answer-header {
@@ -402,7 +711,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin: 0 auto 8px;
+  margin: 0;
 }
 
 .smart-search__answer-label {
@@ -430,10 +739,6 @@
   color: var(--text-primary);
 }
 
-.smart-search__answer--hidden .smart-search__answer-header {
-  margin-bottom: 0;
-}
-
 .smart-search__answer-header > button.smart-search__show-result {
   width: auto;
   min-width: 44px;
@@ -448,7 +753,47 @@
   height: 16px;
 }
 
-.smart-search__answer > p {
+.smart-search__answer-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    grid-template-rows 320ms cubic-bezier(.22, 1, .36, 1),
+    opacity 180ms ease 80ms,
+    transform 320ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.smart-search__answer-body-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.smart-search__answer-content {
+  padding-top: 8px;
+}
+
+.smart-search__answer--hidden .smart-search__answer-body {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition:
+    grid-template-rows 280ms cubic-bezier(.4, 0, 1, 1),
+    opacity 140ms ease,
+    transform 280ms cubic-bezier(.4, 0, 1, 1);
+}
+
+.smart-search__answer--hidden .smart-search__answer-content {
+  visibility: hidden;
+  transition: visibility 0s linear 280ms;
+}
+
+.smart-search__answer--visible .smart-search__answer-content {
+  visibility: visible;
+  transition: visibility 0s;
+}
+
+.smart-search__answer-content > p {
   width: 100%;
   margin: 0;
   font-size: 16px;
@@ -548,6 +893,17 @@
 @keyframes smart-search-discovery-in {
   from { opacity: 0; transform: translateY(-5px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes smart-search-answer-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 760px) {
@@ -658,6 +1014,7 @@
 
   .smart-search__answer {
     margin-top: 28px;
+    padding: 8px 2px 10px;
   }
 
   .smart-search__answer-header {
@@ -670,7 +1027,7 @@
     height: 40px;
   }
 
-  .smart-search__answer > p {
+  .smart-search__answer-content > p {
     font-size: 15px;
     line-height: 1.65;
   }
@@ -750,12 +1107,26 @@
 
 @media (hover: none) and (pointer: coarse) {
   .smart-search__account-trigger:hover,
-  .smart-search__account-menu > button:hover,
   .smart-search__discovery-section > header button:hover,
   .smart-search__recent:hover,
   .smart-search__remove-recent:hover,
   .smart-search__suggestion-list > button:hover,
   .smart-search__answer-header > button:hover {
     background: transparent;
+  }
+
+  .smart-search__account-action:hover {
+    border-color: transparent;
+    background-color: transparent;
+    background-image: none;
+  }
+
+  .smart-search__account-action--delete:hover {
+    color: var(--text-primary);
+  }
+
+  .smart-search__account-action--delete:hover .smart-search__account-action-icon {
+    background: var(--surface-secondary);
+    color: var(--text-secondary);
   }
 }

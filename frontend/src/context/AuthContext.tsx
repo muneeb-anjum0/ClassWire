@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { apiService } from '../services/api';
 import { BootstrapData } from '../types/api';
-import { deleteTimetableCache } from '../services/timetableCache';
+import { deleteLocalAccountData } from '../services/accountData';
 
 interface User {
   id: string;
@@ -257,7 +257,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const deleteAccount = async () => {
     const email = user?.email;
     await apiService.deleteAccount();
-    await deleteTimetableCache(email);
+    await deleteLocalAccountData(email);
     setBootstrap(null);
     setUser(null);
     cacheUser(null);

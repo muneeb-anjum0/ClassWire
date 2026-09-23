@@ -1,25 +1,50 @@
 .status-toast {
-  position: fixed;
-  top: 70px;
-  right: 18px;
-  z-index: 100;
-  width: min(390px, calc(100vw - 36px));
+  --status-accent: #3b82f6;
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-height: 96px;
+  margin: var(--schedule-feedback-gap, 0.75rem) 0;
+  overflow: hidden;
   pointer-events: none;
-  animation: status-in 150ms ease-out both;
+  transform-origin: top center;
+  animation: status-in 260ms cubic-bezier(.22, 1, .36, 1) both;
 }
 
 .status-toast--closing {
-  animation: status-out 120ms ease-in both;
+  animation: status-out 260ms cubic-bezier(.4, 0, 1, 1) both;
 }
 
 .status-indicator {
   pointer-events: auto;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--page-bg) 92%, transparent);
+  background-color: color-mix(in srgb, var(--status-accent) 8%, var(--surface));
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 8px,
+    color-mix(in srgb, var(--status-accent) 20%, transparent) 8px,
+    color-mix(in srgb, var(--status-accent) 20%, transparent) 9px
+  );
   color: var(--text-secondary);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 8%);
-  backdrop-filter: blur(12px);
+  box-shadow:
+    inset 0 1px color-mix(in srgb, var(--status-accent) 14%, transparent),
+    inset 0 -1px color-mix(in srgb, var(--status-accent) 14%, transparent);
+}
+
+.status-toast--success { --status-accent: var(--success); }
+.status-toast--error { --status-accent: var(--danger); }
+.status-toast--warning { --status-accent: var(--warning); }
+.status-toast--loading { --status-accent: #3b82f6; }
+
+html[data-theme='dark'] .status-indicator {
+  background-color: color-mix(in srgb, var(--status-accent) 14%, var(--surface));
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 8px,
+    color-mix(in srgb, var(--status-accent) 34%, transparent) 8px,
+    color-mix(in srgb, var(--status-accent) 34%, transparent) 9px
+  );
 }
 
 .status-indicator__inner {
@@ -39,9 +64,7 @@
   color: var(--text-muted);
 }
 
-.status-toast--success .status-indicator__icon { color: var(--success); }
-.status-toast--error .status-indicator__icon { color: var(--danger); }
-.status-toast--warning .status-indicator__icon { color: var(--warning); }
+.status-toast .status-indicator__icon { color: var(--status-accent); }
 
 .status-indicator__icon svg {
   width: 17px;
@@ -85,12 +108,33 @@
 }
 
 @keyframes status-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    max-height: 0;
+    margin-block: 0;
+    opacity: 0;
+    transform: translateY(-10px) scaleY(.92);
+  }
+  to {
+    max-height: 96px;
+    margin-block: var(--schedule-feedback-gap, 0.75rem);
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
 }
 
 @keyframes status-out {
-  to { opacity: 0; transform: translateY(-4px); }
+  from {
+    max-height: 96px;
+    margin-block: var(--schedule-feedback-gap, 0.75rem);
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
+  to {
+    max-height: 0;
+    margin-block: 0;
+    opacity: 0;
+    transform: translateY(-8px) scaleY(.94);
+  }
 }
 
 @keyframes status-spin {
@@ -98,21 +142,8 @@
 }
 
 @media (max-width: 600px) {
-  .status-toast {
-    top: auto;
-    right: max(12px, env(safe-area-inset-right));
-    bottom: calc(12px + env(safe-area-inset-bottom));
-    left: max(12px, env(safe-area-inset-left));
-    width: auto;
-  }
-
-  .status-indicator {
-    border-radius: 14px;
-    box-shadow: 0 8px 28px rgb(0 0 0 / 14%);
-  }
-
   .status-indicator__inner {
-    min-height: 54px;
+    min-height: 50px;
     padding: 10px 9px 10px 13px;
   }
 

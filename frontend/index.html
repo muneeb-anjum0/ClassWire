@@ -19,6 +19,65 @@
     <meta name="twitter:description" content="Search SZABIST Islamabad timetables, class schedules, courses, sections, and faculty availability from your timetable emails." />
     <meta name="google-site-verification" content="VGIVNGwVyTDqVG2iZnYk93itoTaK9N8jc4-tWhRlors" />
     <meta name="theme-color" content="#ffffff" />
+    <style>
+      html,
+      body {
+        min-height: 100%;
+        margin: 0;
+        background: #ffffff;
+      }
+
+      .classwire-boot {
+        min-height: 100vh;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+      }
+
+      .classwire-boot__indicator {
+        width: 22px;
+        height: 22px;
+        border: 2px solid #e5e5e5;
+        border-top-color: #0d0d0d;
+        border-radius: 50%;
+        animation: classwire-boot-spin 700ms linear infinite;
+      }
+
+      .classwire-noscript {
+        max-width: 620px;
+        margin: 12vh auto;
+        padding: 24px;
+        color: #0d0d0d;
+        font: 16px/1.6 ui-sans-serif, system-ui, sans-serif;
+      }
+
+      @keyframes classwire-boot-spin {
+        to { transform: rotate(360deg); }
+      }
+
+      @media (prefers-color-scheme: dark) {
+        html,
+        body {
+          background: #212121;
+        }
+
+        .classwire-boot__indicator {
+          border-color: #424242;
+          border-top-color: #ececec;
+        }
+
+        .classwire-noscript {
+          color: #ececec;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .classwire-boot__indicator {
+          animation: none;
+          border-top-color: #767676;
+        }
+      }
+    </style>
     <link rel="preconnect" href="https://timetable-wizard.onrender.com" crossorigin />
     <link rel="dns-prefetch" href="https://timetable-wizard.onrender.com" />
     <script>
@@ -80,14 +139,13 @@
   </head>
   <body>
     <div id="root">
-      <main>
-        <h1>ClassWire: SZABIST timetable and class schedule search</h1>
-        <p>Search SZABIST Islamabad schedules, courses, sections, and faculty availability from timetable emails.</p>
-      </main>
+      <div class="classwire-boot" role="status" aria-label="Loading ClassWire">
+        <span class="classwire-boot__indicator" aria-hidden="true"></span>
+      </div>
     </div>
     <noscript>
-      <main>
-        <h1>ClassWire: SZABIST timetable and class schedule search</h1>
+      <main class="classwire-noscript">
+        <h1>ClassWire</h1>
         <p>ClassWire helps SZABIST Islamabad students search schedules, courses, sections, and faculty availability from timetable emails.</p>
         <p>JavaScript is required to use the timetable application.</p>
       </main>

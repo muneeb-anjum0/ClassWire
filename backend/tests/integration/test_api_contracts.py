@@ -89,7 +89,18 @@ class TestAccountDeletion:
         mock_store.delete_user_data.return_value = True
         response = client.delete('/api/account', headers={'X-User-Email': mock_user['email']})
         assert response.status_code == 200
+        assert response.get_json() == {'success': True, 'message': 'Account data deleted'}
         revoke.assert_called_once()
+        mock_store.delete_user_data.assert_called_once_with(mock_user['id'])
+
+    def test_deletion_continues_when_stored_google_token_cannot_be_read(self, client, mock_store, mock_user):
+        mock_store.get_or_create_user.return_value = mock_user
+        mock_store.get_user_tokens.side_effect = ValueError('Unreadable token')
+        mock_store.delete_user_data.return_value = True
+
+        response = client.delete('/api/account', headers={'X-User-Email': mock_user['email']})
+
+        assert response.status_code == 200
         mock_store.delete_user_data.assert_called_once_with(mock_user['id'])
 
 

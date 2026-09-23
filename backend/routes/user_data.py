@@ -516,8 +516,21 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
             if error_response:
                 return error_response, status_code
             store = get_store()
-            token_data = store.get_user_tokens(user["id"]) or {}
+            try:
+                token_data = store.get_user_tokens(user["id"]) or {}
+            except Exception:
+                logger.warning("Could not read the Google token before account deletion", exc_info=True)
+                token_data = {}
             token = token_data.get("refresh_token") or token_data.get("token")
+            if store.delete_user_data(user["id"]) is False:
+                raise RuntimeError("Account data store rejected the deletion")
+            search_source_cache.pop(user["id"])
+            search_result_cache.discard_where(
+                lambda cache_key, _result: cache_key[0] == user["id"]
+            )
+            refresh_locks.pop(user["id"])
+            from flask import session
+            session.clear()
             if token:
                 import requests
 
@@ -529,10 +542,6 @@ def create_user_data_blueprint(*, logger, get_run_once, get_settings, get_store)
                     )
                 except requests.RequestException:
                     logger.warning("Google token revocation failed during account deletion", exc_info=True)
-            store.delete_user_data(user["id"])
-            search_source_cache.pop(user["id"])
-            from flask import session
-            session.clear()
             return jsonify({"success": True, "message": "Account data deleted"})
         except Exception as error:
             logger.error("Account deletion failed: %s", error, exc_info=True)
