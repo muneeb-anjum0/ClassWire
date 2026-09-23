@@ -19,7 +19,7 @@ const LoginScreen: React.FC = () => {
     return window.localStorage.getItem(LEGAL_ACCEPTANCE_KEY) === 'true';
   });
 
-  const { loginWithGmail } = useAuth();
+  const { loginWithGmail, authenticationError } = useAuth();
   const hasAcceptedLegal = hasAcceptedPrivacy && hasAcceptedTerms;
 
   useEffect(() => {
@@ -120,23 +120,19 @@ const LoginScreen: React.FC = () => {
           </div>
         )}
 
-        {error && (
+        {(error || authenticationError) && (
           <div className="status-box status-box--error" role="alert">
             <AlertCircle className="status-icon" />
             <div>
               <p className="status-title">
-                {error.includes('Popup blocked')
-                  ? 'Authentication blocked'
-                  : error.includes('Unable to reach the backend')
+                {(error || authenticationError).includes('Unable to reach the backend')
                     ? 'Backend unavailable'
                     : 'Authentication failed'}
               </p>
               <p className="status-copy">
-                {error.includes('Popup blocked')
-                  ? 'Allow popups or try again in the same window.'
-                  : error.includes('Request failed with status code 500')
+                {(error || authenticationError).includes('Request failed with status code 500')
                     ? 'The backend could not start the Google OAuth flow. Restart the Flask server once, then try again.'
-                  : error}
+                    : error || authenticationError}
               </p>
             </div>
           </div>

@@ -59,12 +59,18 @@ const getLocalApiBaseUrl = () => {
   if (hostname === '127.0.0.1') return 'http://127.0.0.1:5001';
   if (hostname === 'localhost') return LOCAL_API_BASE_URL;
   if (isLocalNetworkHost(hostname)) return `http://${hostname}:5001`;
-  return PRODUCTION_API_BASE_URL;
+  return window.location.origin;
 };
 
-const selectedBaseUrl = () => normalizeApiBaseUrl(
-  initializedApiUrl || CONFIGURED_API_URL || getLocalApiBaseUrl(),
-);
+const selectedBaseUrl = () => {
+  if (initializedApiUrl) return normalizeApiBaseUrl(initializedApiUrl);
+  if (!isLocalNetworkHost(window.location.hostname)) {
+    // Production uses Vercel's same-origin API proxy. This keeps the signed
+    // session first-party in browsers that block third-party cookies.
+    return normalizeApiBaseUrl(window.location.origin);
+  }
+  return normalizeApiBaseUrl(CONFIGURED_API_URL || getLocalApiBaseUrl());
+};
 
 const request = async <T>(
   path: string,
@@ -113,7 +119,7 @@ export const apiService = {
 
     initializationPromise = (async () => {
       if (!isLocalNetworkHost(window.location.hostname)) {
-        initializedApiUrl = normalizeApiBaseUrl(CONFIGURED_API_URL || PRODUCTION_API_BASE_URL);
+        initializedApiUrl = normalizeApiBaseUrl(window.location.origin);
         return initializedApiUrl;
       }
 
@@ -163,19 +169,18 @@ export const apiService = {
     }
   },
 
-  getBaseOrigin: (): string => {
-    try {
-      return new URL(selectedBaseUrl()).origin;
-    } catch {
-      return window.location.origin;
-    }
+  getGmailRedirectUrl: (frontendOrigin: string): string => {
+    const params = new URLSearchParams({
+      redirect: '1',
+      frontend_origin: frontendOrigin,
+    });
+    return `${selectedBaseUrl()}/api/auth/gmail?${params}`;
   },
-
-  getGmailAuthUrl: (frontendOrigin: string) => request<{ auth_url: string; state: string }>(
-    '/api/auth/gmail',
-    { params: { frontend_origin: frontendOrigin } },
-  ),
-  getSession: () => request<{ success: boolean; user: { id: string; email: string } }>('/api/auth/session'),
+  exchangeAuthHandoff: (token: string) => request<{
+    success: boolean;
+    authenticated: true;
+    user: { id: string; email: string };
+  }>('/api/auth/handoff', { method: 'POST', body: { token } }),
   getBootstrap: () => request<BootstrapData>('/api/bootstrap'),
   deleteAccount: () => request<{ success: true; message: string }>('/api/account', { method: 'DELETE' }),
   logout: async (): Promise<void> => { await request('/api/auth/logout', { method: 'POST' }); },

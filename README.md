@@ -43,10 +43,10 @@ I am from BSSE7A; add Software Construction from BSSE5B
 | Area | Result |
 | --- | --- |
 | Backend import | Approximately **0.19 seconds** on the measured development machine |
-| Initial JavaScript | Reduced from **300.9 kB / 96.7 kB gzip** to **202.4 kB / 64.6 kB gzip** |
+| Initial JavaScript | Reduced from **300.9 kB / 96.7 kB gzip** to **202.0 kB / 64.4 kB gzip** |
 | Large-result rendering | Initial work limited to **60 schedule rows**, then expanded progressively |
-| Automated checks | **174 backend tests + 50 frontend tests = 224 tests** |
-| Measured coverage | **63.2% backend branch-aware coverage**, **67.9% frontend line coverage** |
+| Automated checks | **178 backend tests + 55 frontend tests = 233 tests** |
+| Measured coverage | **63.7% backend branch-aware coverage**, **71.6% frontend line coverage** |
 | Search architecture | Deterministic, inspectable query plans with parser-versioned caching |
 | Storage | Compressed Firestore documents, stable hashes, TTL caches, and write suppression |
 

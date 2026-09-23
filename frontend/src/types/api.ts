@@ -77,7 +77,8 @@ export interface TimetableConflict {
 
 export interface BootstrapData {
   success: boolean;
-  user: { id: string; email: string };
+  authenticated: boolean;
+  user: { id: string; email: string } | null;
   timetable: TimetableData | null;
   last_update: string | null;
   timestamp: string;

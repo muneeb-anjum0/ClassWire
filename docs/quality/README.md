@@ -15,6 +15,7 @@ frontend/src/tests/
 ├── account-data-cleanup.test.ts
 ├── account-domain-policy.test.ts
 ├── api-client-contract.test.ts
+├── authentication-flow.test.ts
 ├── dashboard-controller-behavior.test.tsx
 ├── initial-page-shell.test.ts
 ├── large-timetable-rendering.test.tsx
@@ -34,10 +35,10 @@ Test names describe user-visible behavior. A failing path should make the broken
 | Layer | Checks | Purpose |
 | --- | ---: | --- |
 | Backend unit | 84 | Small deterministic checks around one behavior |
-| Backend integration | 49 | Contracts between layers and controlled service doubles |
+| Backend integration | 53 | Contracts between layers and controlled service doubles |
 | Backend acceptance | 41 | Exact parser output and end-user query scenarios |
-| Frontend behavior | 50 | Browser-like API, state, interaction, persistence, and presentation behavior |
-| **Total** | **224** | One coherent regression suite |
+| Frontend behavior | 55 | Browser-like API, state, interaction, persistence, and presentation behavior |
+| **Total** | **233** | One coherent regression suite |
 
 ## Backend guarantees
 
@@ -66,7 +67,8 @@ Test names describe user-visible behavior. A failing path should make the broken
 - search feedback spacing and presentation;
 - Social Sciences normalization and lab-title display;
 - browser data cleanup during permanent account deletion;
-- an intentionally styled initial page shell without an unstyled text flash.
+- an intentionally styled initial page shell without an unstyled text flash;
+- private-browser OAuth handoff, same-origin API routing, and popup-free authentication.
 
 ## Acceptance policy
 
@@ -98,7 +100,7 @@ npm run build
 
 ## Coverage policy
 
-Backend coverage uses branch tracking and has a repository-wide floor of 61%. Frontend coverage has independent statement, branch, function, and line floors. Current measured baselines are 63.2% backend branch-aware coverage and 67.9% frontend line coverage.
+Backend coverage uses branch tracking and has a repository-wide floor of 61%. Frontend coverage has independent statement, branch, function, and line floors. Current measured baselines are 63.7% backend branch-aware coverage and 71.6% frontend line coverage.
 
 Coverage is a guardrail, not a replacement for exact behavioral assertions. Reports are generated locally and in CI but are not committed.
 
