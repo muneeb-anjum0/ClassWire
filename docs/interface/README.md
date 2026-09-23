@@ -13,6 +13,12 @@ ClassWire presents a conversational timetable search rather than a filter-heavy 
 - A hidden result can be restored without rerunning the request.
 - Rapid submissions are guarded so an older result cannot replace the latest question.
 
+## Authentication experience
+
+Google authentication uses a full-page redirect rather than a popup. After Google returns to the backend callback, the browser receives a short-lived handoff and exchanges it through ClassWire's own origin. This works when private browsing blocks third-party cookies and avoids opener-policy warnings from popup polling.
+
+Logged-out startup is represented as a normal guest bootstrap state, so opening the public login page does not generate expected-but-noisy `401` console errors.
+
 ## Feedback model
 
 Search status is rendered in the schedule flow rather than as a detached corner overlay. Success, warning, stale-source, authentication, and error states use distinct colors with diagonal line treatments and restrained entrance and exit motion.

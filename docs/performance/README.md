@@ -7,11 +7,11 @@ ClassWire is optimized for the limits that dominate its workload: Render cold st
 | Measurement | Current baseline |
 | --- | ---: |
 | Backend application import | Approximately **0.19 seconds** |
-| Initial frontend JavaScript | **202.4 kB**, **64.6 kB gzip** |
+| Initial frontend JavaScript | **202.0 kB**, **64.4 kB gzip** |
 | Previous initial JavaScript | **300.9 kB**, **96.7 kB gzip** |
 | Initial schedule render window | **60 rows** |
-| Backend test coverage | **63.2% branch-aware** |
-| Frontend line coverage | **67.9%** |
+| Backend test coverage | **63.7% branch-aware** |
+| Frontend line coverage | **71.6%** |
 
 These figures were measured locally. They are useful regression baselines, not claims about public-network speed, Google API latency, Firestore latency, or hosting-platform wake time.
 
@@ -29,6 +29,8 @@ Gunicorn binds to Render's assigned `PORT` through both the process command and 
 - DNS prefetch and preconnect start connection setup while the static shell loads.
 - An early non-blocking request begins waking the free Render instance.
 - One authenticated bootstrap replaces separate session, configuration, and timetable calls.
+- Logged-out bootstrap returns an explicit guest state instead of a noisy authorization failure.
+- Production API traffic is reverse-proxied through the Vercel origin so signed cookies remain first-party in private browsing.
 - Bootstrap returns identity and the latest timetable without reading obsolete filtering configuration.
 - Login, legal pages, and the authenticated dashboard load as separate route chunks.
 - Native Fetch replaced a general-purpose HTTP dependency while retaining cookies, timeout behavior, and typed errors.
@@ -95,6 +97,7 @@ Large JSON responses are gzip-compressed only when the browser supports compress
 | Health checks waking cloud dependencies | Constant-time application health route |
 | Multiple dashboard startup requests | Consolidated bootstrap endpoint |
 | Production API discovery round trip | Immediate known-origin selection and early wake |
+| Incognito blocking cross-site session cookies | Same-origin API proxy plus single-use OAuth handoff |
 | Synchronous large-result storage | IndexedDB with connection reuse |
 | Every refresh reparsing every day | Per-weekday message IDs and incremental fetch |
 | Gmail throttling and transient failure | Timeouts, bounded backoff, jitter, and partial retry |

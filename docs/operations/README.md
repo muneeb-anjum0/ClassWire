@@ -6,7 +6,7 @@ ClassWire runs a static React client on Vercel and a Flask API on Render. Firest
 
 | Service | Responsibility |
 | --- | --- |
-| Vercel | Static frontend, public metadata, route delivery, and production environment configuration |
+| Vercel | Static frontend, public metadata, route delivery, and same-origin `/api` reverse proxy |
 | Render | Flask and Gunicorn API, OAuth callbacks, search, ingestion, and metrics |
 | Cloud Firestore | Encrypted token records, settings, timetable documents, and normalized source documents |
 | Gmail API | Read-only source discovery and message retrieval |
@@ -37,6 +37,7 @@ Workflow concurrency prevents overlapping runs. Temporary network failures recei
 | One Gmail batch component fails | Retry the failed component; reject unresolved partial weeks |
 | Firestore source is stale | Decode once, retain it for fallback, and attempt refresh |
 | Browser request fails | Preserve the last successful visible result |
+| Private browser blocks third-party state | Keep the signed session first-party through the Vercel API proxy |
 | Older request completes late | Ignore it through request sequencing |
 | Concurrent refresh arrives | Join the existing per-user refresh work |
 | IndexedDB unavailable | Fall back without preventing search or display |

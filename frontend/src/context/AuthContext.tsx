@@ -16,15 +16,35 @@ interface AuthContextType {
   deleteAccount: () => Promise<void>;
   bootstrap: BootstrapData | null;
   loading: boolean;
+  authenticationError: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-const AUTH_POPUP_TIMEOUT_MS = 300000;
-const AUTH_POPUP_CLOSED_POLL_MS = 500;
 const SESSION_USER_KEY = 'classwire:v1:session-user';
 const SESSION_SIGNED_OUT_KEY = 'classwire:v1:explicitly-signed-out';
 const LEGACY_USER_KEY = 'user';
 const TIMETABLE_KEY_PREFIX = 'classwire:v2:last-timetable:';
+
+export type AuthRedirectResult = {
+  status: 'success' | 'error';
+  handoff?: string;
+};
+
+export const parseAuthRedirect = (hash: string, search: string): AuthRedirectResult | null => {
+  const hashParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+  const queryParams = new URLSearchParams(search);
+  const status = hashParams.get('auth') || queryParams.get('auth');
+  if (status !== 'success' && status !== 'error') return null;
+  const handoff = hashParams.get('handoff') || queryParams.get('handoff') || undefined;
+  return { status, handoff };
+};
+
+const clearAuthRedirectFromAddressBar = () => {
+  const cleanUrl = new URL(window.location.href);
+  ['auth', 'handoff', 'user_id', 'email'].forEach((key) => cleanUrl.searchParams.delete(key));
+  cleanUrl.hash = '';
+  window.history.replaceState({}, document.title, `${cleanUrl.pathname}${cleanUrl.search}`);
+};
 
 const readCachedUser = (): User | null => {
   try {
@@ -90,49 +110,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => readCachedUser());
   const [loading, setLoading] = useState(true);
   const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
-  const authTimeoutRef = React.useRef<number | null>(null);
-  const authPopupCheckRef = React.useRef<number | null>(null);
-  const pendingGmailAuthRef = React.useRef<((success: boolean) => void) | null>(null);
-
-  const clearAuthTimeout = React.useCallback(() => {
-    if (authTimeoutRef.current !== null) {
-      window.clearTimeout(authTimeoutRef.current);
-      authTimeoutRef.current = null;
-    }
-  }, []);
-
-  const clearAuthPopupCheck = React.useCallback(() => {
-    if (authPopupCheckRef.current !== null) {
-      window.clearInterval(authPopupCheckRef.current);
-      authPopupCheckRef.current = null;
-    }
-  }, []);
-
-  const finishPendingGmailAuth = React.useCallback((success: boolean) => {
-    clearAuthTimeout();
-    clearAuthPopupCheck();
-
-    if (pendingGmailAuthRef.current) {
-      pendingGmailAuthRef.current(success);
-      pendingGmailAuthRef.current = null;
-    }
-  }, [clearAuthPopupCheck, clearAuthTimeout]);
+  const [authenticationError, setAuthenticationError] = useState('');
 
   useEffect(() => {
     const restoreSession = async () => {
       try {
         await apiService.initialize();
-        try {
-          const response = await apiService.getBootstrap();
-          setBootstrap(response);
+        const response = await apiService.getBootstrap();
+        setBootstrap(response);
+        if (response.authenticated && response.user) {
           setUser(response.user);
           cacheUser(response.user);
-        } catch {
-          // Supports a zero-downtime frontend rollout while older backend
-          // instances are still draining.
-          const response = await apiService.getSession();
-          setUser(response.user);
-          cacheUser(response.user);
+        } else {
+          setUser(null);
+          cacheUser(null);
         }
       } catch {
         setUser(null);
@@ -142,101 +133,51 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     };
 
-    // Check for OAuth callback parameters (mobile redirect flow)
-    const urlParams = new URLSearchParams(window.location.search);
-    
-    if (urlParams.has('auth')) {
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-    
-    restoreSession();
-    
-    // Listen for Gmail OAuth callback
-    const handleGmailAuthMessage = async (event: MessageEvent) => {
-      const apiBaseOrigin = apiService.getBaseOrigin();
-      
-      if (event.origin !== apiBaseOrigin) {
-        return;
-      }
-
-      if (!event.data || typeof event.data !== 'object') {
-        return;
-      }
-      
-      if (event.data.type === 'GMAIL_AUTH_SUCCESS') {
-        try {
-          try {
-            const response = await apiService.getBootstrap();
-            setBootstrap(response);
-            setUser(response.user);
-            cacheUser(response.user);
-          } catch {
-            const response = await apiService.getSession();
-            setUser(response.user);
-            cacheUser(response.user);
-          }
-          finishPendingGmailAuth(true);
-        } catch {
-          setUser(null);
-          cacheUser(null);
-          finishPendingGmailAuth(false);
-        } finally {
-          setLoading(false);
+    const completeAuthHandoff = async (token: string) => {
+      try {
+        await apiService.initialize();
+        await apiService.exchangeAuthHandoff(token);
+        const response = await apiService.getBootstrap();
+        if (!response.authenticated || !response.user) {
+          throw new Error('The signed session was not established.');
         }
-      } else if (event.data.type === 'GMAIL_AUTH_ERROR') {
+        setBootstrap(response);
+        setUser(response.user);
+        cacheUser(response.user);
+        setAuthenticationError('');
+      } catch {
+        setBootstrap(null);
+        setUser(null);
+        cacheUser(null);
+        setAuthenticationError('Gmail authentication could not be completed. Please try again.');
+      } finally {
         setLoading(false);
-        finishPendingGmailAuth(false);
       }
     };
-    
-    window.addEventListener('message', handleGmailAuthMessage);
-    return () => {
-      clearAuthTimeout();
-      clearAuthPopupCheck();
-      window.removeEventListener('message', handleGmailAuthMessage);
-    };
-  }, [clearAuthPopupCheck, clearAuthTimeout, finishPendingGmailAuth]);
+
+    const authRedirect = parseAuthRedirect(window.location.hash, window.location.search);
+    if (authRedirect) {
+      clearAuthRedirectFromAddressBar();
+      if (authRedirect.status === 'error' || !authRedirect.handoff) {
+        setUser(null);
+        cacheUser(null);
+        setAuthenticationError('Gmail authentication failed. Please try again.');
+        setLoading(false);
+        return;
+      }
+      void completeAuthHandoff(authRedirect.handoff);
+      return;
+    }
+
+    void restoreSession();
+  }, []);
 
   const loginWithGmail = async (): Promise<boolean> => {
     try {
       await apiService.initialize();
-
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
-      if (isMobile) {
-        const apiBaseOrigin = apiService.getBaseOrigin();
-        const mobileAuthUrl = `${apiBaseOrigin}/api/auth/gmail?redirect=1&frontend_origin=${encodeURIComponent(window.location.origin)}`;
-        window.location.href = mobileAuthUrl;
-        return true;
-      }
-
-      const authData = await apiService.getGmailAuthUrl(window.location.origin);
-      const popup = window.open(
-        authData.auth_url,
-        'gmail-auth',
-        'width=500,height=600,scrollbars=yes,resizable=yes'
-      );
-      
-      if (!popup) {
-        throw new Error('Popup blocked. Please allow popups for this site.');
-      }
-      
-      clearAuthTimeout();
-      clearAuthPopupCheck();
-
-      return await new Promise<boolean>((resolve) => {
-        pendingGmailAuthRef.current = resolve;
-
-        authTimeoutRef.current = window.setTimeout(() => {
-          finishPendingGmailAuth(false);
-        }, AUTH_POPUP_TIMEOUT_MS);
-
-        authPopupCheckRef.current = window.setInterval(() => {
-          if (popup.closed) {
-            finishPendingGmailAuth(false);
-          }
-        }, AUTH_POPUP_CLOSED_POLL_MS);
-      });
+      setAuthenticationError('');
+      window.location.assign(apiService.getGmailRedirectUrl(window.location.origin));
+      return true;
     } catch (error) {
       setLoading(false);
       throw error;
@@ -275,7 +216,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     logout,
     deleteAccount,
     bootstrap,
-    loading
+    loading,
+    authenticationError,
   };
 
   return (

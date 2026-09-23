@@ -197,7 +197,7 @@ export const useDashboardController = ({
 
     void (async () => {
       const cached = await readCachedTimetable();
-      if (authBootstrap?.user.email.toLowerCase() === userKey) {
+      if (authBootstrap?.user?.email.toLowerCase() === userKey) {
         if (authBootstrap.timetable) {
           const localSearch = await readSavedSearch();
           const restoredData = authBootstrap.timetable.search

@@ -40,7 +40,7 @@ flowchart LR
 ## Request lifecycle
 
 1. A cached identity allows the interface shell to paint while the signed server session is checked.
-2. One bootstrap request returns the verified identity, latest timetable, and last-update timestamp.
+2. One bootstrap request returns either an explicit guest state or the verified identity, latest timetable, and last-update timestamp.
 3. IndexedDB can restore the last successful result before a slow refresh finishes.
 4. Search checks the normalized source in memory, then Firestore, then Gmail only when refresh is required.
 5. Gmail is queried independently for the newest available message for each weekday.
@@ -49,6 +49,8 @@ flowchart LR
 8. The query planner records the requested days, sections, courses, codes, faculty, credit values, and class types.
 9. The engine applies intersection or union semantics, calculates availability and conflicts, and returns a human-readable answer with exact rows.
 
+Production browser requests use a Vercel same-origin `/api` proxy. Google still returns to the registered Render OAuth callback, which creates a random, single-use, two-minute handoff and redirects back through a URL fragment. The frontend exchanges that handoff through its own origin to establish the signed first-party session. This avoids third-party-cookie blocking in private browsing without exposing OAuth credentials to the browser.
+
 ## Trust boundaries
 
 - The browser never receives Gmail refresh tokens or Firestore credentials.
@@ -56,6 +58,7 @@ flowchart LR
 - OAuth tokens are encrypted before persistence.
 - Sessions use signed HTTP-only cookies with secure production behavior.
 - OAuth state and PKCE verifier data are checked during callback handling.
+- OAuth handoff tokens are random, short-lived, single-use, and carried in the fragment rather than the request query.
 - The authorized Gmail identity must match the signed-in account.
 - State-changing requests reject untrusted browser origins.
 - CORS is restricted to configured frontend origins.
