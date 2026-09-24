@@ -18,7 +18,7 @@ from backend.search_nlu.runtime import TinyNluRuntime
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--max-peak-rss-mib", type=float, default=460.0)
+    parser.add_argument("--max-peak-rss-mib", type=float, default=192.0)
     args = parser.parse_args()
 
     runtime = TinyNluRuntime()

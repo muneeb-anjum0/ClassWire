@@ -35,7 +35,7 @@ jobs:
           pip install -r backend/requirements-dev.txt
           pip-audit -r backend/requirements.txt --progress-spinner off
           python -m pytest --cov=backend --cov-report=term-missing
-          python tools/verify_nlu_runtime.py --max-peak-rss-mib 460
+          python tools/verify_nlu_runtime.py --max-peak-rss-mib 192
 
       - uses: actions/setup-node@v6
         with:
