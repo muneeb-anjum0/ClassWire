@@ -58,11 +58,9 @@ function ScheduleRow({
       <span>{renderHighlightedText(getCourseMeta(item))}</span>
     </div>
     <div className="conversation-class__person">
-      <small>Faculty</small>
       <span>{renderHighlightedText(getDisplayFaculty(item))}</span>
     </div>
     <div className="conversation-class__place">
-      <small>Location</small>
       <span>{renderHighlightedText(getDisplayRoom(item))}</span>
       <em>{renderHighlightedText(getDisplayCampus(item))}</em>
     </div>

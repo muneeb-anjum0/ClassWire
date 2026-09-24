@@ -701,6 +701,11 @@ html[data-theme='dark'] .smart-search__discovery-section--suggestions {
   animation: smart-search-answer-in 300ms cubic-bezier(.22, 1, .36, 1) both;
 }
 
+.smart-search__answer--availability {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
 html[data-theme='dark'] .smart-search__answer {
   background: color-mix(in srgb, var(--surface-secondary) 55%, transparent);
 }
@@ -843,24 +848,6 @@ html[data-theme='dark'] .smart-search__faculty > header {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 11px;
-}
-
-.smart-search__faculty-icon {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
-  display: grid;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--success) 25%, var(--border));
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--success) 9%, var(--surface));
-  color: var(--success);
-}
-
-.smart-search__faculty-icon svg {
-  width: 16px;
-  height: 16px;
 }
 
 .smart-search__faculty h3 {

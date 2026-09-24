@@ -125,7 +125,7 @@ a:focus-visible {
 }
 
 .schedule-panel__header {
-  min-height: 58px;
+  min-height: 50px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -208,16 +208,10 @@ html[data-theme='dark'] .schedule-panel__conflicts {
   font-size: 12px;
 }
 
-.schedule-panel__meta i {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.schedule-panel--search-result .schedule-panel__meta i,
-.schedule-panel--search-result .schedule-panel__meta span:last-child {
-  display: none;
+.schedule-panel__meta span + span::before {
+  content: '/';
+  margin-right: 8px;
+  color: var(--border-strong);
 }
 
 .timetable-container {
@@ -264,7 +258,7 @@ html[data-theme='dark'] .schedule-panel__conflicts {
   }
 
   .schedule-panel__header {
-    min-height: 54px;
+    min-height: 48px;
   }
 
   .schedule-panel__header h2 {
@@ -273,11 +267,6 @@ html[data-theme='dark'] .schedule-panel__conflicts {
 
   .schedule-panel__meta {
     font-size: 11px;
-  }
-
-  .schedule-panel__meta i,
-  .schedule-panel__meta span:last-child {
-    display: none;
   }
 
   .app-footer {

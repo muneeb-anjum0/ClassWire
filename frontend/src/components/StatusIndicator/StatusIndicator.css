@@ -51,29 +51,10 @@ html[data-theme='dark'] .status-indicator {
 .status-indicator__inner {
   min-height: 48px;
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: 10px 11px 10px 13px;
-}
-
-.status-indicator__icon {
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  color: var(--text-muted);
-}
-
-.status-toast .status-indicator__icon { color: var(--status-accent); }
-
-.status-indicator__icon svg {
-  width: 17px;
-  height: 17px;
-}
-
-.status-indicator__icon--loading svg {
-  animation: status-spin .75s linear infinite;
 }
 
 .status-indicator__message-clean {
@@ -86,7 +67,7 @@ html[data-theme='dark'] .status-indicator {
 }
 
 .status-indicator__dismiss {
-  width: 30px;
+  min-width: 52px;
   height: 30px;
   display: grid;
   place-items: center;
@@ -95,17 +76,14 @@ html[data-theme='dark'] .status-indicator {
   border-radius: 7px;
   background: transparent;
   color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
 }
 
 .status-indicator__dismiss:hover {
   background: var(--surface-hover);
   color: var(--text-primary);
-}
-
-.status-indicator__dismiss svg {
-  width: 15px;
-  height: 15px;
 }
 
 @keyframes status-in {
@@ -136,10 +114,6 @@ html[data-theme='dark'] .status-indicator {
     opacity: 0;
     transform: translateY(-8px) scaleY(.94);
   }
-}
-
-@keyframes status-spin {
-  to { transform: rotate(360deg); }
 }
 
 @media (max-width: 600px) {

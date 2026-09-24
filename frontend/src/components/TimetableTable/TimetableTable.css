@@ -40,7 +40,7 @@ html[data-theme='dark'] .tw-mobile-day-head {
 }
 
 .conversation-day__header {
-  min-height: 58px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -51,7 +51,7 @@ html[data-theme='dark'] .tw-mobile-day-head {
 .conversation-day__header h2 {
   margin: 0;
   color: var(--text-primary);
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
   letter-spacing: -0.025em;
 }
@@ -67,11 +67,11 @@ html[data-theme='dark'] .tw-mobile-day-head {
 
 .conversation-class {
   display: grid;
-  grid-template-columns: minmax(150px, .72fr) minmax(260px, 1.65fr) minmax(150px, .95fr) minmax(180px, 1.1fr) 104px;
+  grid-template-columns: minmax(142px, .72fr) minmax(240px, 1.65fr) minmax(140px, .95fr) minmax(165px, 1.1fr) 104px;
   align-items: center;
-  gap: 20px;
-  min-height: 72px;
-  padding: 11px 4px;
+  gap: 16px;
+  min-height: 60px;
+  padding: 7px 4px;
   border-top: 1px solid var(--border);
   border-radius: 0;
   background: transparent;
@@ -140,7 +140,7 @@ html[data-theme='dark'] .conversation-class--conflict {
 .conversation-class__place {
   min-width: 0;
   display: grid;
-  gap: 3px;
+  gap: 1px;
 }
 
 .conversation-class__course strong {
@@ -177,7 +177,7 @@ html[data-theme='dark'] .conversation-class--conflict {
 
 .conversation-class__section {
   width: 104px;
-  height: 30px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -262,19 +262,19 @@ html[data-theme='dark'] .conversation-class__section {
 
   .tw-mobile-view {
     display: grid;
-    gap: 28px;
-    padding-top: 14px;
+    gap: 20px;
+    padding-top: 10px;
   }
 
   .tw-mobile-day,
   .tw-mobile-semester {
     display: grid;
-    gap: 11px;
+    gap: 8px;
     min-width: 0;
   }
 
   .tw-mobile-day + .tw-mobile-day {
-    padding-top: 22px;
+    padding-top: 16px;
     border-top: 1px solid var(--border);
   }
 
@@ -350,7 +350,7 @@ html[data-theme='dark'] .conversation-class__section {
 
   .tw-class-card {
     min-width: 0;
-    padding: 11px 12px 10px;
+    padding: 9px 10px 8px;
     border: 1px solid var(--border);
     border-radius: 12px;
     background: var(--surface);

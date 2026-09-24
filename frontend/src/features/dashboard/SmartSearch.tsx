@@ -424,8 +424,13 @@ export default function SmartSearch({
           onClick={() => setResultHidden(false)}
         >
           Show
-        </button> : <button type="button" onClick={() => setResultHidden(true)} aria-label="Hide search result">
-          <X aria-hidden="true" />
+        </button> : <button
+          type="button"
+          className="smart-search__show-result"
+          onClick={() => setResultHidden(true)}
+          aria-label="Hide search result"
+        >
+          Hide
         </button>}
       </div>
       <div className="smart-search__answer-body" aria-hidden={resultHidden}>
@@ -435,7 +440,6 @@ export default function SmartSearch({
               {availability.map(({ faculty, slots }) => <section className="smart-search__faculty" key={faculty}>
                 <header>
                   <div className="smart-search__faculty-identity">
-                    <span className="smart-search__faculty-icon" aria-hidden="true"><Clock3 /></span>
                     <div>
                       <h3>{faculty}</h3>
                       <p>Free during university hours</p>
