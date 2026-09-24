@@ -9,7 +9,9 @@ import pytest
 
 from search_nlu.interpreter import optional_semantic_prediction, should_consult_model
 from search_nlu.runtime import (
+    DEFAULT_ARTIFACT_DIR,
     _entities_for_intent,
+    _low_memory_session_options,
     TinyNluRuntime,
     predict_with_optional_model,
 )
@@ -48,6 +50,18 @@ def test_optional_runtime_is_safe_when_no_artifact_exists(tmp_path):
     assert runtime.available is False
     assert runtime.loaded is False
     assert predict_with_optional_model("show BSSE7A", tmp_path) is None
+
+
+def test_production_artifact_is_complete_and_checksum_verified():
+    runtime = TinyNluRuntime(DEFAULT_ARTIFACT_DIR)
+    metadata = json.loads(
+        (DEFAULT_ARTIFACT_DIR / "metadata.json").read_text(encoding="utf-8")
+    )
+    model = DEFAULT_ARTIFACT_DIR / "classwire_nlu.int8.onnx"
+
+    assert runtime.available is True
+    assert metadata["model_version"] == "tinybert-nlu-v4"
+    assert hashlib.sha256(model.read_bytes()).hexdigest() == metadata["model_sha256"]
 
 
 def test_runtime_rejects_a_model_with_a_mismatched_checksum(tmp_path):
@@ -170,3 +184,35 @@ def test_unknown_intent_suppresses_catalog_like_entities():
 
     assert _entities_for_intent("unknown", entities) == []
     assert _entities_for_intent("schedule", entities) == entities
+
+
+def test_runtime_uses_render_safe_memory_and_thread_settings():
+    class Options:
+        def __init__(self):
+            self.entries = {}
+
+        def add_session_config_entry(self, name, value):
+            self.entries[name] = value
+
+    class Ort:
+        SessionOptions = Options
+
+        class ExecutionMode:
+            ORT_SEQUENTIAL = "sequential"
+
+        class GraphOptimizationLevel:
+            ORT_ENABLE_EXTENDED = "extended"
+
+    options = _low_memory_session_options(Ort)
+
+    assert options.intra_op_num_threads == 1
+    assert options.inter_op_num_threads == 1
+    assert options.execution_mode == "sequential"
+    assert options.graph_optimization_level == "extended"
+    assert options.enable_cpu_mem_arena is False
+    assert options.enable_mem_pattern is False
+    assert options.enable_mem_reuse is True
+    assert options.entries == {
+        "session.intra_op.allow_spinning": "0",
+        "session.inter_op.allow_spinning": "0",
+    }

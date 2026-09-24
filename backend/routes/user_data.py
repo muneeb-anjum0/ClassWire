@@ -12,6 +12,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from core.authentication import authenticated_user
 from core.rate_limit import TokenBucketRateLimiter
+from core.resource_limits import positive_int_env
 from core.ttl_cache import TTLCache
 from core.telemetry import increment, observe
 
@@ -31,18 +32,29 @@ def create_user_data_blueprint(*, logger, get_run_once, get_store):
     # The timetable emails change at most daily. Reuse the fully parsed weekly
     # source for normal searches; users can include "refresh", "latest", or
     # "update" to bypass this cache explicitly.
-    search_source_cache = TTLCache[str, dict](ttl_seconds=1800, max_entries=128)
+    search_source_cache = TTLCache[str, dict](
+        ttl_seconds=1800,
+        max_entries=positive_int_env("CLASSWIRE_SOURCE_CACHE_ENTRIES", 24, maximum=128),
+    )
     # Query interpretation is deterministic for a given in-memory weekly
     # source. Reuse repeated searches (including browser retries and restored
     # recent searches) without repeating entity extraction and row matching.
     search_result_cache = TTLCache[tuple[str, str, int, str], dict](
         ttl_seconds=1800,
-        max_entries=128,
+        max_entries=positive_int_env("CLASSWIRE_RESULT_CACHE_ENTRIES", 96, maximum=256),
     )
-    refresh_locks = TTLCache[str, threading.Lock](ttl_seconds=3600, max_entries=256)
+    refresh_locks = TTLCache[str, threading.Lock](
+        ttl_seconds=3600,
+        max_entries=positive_int_env("CLASSWIRE_LOCK_CACHE_ENTRIES", 64, maximum=256),
+    )
     refresh_locks_guard = threading.Lock()
-    search_limiter = TokenBucketRateLimiter(capacity=10, refill_per_second=2)
-    refresh_limiter = TokenBucketRateLimiter(capacity=2, refill_per_second=1 / 15)
+    limiter_keys = positive_int_env("CLASSWIRE_RATE_LIMIT_KEYS", 256, maximum=1024)
+    search_limiter = TokenBucketRateLimiter(
+        capacity=10, refill_per_second=2, max_keys=limiter_keys
+    )
+    refresh_limiter = TokenBucketRateLimiter(
+        capacity=2, refill_per_second=1 / 15, max_keys=limiter_keys
+    )
 
     def refresh_lock_for(user_id: str) -> threading.Lock:
         with refresh_locks_guard:

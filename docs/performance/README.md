@@ -52,16 +52,28 @@ Normal searches operate on already-normalized rows and do not call Gmail. Repeat
 
 ### Optional semantic inference
 
-The optional query-understanding model is designed around the free backend's memory and CPU limits:
+The query-understanding runtime is designed around the free backend's memory and CPU limits:
 
 - eight compact TinyBERT layers and one shared encoder for intent and entity prediction;
 - dynamic INT8 ONNX weights instead of a PyTorch production runtime;
 - lazy artifact loading, so startup and deterministic searches do not pay model initialization cost;
 - one ONNX intra-operation thread and one inter-operation thread;
+- sequential execution with CPU memory arenas and retained memory patterns disabled;
+- one process-wide inference lock, preventing concurrent requests from multiplying activation memory;
+- one Gunicorn worker with two request threads by default;
 - a maximum 96-token query window;
 - an artifact gate of 30 MB and a warm CPU p95 gate of 50 ms.
 
-Those limits are pipeline acceptance targets, not measured production claims. The Kaggle notebook writes the actual size, load time, memory watermark, mean latency, p50, p95, p99, intent accuracy, exact-span entity F1, and joint exact match to machine-readable reports. The standard backend dependency set remains unchanged until an exported artifact passes those gates.
+The deployed v4 Kaggle artifact measured 14.77 MB, 17.13 ms warm CPU p95,
+100% intent accuracy, 99.24% exact-span entity F1, and 97.46% joint exact
+match on 2,640 held-out generated queries. These numbers describe that fixed
+benchmark, not arbitrary real-world language. The benchmark process reached a
+425.60 MiB peak before the low-memory production session settings were added.
+
+Render's protected metrics endpoint reports current RSS, peak RSS, cgroup use,
+limit, and remaining headroom. Cache capacities are deliberately smaller for
+large timetable sources than for compact settings and hashes. Expired entries
+are purged on writes and inspection instead of retaining stale object graphs.
 
 ## Gmail efficiency
 
@@ -119,6 +131,7 @@ Large JSON responses are gzip-compressed only when the browser supports compress
 | Identical search recomputation | Bounded parser-versioned result cache |
 | Search-time Firestore writes | Browser result persistence and server-side source persistence |
 | Repeated document reads | Service-specific memory TTL caches |
+| Free-tier memory pressure | One worker, serialized inference, bounded caches, and live RSS telemetry |
 | Identical document writes | Stable hashes excluding volatile timestamps |
 | Large Firestore payloads | Compact JSON plus gzip bytes |
 | Hundreds of immediate DOM rows | Progressive render windows |

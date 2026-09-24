@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from core.ttl_cache import TTLCache
 from core.telemetry import increment
+from core.resource_limits import positive_int_env
 
 from .defaults import build_default_user_settings
 
@@ -115,12 +116,27 @@ class FirestoreStore:
         self.settings = self.client.collection("user_settings")
         self.cache = self.client.collection("timetable_cache")
         self.source_cache = self.client.collection("timetable_source_cache")
-        self._settings_cache = TTLCache[str, Dict[str, Any]](ttl_seconds=300, max_entries=512)
-        self._token_cache = TTLCache[str, Dict[str, Any]](ttl_seconds=300, max_entries=512)
-        self._timetable_cache = TTLCache[str, tuple[Dict[str, Any], str]](ttl_seconds=60, max_entries=256)
-        self._timetable_hashes = TTLCache[str, str](ttl_seconds=86400, max_entries=512)
-        self._source_cache = TTLCache[str, tuple[Dict[str, Any], datetime]](ttl_seconds=1800, max_entries=256)
-        self._source_hashes = TTLCache[str, str](ttl_seconds=86400, max_entries=512)
+        compact_limit = positive_int_env("CLASSWIRE_COMPACT_CACHE_ENTRIES", 128, maximum=512)
+        timetable_limit = positive_int_env("CLASSWIRE_TIMETABLE_CACHE_ENTRIES", 24, maximum=128)
+        source_limit = positive_int_env("CLASSWIRE_SOURCE_CACHE_ENTRIES", 24, maximum=128)
+        self._settings_cache = TTLCache[str, Dict[str, Any]](
+            ttl_seconds=300, max_entries=compact_limit
+        )
+        self._token_cache = TTLCache[str, Dict[str, Any]](
+            ttl_seconds=300, max_entries=compact_limit
+        )
+        self._timetable_cache = TTLCache[str, tuple[Dict[str, Any], str]](
+            ttl_seconds=60, max_entries=timetable_limit
+        )
+        self._timetable_hashes = TTLCache[str, str](
+            ttl_seconds=86400, max_entries=compact_limit
+        )
+        self._source_cache = TTLCache[str, tuple[Dict[str, Any], datetime]](
+            ttl_seconds=1800, max_entries=source_limit
+        )
+        self._source_hashes = TTLCache[str, str](
+            ttl_seconds=86400, max_entries=compact_limit
+        )
         self._health_cache = TTLCache[str, bool](ttl_seconds=60, max_entries=1)
         logger.info("Firestore client initialized")
 

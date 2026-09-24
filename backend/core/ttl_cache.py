@@ -29,6 +29,16 @@ class TTLCache(Generic[K, V]):
         self._entries: OrderedDict[K, tuple[float, V]] = OrderedDict()
         self._lock = threading.RLock()
 
+    def _purge_expired(self, now: float) -> int:
+        expired = [
+            key
+            for key, (created_at, _value) in self._entries.items()
+            if now - created_at >= self.ttl_seconds
+        ]
+        for key in expired:
+            self._entries.pop(key, None)
+        return len(expired)
+
     def get(self, key: K) -> Optional[V]:
         now = self._clock()
         with self._lock:
@@ -44,7 +54,9 @@ class TTLCache(Generic[K, V]):
 
     def set(self, key: K, value: V) -> None:
         with self._lock:
-            self._entries[key] = (self._clock(), value)
+            now = self._clock()
+            self._purge_expired(now)
+            self._entries[key] = (now, value)
             self._entries.move_to_end(key)
             while len(self._entries) > self.max_entries:
                 self._entries.popitem(last=False)
@@ -65,6 +77,7 @@ class TTLCache(Generic[K, V]):
     def discard_where(self, predicate: Callable[[K, V], bool]) -> int:
         """Remove every cached value matching a key-value predicate."""
         with self._lock:
+            self._purge_expired(self._clock())
             matching_keys = [
                 key
                 for key, (_, value) in self._entries.items()
@@ -76,4 +89,5 @@ class TTLCache(Generic[K, V]):
 
     def __len__(self) -> int:
         with self._lock:
+            self._purge_expired(self._clock())
             return len(self._entries)
