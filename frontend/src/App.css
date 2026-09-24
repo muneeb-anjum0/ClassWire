@@ -218,6 +218,10 @@ html[data-theme='dark'] .schedule-panel__conflicts {
   width: 100%;
 }
 
+.schedule-panel__header + .timetable-container {
+  margin-top: 12px;
+}
+
 .app-footer {
   width: min(100% - 32px, 1240px);
   min-height: 68px;

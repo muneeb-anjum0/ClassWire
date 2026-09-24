@@ -1,5 +1,5 @@
 import { TimetableItem } from '../../types/api';
-import { ConflictMembership, GroupedTimetable, getConflictPosition, getCourseMeta, getDisplayCampus, getDisplayCourseTitle, getDisplayFaculty, getDisplayRoom, getDisplayTime, getSectionColor, getSemesterLabel, groupConflictingItems, renderHighlightedText, shouldHighlightRow, sortTimetableItems } from './timetableTableUtils';
+import { ConflictMembership, GroupedTimetable, getConflictPosition, getCourseMeta, getDisplayCampus, getDisplayCourseTitle, getDisplayFaculty, getDisplayRoom, getDisplayTime, getSectionColor, getSemesterLabel, groupConflictingItems, isOnlineClass, renderHighlightedText, shouldHighlightRow, sortTimetableItems } from './timetableTableUtils';
 
 type Props = { grouped: GroupedTimetable; sortedSemesters: string[]; showDay: boolean; conflictMembership: ConflictMembership };
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -19,8 +19,9 @@ function ClassCard({
 }) {
   const room = getDisplayRoom(item);
   const section = getSemesterLabel(item);
+  const online = isOnlineClass(item);
   return <article
-    className={`tw-class-card ${shouldHighlightRow(item) ? 'tw-class-card--cancelled' : ''} ${conflictPosition ? `tw-class-card--conflict tw-class-card--conflict-${conflictPosition}` : ''}`}
+    className={`tw-class-card ${online ? 'tw-class-card--online' : ''} ${shouldHighlightRow(item) ? 'tw-class-card--cancelled' : ''} ${conflictPosition ? `tw-class-card--conflict tw-class-card--conflict-${conflictPosition}` : ''}`}
     data-conflict-group={conflictGroup}
     aria-label={conflictPosition ? `${getDisplayCourseTitle(item)}, schedule clash` : undefined}
   >

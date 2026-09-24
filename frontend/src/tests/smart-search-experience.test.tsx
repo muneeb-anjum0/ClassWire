@@ -58,7 +58,10 @@ test('a search answer can be hidden and restored without removing its data', asy
       free_slots: {},
       faculty_availability: [{
         faculty: 'Zainab Iftikhar Chaudhary',
-        slots: { Monday: ['8:00 AM – 9:30 AM'] },
+        slots: { Monday: ['8:00 AM – 9:30 AM'] } as Record<string, string[]>,
+      }, {
+        faculty: 'Hamza Imran',
+        slots: { Tuesday: ['10:00 AM – 12:00 PM'] } as Record<string, string[]>,
       }],
     },
   } satisfies TimetableData;
@@ -72,7 +75,10 @@ test('a search answer can be hidden and restored without removing its data', asy
   expect(resultPanel).toHaveClass('smart-search__answer--availability');
   expect(resultPanel?.querySelector('.smart-search__faculty > header')).toBeInTheDocument();
   expect(resultPanel?.querySelector('.smart-search__faculty > header svg')).not.toBeInTheDocument();
-  expect(screen.getByText('Available')).toBeInTheDocument();
+  const facultySections = resultPanel?.querySelectorAll('.smart-search__faculty');
+  expect(facultySections).toHaveLength(2);
+  expect(facultySections?.[0].nextElementSibling).toBe(facultySections?.[1]);
+  expect(screen.getAllByText('Available')).toHaveLength(2);
   expect(resultBody).toHaveAttribute('aria-hidden', 'false');
 
   await user.click(screen.getByLabelText('Hide search result'));

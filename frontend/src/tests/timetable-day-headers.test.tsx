@@ -28,6 +28,18 @@ describe('timetable day headers', () => {
     expect(container.querySelector('.tw-mobile-day-head')).not.toBeInTheDocument();
   });
 
+  it('marks online classes in both responsive schedule views', () => {
+    const onlineClass = {
+      ...classFor('Monday'),
+      room: 'ONLINE',
+    };
+    const { container } = render(<TimetableTable items={[onlineClass]} />);
+
+    expect(container.querySelector('.conversation-class')).toHaveClass('conversation-class--online');
+    expect(container.querySelector('.tw-class-card')).toHaveClass('tw-class-card--online');
+    expect(container.querySelector('.tw-room-pill')).toHaveClass('tw-room-pill--online');
+  });
+
   it('shows a chronological mobile stream while retaining each class section', () => {
     const items = [
       {

@@ -73,6 +73,9 @@ export const getDisplayRoom = (item: TimetableItem): string => {
   return hasDisplayValue(item.room) ? item.room.trim() : 'TBD';
 };
 
+export const isOnlineClass = (item: TimetableItem): boolean =>
+  /\b(?:online|virtual)\b/i.test(`${getDisplayRoom(item)} ${item.campus || ''}`);
+
 export const getDisplayCampus = (item: TimetableItem): string => {
   return hasDisplayValue(item.campus) ? item.campus.trim() : '-';
 };
