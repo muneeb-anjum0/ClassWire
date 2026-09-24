@@ -1,0 +1,49 @@
+{
+  "base_model": "google/bert_uncased_L-8_H-256_A-4",
+  "best_validation": {
+    "entity_f1_exact_span": 0.8575218890952507,
+    "entity_precision_exact_span": 0.8428372739916551,
+    "entity_recall_exact_span": 0.8727272727272727,
+    "examples": 2640,
+    "intent_accuracy": 0.9731060606060606,
+    "intent_accuracy_by_family": {
+      "availability_two_people_reordered_validation": 1.0,
+      "availability_validation": 1.0,
+      "base_add_one_polite_validation": 1.0,
+      "base_exclude_validation": 1.0,
+      "credits_validation": 1.0,
+      "faculty_schedule_day_validation": 1.0,
+      "faculty_schedule_reordered_validation": 1.0,
+      "filter_course_validation": 0.9909502262443439,
+      "section_pair_days_validation": 1.0,
+      "time_filter_validation": 1.0,
+      "unknown_catalog_reordered_validation": 0.6778846153846154,
+      "unknown_catalog_validation": 0.9901960784313726,
+      "unknown_validation": 1.0
+    },
+    "intent_accuracy_macro_family": 0.9737716092354101,
+    "joint_exact_match": 0.7928030303030303,
+    "slot_f1": 0.8407361681357489,
+    "slot_precision": 0.8277831175439588,
+    "slot_recall": 0.8541010383852526
+  },
+  "export_validation": {
+    "finite_outputs": true,
+    "intent_shape": [
+      1,
+      4
+    ],
+    "slot_shape": [
+      1,
+      96,
+      23
+    ]
+  },
+  "intent_count": 4,
+  "max_length": 96,
+  "model_sha256": "4715ebff47627dcca5a0996a6083a39f944f7d9e118d40afe07900f7e1053a87",
+  "model_version": "tinybert-nlu-v4",
+  "onnx_opset": 17,
+  "quantization": "dynamic-int8",
+  "slot_count": 23
+}

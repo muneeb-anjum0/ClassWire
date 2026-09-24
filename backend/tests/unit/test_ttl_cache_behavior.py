@@ -62,3 +62,17 @@ def test_discard_where_removes_only_matching_entries():
     assert removed == 2
     assert cache.get(("student-a", "first")) is None
     assert cache.get(("student-b", "first")) == 3
+
+
+def test_new_writes_release_all_expired_values_before_eviction():
+    clock = FakeClock()
+    cache = TTLCache[str, object](ttl_seconds=2, max_entries=4, clock=clock)
+    cache.set("large-a", object())
+    cache.set("large-b", object())
+    clock.now = 2
+
+    cache.set("fresh", object())
+
+    assert len(cache) == 1
+    assert cache.get("large-a") is None
+    assert cache.get("large-b") is None

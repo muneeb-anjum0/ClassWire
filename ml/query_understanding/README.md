@@ -36,7 +36,7 @@ The model is a guarded assistant to the deterministic search engine. It does not
 | `benchmark.py` | CPU latency, memory, artifact size, and accuracy gates |
 | `classwire_nlu_kaggle.ipynb` | Ordered Kaggle execution notebook |
 
-Generated datasets, checkpoints, reports, and intermediate model binaries under this directory are ignored by Git. Only a reviewed, benchmarked artifact should be copied to the trackable deployment location at `backend/search_nlu/artifacts/v1`.
+Generated datasets, checkpoints, reports, and intermediate model binaries under this directory are ignored by Git. The reviewed v4 runtime artifact is stored at `backend/search_nlu/artifacts/v1`.
 
 ## Kaggle workflow
 
@@ -89,7 +89,7 @@ After a successful run:
 
 1. Extract the ZIP locally.
 2. Copy the `artifact` directory to `backend/search_nlu/artifacts/v1`.
-3. Install from `backend/requirements-ml-runtime.txt` in a staging environment.
+3. Install `backend/requirements.txt`, which includes the inference-only runtime.
 4. Run the full backend suite and the packaged benchmark again on a CPU-only machine.
 5. Pin production to a supported Python 3.13 runtime before enabling ONNX Runtime on Render.
 6. Enable semantic fallback only after shadow-mode logs confirm that it improves unresolved queries without regressing deterministic results.

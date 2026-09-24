@@ -16,6 +16,7 @@ from google.auth.transport.requests import Request as GoogleAuthRequest
 
 from core.ttl_cache import TTLCache
 from core.telemetry import increment, observe
+from core.resource_limits import positive_int_env
 
 from .gmail_client import (
     build_service,
@@ -35,7 +36,10 @@ from .timetable_parser import (
 LOGGER = logging.getLogger(__name__)
 
 WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-_GMAIL_IDENTITY_CACHE = TTLCache[str, str](ttl_seconds=3600, max_entries=256)
+_GMAIL_IDENTITY_CACHE = TTLCache[str, str](
+    ttl_seconds=3600,
+    max_entries=positive_int_env("CLASSWIRE_IDENTITY_CACHE_ENTRIES", 128, maximum=512),
+)
 PUBLIC_ITEM_FIELDS = (
     "row_number",
     "semester",

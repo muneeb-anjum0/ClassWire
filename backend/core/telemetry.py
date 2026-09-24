@@ -12,6 +12,8 @@ from typing import Any
 
 from flask import Flask, g, request
 
+from core.resource_limits import process_memory_snapshot
+
 LOGGER = logging.getLogger("classwire.telemetry")
 _LOCK = threading.Lock()
 _COUNTERS: Counter[str] = Counter()
@@ -42,7 +44,11 @@ def snapshot() -> dict[str, Any]:
                 "average_ms": round(sum(ordered) / len(ordered), 2) if ordered else 0,
                 "p95_ms": ordered[min(len(ordered) - 1, int(len(ordered) * 0.95))] if ordered else 0,
             }
-        return {"counters": dict(_COUNTERS), "timings": timings}
+        return {
+            "counters": dict(_COUNTERS),
+            "timings": timings,
+            "process_memory": process_memory_snapshot(),
+        }
 
 
 def configure_request_telemetry(app: Flask) -> None:

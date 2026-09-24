@@ -30,3 +30,6 @@ urllib3>=2.7.0
 
 # Production server
 gunicorn>=21.0.0
+
+# Compact semantic inference runtime
+-r requirements-ml-runtime.txt
