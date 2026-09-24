@@ -417,28 +417,18 @@ export default function SmartSearch({
       role="status"
     >
       <div className="smart-search__answer-header">
-        <div
-          key={resultHidden ? 'result-hidden' : 'result-visible'}
-          className="smart-search__answer-label"
-        >
-          {resultHidden ? 'Search result hidden' : 'Search result'}
+        <div className="smart-search__answer-label">
+          <span>Search result</span>
+          {resultHidden && <span className="smart-search__answer-hidden-word"> hidden</span>}
         </div>
-        {resultHidden ? <button
-          key="show-result"
+        <button
           type="button"
           className="smart-search__show-result"
-          onClick={() => setResultHidden(false)}
+          onClick={() => setResultHidden((hidden) => !hidden)}
+          aria-label={resultHidden ? undefined : 'Hide search result'}
         >
-          Show
-        </button> : <button
-          key="hide-result"
-          type="button"
-          className="smart-search__show-result"
-          onClick={() => setResultHidden(true)}
-          aria-label="Hide search result"
-        >
-          Hide
-        </button>}
+          <span key={resultHidden ? 'show' : 'hide'}>{resultHidden ? 'Show' : 'Hide'}</span>
+        </button>
       </div>
       <div className="smart-search__answer-body" aria-hidden={resultHidden}>
         <div className="smart-search__answer-body-inner">
