@@ -144,7 +144,7 @@ describe('schedule feedback presentation', () => {
     );
   });
 
-  it('keeps multi-day schedule headings plain because each day has its own striped row', () => {
+  it('keeps the striped schedule banner for multi-day results', () => {
     const items = [itemFor('Monday'), itemFor('Wednesday')];
     setDashboardState({
       filteredItems: items,
@@ -153,9 +153,10 @@ describe('schedule feedback presentation', () => {
     });
     const { container } = render(<DashboardPage />);
 
-    expect(container.querySelector('.schedule-panel__header')).not.toHaveClass(
+    expect(container.querySelector('.schedule-panel__header')).toHaveClass(
       'schedule-panel__header--striped',
     );
+    expect(container.querySelector('.schedule-panel__meta')).toHaveTextContent('2 classes');
   });
 
   it('uses the same aligned status slot when no timetable is available', () => {

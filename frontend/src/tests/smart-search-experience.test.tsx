@@ -71,6 +71,7 @@ test('a search answer can be hidden and restored without removing its data', asy
   expect(resultPanel).toHaveClass('smart-search__answer--visible');
   expect(resultPanel).toHaveClass('smart-search__answer--availability');
   expect(resultPanel?.querySelector('.smart-search__faculty > header')).toBeInTheDocument();
+  expect(resultPanel?.querySelector('.smart-search__faculty > header svg')).not.toBeInTheDocument();
   expect(screen.getByText('Available')).toBeInTheDocument();
   expect(resultBody).toHaveAttribute('aria-hidden', 'false');
 

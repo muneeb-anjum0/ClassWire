@@ -15,11 +15,6 @@ export default function DashboardPage() {
     controller.timetableData.items &&
     controller.timetableData.items.length > 0,
   );
-  const scheduleDayCount = new Set(
-    controller.filteredItems
-      .map((item) => item.schedule_day)
-      .filter((day): day is string => Boolean(day)),
-  ).size;
   const isCustomSchedule = controller.timetableData?.search?.query_plan?.combination === 'union';
   const visibleConflicts = isCustomSchedule
     ? controller.timetableData?.search?.conflicts
@@ -86,11 +81,10 @@ export default function DashboardPage() {
                 className={`schedule-panel ${controller.timetableData.search ? 'schedule-panel--search-result' : ''}`}
                 aria-labelledby="schedule-heading"
               >
-                <div className={`schedule-panel__header ${scheduleDayCount <= 1 ? 'schedule-panel__header--striped' : ''}`}>
+                <div className="schedule-panel__header schedule-panel__header--striped">
                   <h2 id="schedule-heading">Class schedule</h2>
                   <p className="schedule-panel__meta">
                     <span>{controller.timetableData.for_day || 'Today'}</span>
-                    <i aria-hidden="true" />
                     <span>{controller.filteredItems.length} {controller.filteredItems.length === 1 ? 'class' : 'classes'}</span>
                   </p>
                 </div>
