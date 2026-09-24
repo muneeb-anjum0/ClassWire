@@ -32,8 +32,9 @@ def main() -> None:
     parser.add_argument("--runs", type=int, default=2_000)
     parser.add_argument("--warmup", type=int, default=100)
     parser.add_argument("--output", type=Path, default=Path("ml/query_understanding/reports/benchmark.json"))
-    parser.add_argument("--min-intent-accuracy", type=float, default=0.94)
-    parser.add_argument("--min-entity-f1", type=float, default=0.90)
+    parser.add_argument("--min-intent-accuracy", type=float, default=0.96)
+    parser.add_argument("--min-entity-f1", type=float, default=0.94)
+    parser.add_argument("--min-joint-exact-match", type=float, default=0.85)
     parser.add_argument("--max-p95-ms", type=float, default=50.0)
     parser.add_argument("--max-artifact-mb", type=float, default=30.0)
     args = parser.parse_args()
@@ -53,6 +54,7 @@ def main() -> None:
     joint_correct = 0
     intent_confusion: Counter = Counter()
     role_counts: dict[str, Counter] = defaultdict(Counter)
+    family_counts: dict[str, Counter] = defaultdict(Counter)
     for record in records:
         prediction = runtime.predict(record["text"])
         intent_match = prediction.intent == record["intent"]
@@ -73,6 +75,11 @@ def main() -> None:
         for role, _, _ in expected - predicted:
             role_counts[role]["false_negative"] += 1
         joint_correct += int(intent_match and expected == predicted)
+        family = record["family"]
+        family_counts[family]["examples"] += 1
+        family_counts[family]["intent_correct"] += int(intent_match)
+        family_counts[family]["entity_exact"] += int(expected == predicted)
+        family_counts[family]["joint_exact"] += int(intent_match and expected == predicted)
 
     for index in range(args.warmup):
         runtime.predict(records[index % len(records)]["text"])
@@ -125,10 +132,20 @@ def main() -> None:
             for (expected, predicted), count in sorted(intent_confusion.items())
         },
         "entity_metrics_by_role": per_role,
+        "metrics_by_family": {
+            family: {
+                "examples": counts["examples"],
+                "intent_accuracy": counts["intent_correct"] / counts["examples"],
+                "entity_exact_match": counts["entity_exact"] / counts["examples"],
+                "joint_exact_match": counts["joint_exact"] / counts["examples"],
+            }
+            for family, counts in sorted(family_counts.items())
+        },
     }
     gates = {
         "intent_accuracy": report["intent_accuracy"] >= args.min_intent_accuracy,
         "entity_f1": report["entity_f1_exact_span"] >= args.min_entity_f1,
+        "joint_exact_match": report["joint_exact_match"] >= args.min_joint_exact_match,
         "p95_latency": report["latency_p95_ms"] <= args.max_p95_ms,
         "artifact_size": report["artifact_megabytes"] <= args.max_artifact_mb,
     }

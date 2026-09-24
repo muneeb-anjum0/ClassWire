@@ -65,6 +65,7 @@ def test_kaggle_notebook_contains_every_quality_stage():
         "build_dataset",
         "validate_dataset",
         "query_understanding.train",
+        "select_checkpoint",
         "query_understanding.evaluate",
         "export_onnx",
         "query_understanding.benchmark",

@@ -25,15 +25,17 @@ from ml.query_understanding.training_data import (
 )
 from ml.query_understanding.validate_dataset import validate_records
 
-DEFAULT_MODEL = "google/bert_uncased_L-4_H-256_A-4"
+DEFAULT_MODEL = "google/bert_uncased_L-8_H-256_A-4"
 
 
 def seed_everything(seed: int, *, use_cuda: bool) -> None:
     random.seed(seed)
     np.random.seed(seed)
-    torch.random.default_generator.manual_seed(seed)
+    torch.manual_seed(seed)
     if use_cuda:
         torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
 
 
 def main() -> None:
@@ -41,16 +43,17 @@ def main() -> None:
     parser.add_argument("--dataset", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=Path("ml/query_understanding/checkpoints/best"))
     parser.add_argument("--base-model", default=DEFAULT_MODEL)
-    parser.add_argument("--epochs", type=int, default=12)
+    parser.add_argument("--epochs", type=int, default=14)
     parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--learning-rate", type=float, default=5e-5)
+    parser.add_argument("--learning-rate", type=float, default=4e-5)
     parser.add_argument("--weight-decay", type=float, default=0.01)
     parser.add_argument("--warmup-ratio", type=float, default=0.1)
     parser.add_argument("--max-length", type=int, default=96)
-    parser.add_argument("--patience", type=int, default=3)
-    parser.add_argument("--slot-loss-weight", type=float, default=1.4)
+    parser.add_argument("--patience", type=int, default=4)
+    parser.add_argument("--slot-loss-weight", type=float, default=1.6)
+    parser.add_argument("--slot-weight-power", type=float, default=0.6)
     parser.add_argument("--seed", type=int, default=41)
-    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
+    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="cpu")
     args = parser.parse_args()
 
     cuda_available = torch.cuda.is_available() if args.device != "cpu" else False
@@ -112,6 +115,7 @@ def main() -> None:
         "slot_labels",
         len(slot_labels),
         ignore_index=-100,
+        power=args.slot_weight_power,
     ).to(device)
     intent_loss = nn.CrossEntropyLoss(weight=intent_weights, label_smoothing=0.02)
     slot_loss = nn.CrossEntropyLoss(
@@ -143,10 +147,12 @@ def main() -> None:
             scheduler.step()
             running_loss += float(loss.detach())
 
-        metrics = evaluate_model(model, validation_loader, device, slot_to_id["O"])
+        metrics = evaluate_model(
+            model, validation_loader, device, slot_to_id["O"], slot_labels
+        )
         score = (
             float(metrics["intent_accuracy"])
-            + float(metrics["slot_f1"])
+            + float(metrics["entity_f1_exact_span"])
             + float(metrics["joint_exact_match"])
         )
         epoch_report = {
@@ -187,6 +193,7 @@ def main() -> None:
         "intent_class_weights": intent_weights.detach().cpu().tolist(),
         "slot_class_weights": slot_weights.detach().cpu().tolist(),
         "slot_loss_weight": args.slot_loss_weight,
+        "slot_weight_power": args.slot_weight_power,
         "history": history,
     }
     args.output.mkdir(parents=True, exist_ok=True)

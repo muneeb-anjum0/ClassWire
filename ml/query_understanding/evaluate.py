@@ -43,7 +43,11 @@ def main() -> None:
         records, tokenizer, intent_to_id, slot_to_id, int(config["max_length"])
     )
     metrics = evaluate_model(
-        model, DataLoader(dataset, batch_size=args.batch_size), device, slot_to_id["O"]
+        model,
+        DataLoader(dataset, batch_size=args.batch_size),
+        device,
+        slot_to_id["O"],
+        config["slot_labels"],
     )
     report = {
         "split": args.split,

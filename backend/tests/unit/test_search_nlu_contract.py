@@ -121,3 +121,41 @@ def test_low_confidence_semantic_prediction_is_not_returned(monkeypatch):
     )
 
     assert optional_semantic_prediction("something vague", {"recognized": False}) is None
+
+
+def test_runtime_discards_low_confidence_fragments_and_course_connectors():
+    runtime = TinyNluRuntime("unused")
+    runtime._slot_labels = ["O", "B-ADDED_COURSE", "I-ADDED_COURSE"]
+    query = "Software Construction and BSSE5B"
+
+    entities = runtime._decode_entities(
+        query,
+        [(0, 8), (9, 21), (22, 25), (26, 32)],
+        [1, 1, 1, 1],
+        [1, 2, 2, 1],
+        [
+            [0.01, 0.98, 0.01],
+            [0.01, 0.01, 0.98],
+            [0.01, 0.01, 0.90],
+            [0.80, 0.10, 0.10],
+        ],
+    )
+
+    assert [(entity.label, entity.text) for entity in entities] == [
+        ("ADDED_COURSE", "Software Construction")
+    ]
+
+
+def test_runtime_ignores_low_confidence_one_token_entities():
+    runtime = TinyNluRuntime("unused")
+    runtime._slot_labels = ["O", "B-ADDED_COURSE"]
+
+    entities = runtime._decode_entities(
+        "s",
+        [(0, 1)],
+        [1],
+        [1],
+        [[0.70, 0.30]],
+    )
+
+    assert entities == []
