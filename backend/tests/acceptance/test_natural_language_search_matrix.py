@@ -158,3 +158,202 @@ def test_natural_language_query_returns_only_the_expected_schedule(case: Accepta
         assert {entry["faculty"] for entry in result["faculty_availability"]} == case.availability_faculty
     if case.conflict_expected:
         assert result["conflict_count"] > 0
+
+
+BASE_7A = ids("a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10")
+BASE_7A_WITHOUT_REENGINEERING = ids("a1", "a2", "a3", "a5", "a7", "a8", "a9", "a10")
+CUSTOM_WITHOUT_REENGINEERING = BASE_7A_WITHOUT_REENGINEERING | ids(
+    "c1", "c2", "c3", "c4", "d3", "d4",
+)
+
+
+@pytest.mark.parametrize(
+    ("query", "expected_ids", "expected_faculty", "expected_intent"),
+    [
+        (
+            "I am taking every class with BSSE7A except Software Re-Engineering, and I am taking Software Construction and Development with BSSE5B and Software Quality Engineering and Testing with BSSE6A",
+            CUSTOM_WITHOUT_REENGINEERING, frozenset(), "schedule",
+        ),
+        (
+            "I am in BSSE7A, and I am taking Software Construction and Development with BSSE5B and Software Quality Engineering and Testing with BSSE6A. I don't take Software Re-Engineering with BSSE7A",
+            CUSTOM_WITHOUT_REENGINEERING, frozenset(), "schedule",
+        ),
+        (
+            "Every BSSE7A class except Software Re-Engineering; add Software Construction and Development from BSSE5B and Software Quality Engineering and Testing from BSSE6A",
+            CUSTOM_WITHOUT_REENGINEERING, frozenset(), "schedule",
+        ),
+        (
+            "Keep my BSSE7A timetable excluding Software Re-Engineering, plus Software Construction and Development with BSSE5B and Software Quality Engineering and Testing with BSSE6A",
+            CUSTOM_WITHOUT_REENGINEERING, frozenset(), "schedule",
+        ),
+        (
+            "My base is BSSE7A. Without SEC 3606, include SEC 3604 from BSSE5B and SEC 3608 from BSSE6A",
+            BASE_7A_WITHOUT_REENGINEERING | ids("c1", "c2", "d3", "d4"),
+            frozenset(), "schedule",
+        ),
+        (
+            "I belong to BSSE7A, but not Software Re-Engineering. Also take Software Construction and Development with BSSE5B and Software Quality Engineering and Testing with BSSE6A",
+            CUSTOM_WITHOUT_REENGINEERING, frozenset(), "schedule",
+        ),
+        (
+            "Use BSSE7A as my schedule other than Software Re-Engineering, along with Software Construction and Development from BSSE5B and Software Quality Engineering and Testing from BSSE6A",
+            CUSTOM_WITHOUT_REENGINEERING, frozenset(), "schedule",
+        ),
+        (
+            "BSSE7A full timetable, leave out Software Re-Engineering, then add Software Construction and Development from BSSE5B and Software Quality Engineering and Testing from BSSE6A",
+            CUSTOM_WITHOUT_REENGINEERING, frozenset(), "schedule",
+        ),
+        (
+            "All BSSE7A classes, skip Software Re-Engineering, and take Software Construction and Development with BSSE5B plus Software Quality Engineering and Testing with BSSE6A",
+            CUSTOM_WITHOUT_REENGINEERING, frozenset(), "schedule",
+        ),
+        (
+            "Start with BSSE7A; remove Software Re-Engineering; include Software Construction and Development from BSSE5B and Software Quality Engineering and Testing from BSSE6A",
+            CUSTOM_WITHOUT_REENGINEERING, frozenset(), "schedule",
+        ),
+        (
+            "Show BSSE7A classes except Software Re-Engineering",
+            BASE_7A_WITHOUT_REENGINEERING, frozenset(), "schedule",
+        ),
+        (
+            "I am from BSSE7A and I do not take Software Re-Engineering",
+            BASE_7A_WITHOUT_REENGINEERING, frozenset(), "schedule",
+        ),
+        ("I am from BSSE7A", BASE_7A, frozenset(), "schedule"),
+        ("My section is BSSE7A", BASE_7A, frozenset(), "schedule"),
+        ("Give me the complete BSSE7A timetable", BASE_7A, frozenset(), "schedule"),
+        (
+            "When is Sir Wahab free?",
+            ids("a2", "a3", "a6"), ids("Sheikh Abdul Wahab"), "free_time",
+        ),
+        (
+            "Show Sir Wahab's availability",
+            ids("a2", "a3", "a6"), ids("Sheikh Abdul Wahab"), "free_time",
+        ),
+        (
+            "What open slots does Sheikh Abdul Wahab have?",
+            ids("a2", "a3", "a6"), ids("Sheikh Abdul Wahab"), "free_time",
+        ),
+        (
+            "When is Sir Qasim free on Monday and Tuesday?",
+            ids("a1", "e5", "e6"), ids("Muhammad Qasim", "Mr. Qasim"), "free_time",
+        ),
+        (
+            "Show Qasim's availability for Monday and Tuesday",
+            ids("a1", "e5", "e6"), ids("Muhammad Qasim", "Mr. Qasim"), "free_time",
+        ),
+    ],
+    ids=[f"language-variant-{number:02d}" for number in range(1, 21)],
+)
+def test_schedule_language_variants(
+    query: str,
+    expected_ids: frozenset[str],
+    expected_faculty: frozenset[str],
+    expected_intent: str,
+):
+    result = search_timetable(query, ITEMS, reference_date=date(2026, 9, 21))
+
+    assert {item["test_id"] for item in result["items"]} == expected_ids
+    assert result["intent"] == expected_intent
+    assert {entry["faculty"] for entry in result["faculty_availability"]} == expected_faculty
+    if expected_intent == "free_time":
+        assert result["conflict_count"] == 0
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Class of BSSE7A and Software Construction and Development with BSSE5B today",
+        "BSSE7A classes and Software Construction and Development with BSSE5B today",
+        "Class of BSSE7A alongside Software Construction and Development from BSSE5B today",
+        "BSSE7A schedule; Software Construction and Development from BSSE5B today",
+        "Software Construction and Development with BSSE5B today, and class of BSSE7A",
+    ],
+)
+def test_structural_planner_understands_base_section_and_bound_addition_without_trigger_words(query: str):
+    result = search_timetable(query, ITEMS, reference_date=date(2026, 9, 24))
+
+    assert {item["test_id"] for item in result["items"]} == ids("a5", "a6")
+    assert result["query_plan"]["combination"] == "union"
+    assert result["query_plan"]["selection_scope"]["base_sections"] == ["BS(SE)-7A"]
+    assert result["query_plan"]["selection_scope"]["course_section_pairs"] == [{
+        "section": "BS(SE)-5B",
+        "kind": "course",
+        "value": "Software Construction and Development",
+        "class_types": [],
+    }]
+
+
+def test_semantic_plan_survives_generated_clause_order_and_wording_variants():
+    """Exercise a query family instead of maintaining only hand-picked sentences."""
+    base_phrases = [
+        "I am from BSSE7A",
+        "My section is BSSE7A",
+        "Class of BSSE7A",
+    ]
+    exclusion_phrases = [
+        "except Software Re-Engineering",
+        "without Software Re-Engineering",
+        "skip SEC 3606",
+    ]
+    addition = (
+        "take Software Construction and Development with BSSE5B and "
+        "Software Quality Engineering and Testing with BSSE6A"
+    )
+    templates = [
+        "{base}, {exclusion}, and {addition}",
+        "{base}; {addition}; {exclusion}",
+        "{addition}; {base}; {exclusion}",
+    ]
+
+    checked = 0
+    for base in base_phrases:
+        for exclusion in exclusion_phrases:
+            for template in templates:
+                query = template.format(
+                    base=base,
+                    exclusion=exclusion,
+                    addition=addition,
+                )
+                result = search_timetable(query, ITEMS, reference_date=date(2026, 9, 21))
+                actual_ids = {item["test_id"] for item in result["items"]}
+
+                assert actual_ids == CUSTOM_WITHOUT_REENGINEERING, query
+                assert result["query_plan"]["combination"] == "union", query
+                assert result["query_plan"]["selection_scope"]["base_sections"] == [
+                    "BS(SE)-7A"
+                ], query
+                assert result["query_plan"]["exclusions"], query
+                checked += 1
+
+    assert checked == 27
+
+
+def test_entity_resolution_combines_typos_shorthand_and_intent_without_losing_context():
+    cases = [
+        (
+            "Show softwre re enginering for BSSE7A",
+            ids("a4", "a6"),
+            "schedule",
+        ),
+        (
+            "I am from BSSE7A except softwre re enginering",
+            BASE_7A_WITHOUT_REENGINEERING,
+            "schedule",
+        ),
+        ("Classes of BSSE7A on Tues", ids("a9"), "schedule"),
+        ("I am from BSE7A", BASE_7A, "schedule"),
+        ("Could I meet sir Wahab on Tues?", ids(), "free_time"),
+        (
+            "When does sir Wahab not have a class?",
+            ids("a2", "a3", "a6"),
+            "free_time",
+        ),
+        ("Classes for 7A today", ids("a1", "a2", "a10"), "schedule"),
+    ]
+
+    for query, expected_ids, expected_intent in cases:
+        result = search_timetable(query, ITEMS, reference_date=date(2026, 9, 21))
+
+        assert {item["test_id"] for item in result["items"]} == expected_ids, query
+        assert result["intent"] == expected_intent, query

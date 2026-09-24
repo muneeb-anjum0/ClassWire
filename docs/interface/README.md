@@ -19,6 +19,8 @@ Google authentication uses a full-page redirect rather than a popup. After Googl
 
 Logged-out startup is represented as a normal guest bootstrap state, so opening the public login page does not generate expected-but-noisy `401` console errors.
 
+The login page uses a restrained diagonal access band to identify read-only Gmail access and SZABIST Islamabad context without turning the page into a decorative card. A delayed Render wake message uses an amber striped treatment distinct from active search loading.
+
 ## Feedback model
 
 Search status is rendered in the schedule flow rather than as a detached corner overlay. Success, warning, stale-source, authentication, and error states use distinct colors with diagonal line treatments and restrained entrance and exit motion.
@@ -45,7 +47,7 @@ The layout avoids horizontal dependence and keeps long campus or course labels f
 
 ## Conflict presentation
 
-The API returns exact overlap pairs. The interface converts connected pairs into conflict groups, moves each group's classes next to one another, and applies a subtle red diagonal pattern.
+The API returns exact overlap pairs only for intentional custom schedules. Faculty schedules, broad course searches, FYP results, and normal section lookups can contain parallel rows without being personal clashes, so they remain unmarked. For custom schedules, the interface converts connected pairs into conflict groups, moves each group's classes next to one another, and applies a subtle red diagonal pattern.
 
 - Desktop groups use connected top, middle, and bottom row boundaries.
 - Mobile cards visually join into one rounded outer group.
@@ -58,6 +60,8 @@ The API returns exact overlap pairs. The interface converts connected pairs into
 The search summary uses the same content width as the schedule. It remains visually quieter than the timetable, has square edges, and reserves spacing for show and hide transitions so adjacent status rows and day headers never overlap.
 
 Single-day results give the `Class schedule` header the same structural line background used for multi-day weekday bands, while avoiding a redundant extra weekday heading.
+
+Faculty availability uses a dedicated presentation within the result region. Each faculty member receives a diagonal identity band, an explicit day count, and compact day rows with readable free-time slots. Desktop uses a two-column day grid while narrow screens return to one chronological column.
 
 ## Account menu
 

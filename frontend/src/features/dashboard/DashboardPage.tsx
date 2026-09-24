@@ -20,6 +20,10 @@ export default function DashboardPage() {
       .map((item) => item.schedule_day)
       .filter((day): day is string => Boolean(day)),
   ).size;
+  const isCustomSchedule = controller.timetableData?.search?.query_plan?.combination === 'union';
+  const visibleConflicts = isCustomSchedule
+    ? controller.timetableData?.search?.conflicts
+    : [];
   const statusIndicator = showStatus ? (
     <StatusIndicator
       status={
@@ -40,6 +44,7 @@ export default function DashboardPage() {
       }
       closing={controller.isStatusToastClosing}
       onDismiss={controller.dismissStatus}
+      tone={controller.isBackendWaking ? 'backend-wake' : 'default'}
     />
   ) : null;
   const accountDomainWarning = showAccountDomainWarning ? (
@@ -91,7 +96,7 @@ export default function DashboardPage() {
                 </div>
                 {accountDomainWarning}
                 {statusIndicator}
-                {(controller.timetableData.search?.conflict_count || 0) > 0 && (
+                {isCustomSchedule && (controller.timetableData.search?.conflict_count || 0) > 0 && (
                   <div className="schedule-panel__conflicts" role="status">
                     {controller.timetableData.search?.conflict_count} timetable overlap{controller.timetableData.search?.conflict_count === 1 ? '' : 's'} detected in this custom schedule.
                   </div>
@@ -99,7 +104,7 @@ export default function DashboardPage() {
                 <div className="timetable-container">
                   <TimetableTable
                     items={controller.filteredItems}
-                    conflicts={controller.timetableData.search?.conflicts}
+                    conflicts={visibleConflicts}
                   />
                 </div>
               </section>

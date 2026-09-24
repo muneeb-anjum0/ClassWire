@@ -7,6 +7,7 @@ interface StatusIndicatorProps {
   message: string;
   closing?: boolean;
   onDismiss?: () => void;
+  tone?: 'default' | 'backend-wake';
 }
 
 const StatusIndicator: React.FC<StatusIndicatorProps> = ({
@@ -14,6 +15,7 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({
   message,
   closing = false,
   onDismiss,
+  tone = 'default',
 }) => {
   const icon = {
     loading: <LoaderCircle />,
@@ -24,7 +26,7 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({
 
   return (
     <div
-      className={`status-toast status-toast--${status} ${closing ? 'status-toast--closing' : ''}`}
+      className={`status-toast status-toast--${status} ${tone === 'backend-wake' ? 'status-toast--backend-wake' : ''} ${closing ? 'status-toast--closing' : ''}`}
       role="status"
       aria-live="polite"
     >

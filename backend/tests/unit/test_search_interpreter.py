@@ -81,7 +81,7 @@ def test_short_honorific_name_is_not_renamed_or_merged_with_full_name():
         {"schedule_day": "Monday", "semester_display": "BSSE 8B", "course_title": "Data Science", "faculty": "Muhammad Qasim", "time": "02:00 PM - 03:30 PM"},
     ]
     exact = search_timetable("When is Muhammad Qasim free on Monday?", items)
-    assert exact["parser_version"] == 13
+    assert exact["parser_version"] == 15
     assert exact["entities"]["faculty"] == ["Muhammad Qasim"]
     assert {item["faculty"] for item in exact["items"]} == {"Muhammad Qasim"}
 
@@ -649,6 +649,34 @@ def test_custom_union_query_exposes_plan_and_schedule_conflicts():
     assert result["query_plan"]["day_scope"] == ["Monday"]
     assert result["conflict_count"] == 1
     assert result["conflicts"][0]["overlap"] == "3:00 PM – 3:30 PM"
+
+
+def test_parallel_course_results_do_not_become_personal_schedule_conflicts():
+    items = [
+        {"schedule_day": "Thursday", "semester_display": "BBA-1A", "course_title": "Final Year Project", "course": "FYP 1001 Final Year Project (0,3)", "time": "08:00 AM - 11:00 AM"},
+        {"schedule_day": "Thursday", "semester_display": "BSSS-2A", "course_title": "Final Year Project", "course": "FYP 2001 Final Year Project (0,3)", "time": "08:00 AM - 11:00 AM"},
+    ]
+
+    result = search_timetable("Show every FYP class this week", items)
+
+    assert len(result["items"]) == 2
+    assert result["query_plan"]["combination"] == "intersection"
+    assert result["conflicts"] == []
+    assert result["conflict_count"] == 0
+
+
+def test_faculty_schedule_does_not_flag_the_facultys_parallel_rows_as_a_custom_clash():
+    items = [
+        {"schedule_day": "Monday", "semester_display": "BS(SE)-7A", "course_title": "Mobile Application Development", "course": "SEC 3612 Mobile Application Development (3,0)", "faculty": "Sheikh Abdul Wahab", "time": "05:00 PM - 06:30 PM"},
+        {"schedule_day": "Monday", "semester_display": "BSAI-8B", "course_title": "Information Security", "course": "AIC 4801 Information Security (3,0)", "faculty": "Sheikh Abdul Wahab", "time": "05:00 PM - 06:30 PM"},
+    ]
+
+    result = search_timetable("When is Sir Wahab free?", items)
+
+    assert result["intent"] == "free_time"
+    assert len(result["items"]) == 2
+    assert result["conflicts"] == []
+    assert result["conflict_count"] == 0
 
 
 def test_lab_word_inside_exact_course_title_is_not_a_type_filter():

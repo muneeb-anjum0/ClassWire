@@ -9,6 +9,7 @@ The root README is intentionally compact. This directory contains the implementa
 | System design | [Architecture](architecture/README.md) | Component boundaries, request flow, security, and repository organization |
 | Source ingestion | [Data pipeline](data-pipeline/README.md) | Gmail selection, parser strategy, normalization, storage, caching, and deletion |
 | Query behavior | [Search engine](search-engine/README.md) | Entity recognition, query plans, filters, custom schedules, availability, and conflicts |
+| Optional NLU | [Training pipeline](../ml/query_understanding/README.md) | Labeled data, Kaggle training, evaluation, ONNX export, and rollout gates |
 | Speed and cost | [Performance](performance/README.md) | Startup, browser loading, query caching, database operations, rendering, and payload size |
 | Product UI | [Interface](interface/README.md) | Search composer, timetable views, feedback, mobile behavior, accessibility, and metadata |
 | Production behavior | [Operations](operations/README.md) | Deployment, scheduled jobs, telemetry, failure recovery, and current boundaries |

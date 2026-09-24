@@ -20,8 +20,8 @@ vi.mock('../components/TimetableTable/TimetableTable', () => ({
 }));
 
 vi.mock('../components/StatusIndicator/StatusIndicator', () => ({
-  default: ({ status, message, onDismiss }: { status: string; message: string; onDismiss?: () => void }) => (
-    <div data-testid="schedule-status" data-status={status}>
+  default: ({ status, message, onDismiss, tone }: { status: string; message: string; onDismiss?: () => void; tone?: string }) => (
+    <div data-testid="schedule-status" data-status={status} data-tone={tone}>
       {message}
       {onDismiss && <button type="button" onClick={onDismiss}>Dismiss</button>}
     </div>
@@ -59,7 +59,10 @@ function setDashboardState(overrides: Record<string, unknown> = {}) {
     timetableData: {
       for_day: 'Monday',
       items,
-      search: { conflict_count: 2 },
+      search: {
+        conflict_count: 2,
+        query_plan: { combination: 'union' },
+      },
     },
     userEmail: 'student@example.com',
     ...overrides,
@@ -106,6 +109,31 @@ describe('schedule feedback presentation', () => {
     const conflict = container.querySelector('.schedule-panel__conflicts');
 
     expect(conflict?.nextElementSibling).toBe(container.querySelector('.timetable-container'));
+  });
+
+  it('does not present parallel result rows as clashes outside a custom timetable', () => {
+    setDashboardState({
+      status: 'idle',
+      timetableData: {
+        for_day: 'Entire Week',
+        items: [itemFor('Monday')],
+        search: {
+          conflict_count: 2,
+          conflicts: [{ day: 'Monday' }],
+          query_plan: { combination: 'intersection' },
+        },
+      },
+    });
+    const { container } = render(<DashboardPage />);
+
+    expect(container.querySelector('.schedule-panel__conflicts')).not.toBeInTheDocument();
+  });
+
+  it('uses the amber wake treatment while Render is starting', () => {
+    setDashboardState({ isBackendWaking: true, status: 'loading' });
+    render(<DashboardPage />);
+
+    expect(screen.getByTestId('schedule-status')).toHaveAttribute('data-tone', 'backend-wake');
   });
 
   it('stripes the schedule heading when one day has no separate day row', () => {

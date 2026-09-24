@@ -807,12 +807,60 @@ html[data-theme='dark'] .smart-search__answer {
 }
 
 .smart-search__faculty + .smart-search__faculty {
-  margin-top: 30px;
+  margin-top: 18px;
 }
 
 .smart-search__faculty > header {
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border);
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 14px;
+  border-block: 1px solid var(--border);
+  background-color: color-mix(in srgb, var(--surface-secondary) 76%, var(--surface));
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 9px,
+    rgb(0 0 0 / 9%) 9px,
+    rgb(0 0 0 / 9%) 10px
+  );
+}
+
+html[data-theme='dark'] .smart-search__faculty > header {
+  background-color: color-mix(in srgb, var(--surface-secondary) 90%, white 10%);
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 9px,
+    rgb(0 0 0 / 28%) 9px,
+    rgb(0 0 0 / 28%) 10px
+  );
+}
+
+.smart-search__faculty-identity {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.smart-search__faculty-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--success) 25%, var(--border));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--success) 9%, var(--surface));
+  color: var(--success);
+}
+
+.smart-search__faculty-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .smart-search__faculty h3 {
@@ -824,50 +872,88 @@ html[data-theme='dark'] .smart-search__answer {
 }
 
 .smart-search__faculty header p {
-  margin: 4px 0 0;
+  margin: 3px 0 0;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 12px;
+}
+
+.smart-search__faculty-day-count {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .smart-search__days {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  padding: 1px 0;
+  background: var(--border);
 }
 
 .smart-search__day {
   display: grid;
-  grid-template-columns: minmax(120px, 170px) 1fr;
+  grid-template-columns: minmax(96px, 0.72fr) minmax(0, 1.28fr);
   align-items: start;
-  gap: 16px;
-  min-height: 54px;
-  padding: 13px 0;
-  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  min-height: 82px;
+  padding: 14px;
+  background: var(--surface);
 }
 
-.smart-search__day > strong {
+.smart-search__day-label {
+  display: grid;
+  gap: 3px;
+}
+
+.smart-search__day-label strong {
   color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
 }
 
-.smart-search__slots {
-  display: grid;
-  gap: 7px;
+.smart-search__day-label small {
+  color: var(--success);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
 }
 
-.smart-search__slots span {
+.smart-search__slots {
+  display: grid;
+  gap: 6px;
+}
+
+.smart-search__slot {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: 7px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--surface-secondary) 62%, var(--surface));
   color: var(--text-secondary);
-  font-size: 15px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.smart-search__slot--all-day {
+  border-color: color-mix(in srgb, var(--success) 24%, var(--border));
+  background: color-mix(in srgb, var(--success) 8%, var(--surface));
 }
 
 .smart-search__slots i {
-  width: 16px;
+  min-width: 15px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 10px;
   font-style: normal;
-  text-align: right;
+  text-align: center;
 }
 
 .smart-search__slots b {
@@ -883,7 +969,7 @@ html[data-theme='dark'] .smart-search__answer {
 
 .smart-search__none {
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 @keyframes smart-search-spin {
@@ -1040,11 +1126,20 @@ html[data-theme='dark'] .smart-search__answer {
     font-size: 18px;
   }
 
+  .smart-search__faculty > header {
+    min-height: 68px;
+    padding: 11px 12px;
+  }
+
+  .smart-search__days {
+    grid-template-columns: 1fr;
+  }
+
   .smart-search__day {
     grid-template-columns: 94px 1fr;
     gap: 10px;
-    min-height: 58px;
-    padding: 14px 0;
+    min-height: 70px;
+    padding: 12px;
   }
 
   .smart-search__slots span {
@@ -1093,6 +1188,10 @@ html[data-theme='dark'] .smart-search__answer {
   .smart-search__day {
     grid-template-columns: 1fr;
     gap: 7px;
+  }
+
+  .smart-search__faculty-day-count {
+    display: none;
   }
 
   .smart-search__slots {

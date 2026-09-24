@@ -17,6 +17,13 @@
 .venv/
 backend/FIREBASE_SERVICE_ACCOUNT.json
 
+# generated NLU datasets, checkpoints, reports, and exported artifacts
+/ml/query_understanding/data/*.jsonl
+/ml/query_understanding/data/*.manifest.json
+/ml/query_understanding/checkpoints/
+/ml/query_understanding/output/
+/ml/query_understanding/reports/
+
 # production
 /build
 /frontend/build

@@ -35,6 +35,7 @@
 .status-toast--error { --status-accent: var(--danger); }
 .status-toast--warning { --status-accent: var(--warning); }
 .status-toast--loading { --status-accent: #3b82f6; }
+.status-toast--backend-wake { --status-accent: #d97706; }
 
 html[data-theme='dark'] .status-indicator {
   background-color: color-mix(in srgb, var(--status-accent) 14%, var(--surface));
