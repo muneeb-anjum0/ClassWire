@@ -54,7 +54,7 @@ Normal searches operate on already-normalized rows and do not call Gmail. Repeat
 
 The optional query-understanding model is designed around the free backend's memory and CPU limits:
 
-- four compact TinyBERT layers and one shared encoder for intent and entity prediction;
+- eight compact TinyBERT layers and one shared encoder for intent and entity prediction;
 - dynamic INT8 ONNX weights instead of a PyTorch production runtime;
 - lazy artifact loading, so startup and deterministic searches do not pay model initialization cost;
 - one ONNX intra-operation thread and one inter-operation thread;

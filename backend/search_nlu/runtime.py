@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import threading
 from functools import lru_cache
 from pathlib import Path
@@ -20,6 +21,12 @@ REQUIRED_ARTIFACTS = (
     "slot_labels.json",
     "metadata.json",
 )
+COURSE_ROLES = {"ADDED_COURSE", "EXCLUDED_COURSE", "FILTER_COURSE"}
+TRAILING_COURSE_CONNECTOR = re.compile(
+    r"(?:[\s,;]+(?:and|plus|then|with|from|alongside))+$",
+    re.IGNORECASE,
+)
+MIN_ENTITY_CONFIDENCE = 0.35
 
 
 def _softmax(values: list[float]) -> list[float]:
@@ -212,16 +219,32 @@ class TinyNluRuntime:
                     "confidences": [confidence],
                 })
 
-        return [
-            EntityPrediction(
-                text=query[group["start"]:group["end"]],
+        entities: list[EntityPrediction] = []
+        for group in groups:
+            confidence = sum(group["confidences"]) / len(group["confidences"])
+            if confidence < MIN_ENTITY_CONFIDENCE:
+                continue
+            start = group["start"]
+            end = group["end"]
+            if group["label"] in COURSE_ROLES:
+                candidate = query[start:end]
+                connector = TRAILING_COURSE_CONNECTOR.search(candidate)
+                if connector:
+                    end = start + connector.start()
+            while start < end and query[start].isspace():
+                start += 1
+            while end > start and (query[end - 1].isspace() or query[end - 1] in ",;"):
+                end -= 1
+            if end <= start:
+                continue
+            entities.append(EntityPrediction(
+                text=query[start:end],
                 label=group["label"],
-                start=group["start"],
-                end=group["end"],
-                confidence=sum(group["confidences"]) / len(group["confidences"]),
-            )
-            for group in groups
-        ]
+                start=start,
+                end=end,
+                confidence=confidence,
+            ))
+        return entities
 
 
 @lru_cache(maxsize=2)

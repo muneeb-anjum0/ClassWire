@@ -27,7 +27,8 @@ Builder = Callable[[random.Random], tuple[str, list[dict], str]]
 
 SECTIONS = (
     "BSSE2A", "BSSE3A", "BSSE5A", "BSSE5B", "BSSE6A", "BSSE6B",
-    "BSSE7A", "BSSE7B", "BSSE8A", "BSAI8B",
+    "BSSE7A", "BSSE7B", "BSSE8A", "BSAI8B", "BSCS2A", "BSCS3B",
+    "BBA4A", "BSAF3A", "BSSS2", "BSED1",
 )
 DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
 DAY_ALIASES = {
@@ -49,6 +50,13 @@ COURSES = (
     "Data Structures and Algorithms",
     "Digital Image Processing",
     "Information Security",
+    "Object Oriented Programming Techniques",
+    "Visual Programming",
+    "Organizational Behavior",
+    "Mathematics and Statistics",
+    "Principles of Microeconomics",
+    "Introduction to International Relations",
+    "Fundamentals of Sociology",
 )
 COURSE_ALIASES = {
     "Software Construction and Development": (
@@ -73,6 +81,17 @@ COURSE_ALIASES = {
     ),
     "Digital Image Processing": ("Digital Image Processing", "DIP", "SEC 4515"),
     "Information Security": ("Information Security", "InfoSec", "SEC 3617"),
+    "Object Oriented Programming Techniques": (
+        "Object Oriented Programming Techniques", "OOP", "CSC 1208",
+    ),
+    "Visual Programming": ("Visual Programming", "VP", "SEC 4518"),
+    "Organizational Behavior": ("Organizational Behavior", "OB", "SEC 3309"),
+    "Mathematics and Statistics": ("Mathematics and Statistics", "EDS 1108"),
+    "Principles of Microeconomics": ("Principles of Microeconomics", "EDS 1104"),
+    "Introduction to International Relations": (
+        "Introduction to International Relations", "IR 2108",
+    ),
+    "Fundamentals of Sociology": ("Fundamentals of Sociology", "SOC 2102"),
 }
 FACULTY = (
     ("Sheikh Abdul Wahab", ("Sheikh Abdul Wahab", "sir Wahab", "Wahab")),
@@ -119,7 +138,15 @@ def _day(rng: random.Random) -> Mention:
 
 
 def _course(rng: random.Random, role: str, *, exclude: str | None = None, group: int | None = None) -> Mention:
-    choices = [value for value in COURSES if value != exclude]
+    excluded_canonical = next(
+        (
+            canonical
+            for canonical, aliases in COURSE_ALIASES.items()
+            if exclude == canonical or exclude in aliases
+        ),
+        exclude,
+    )
+    choices = [value for value in COURSES if value != excluded_canonical]
     canonical = rng.choice(choices)
     return Mention(rng.choice(COURSE_ALIASES[canonical]), role, group)
 
@@ -236,11 +263,41 @@ def _base_add_section_first_train(rng: random.Random) -> tuple[str, list[dict], 
     ], "schedule")
 
 
+def _base_add_possessive_train(rng: random.Random) -> tuple[str, list[dict], str]:
+    """Teach possessive course-section binding without copying held-out templates."""
+    base = _section(rng, "BASE_SECTION")
+    return _record([
+        rng.choice(("Use ", "Keep ", "Start from ")), base,
+        rng.choice((" and include ", " while adding ", " together with ")),
+        _section(rng, "ADDED_SECTION", exclude=base.text, group=1), "'s ",
+        _course(rng, "ADDED_COURSE", group=1),
+    ], "schedule")
+
+
+def _base_add_section_pairs_train(rng: random.Random) -> tuple[str, list[dict], str]:
+    """Teach repeated section-first bindings and the boundary at a joining word."""
+    base = _section(rng, "BASE_SECTION")
+    first_section = _section(rng, "ADDED_SECTION", exclude=base.text, group=1)
+    second_section = _section(rng, "ADDED_SECTION", exclude=base.text, group=2)
+    first_course = _course(rng, "ADDED_COURSE", group=1)
+    return _record([
+        rng.choice(("Build around ", "Keep all classes from ", "My base is ")), base,
+        rng.choice(("; add ", ", then take ", " plus ")),
+        first_section, " ", first_course,
+        rng.choice((" and also ", ", alongside ", "; then ")),
+        second_section, " ",
+        _course(rng, "ADDED_COURSE", exclude=first_course.text, group=2),
+    ], "schedule")
+
+
 def _base_exclude(rng: random.Random) -> tuple[str, list[dict], str]:
     return _record([
         rng.choice(("I take everything in ", "Show all of ", "My timetable is ")),
         _section(rng, "BASE_SECTION"),
-        rng.choice((" except ", " without ", " but remove ")),
+        rng.choice((
+            " except ", " without ", " but remove ", " but leave out ",
+            " and skip ", " but do not include ",
+        )),
         _course(rng, "EXCLUDED_COURSE"),
     ], "schedule")
 
@@ -273,6 +330,20 @@ def _base_exclude_two_train(rng: random.Random) -> tuple[str, list[dict], str]:
         _section(rng, "ADDED_SECTION", exclude=base.text, group=1), " plus ",
         second_course, " with ",
         _section(rng, "ADDED_SECTION", exclude=base.text, group=2),
+    ], "schedule")
+
+
+def _base_add_then_exclude_train(rng: random.Random) -> tuple[str, list[dict], str]:
+    """Teach that a trailing exclusion changes the following course's role."""
+    base = _section(rng, "BASE_SECTION")
+    added_course = _course(rng, "ADDED_COURSE", group=1)
+    return _record([
+        rng.choice(("Plan from ", "Use all of ", "Begin with ")), base,
+        rng.choice((" and add ", "; include ", ", taking ")),
+        added_course, " from ",
+        _section(rng, "ADDED_SECTION", exclude=base.text, group=1),
+        rng.choice((", then leave out ", ", but skip ", "; exclude ")),
+        _course(rng, "EXCLUDED_COURSE", exclude=added_course.text),
     ], "schedule")
 
 
@@ -354,6 +425,25 @@ def _faculty_schedule_day(rng: random.Random) -> tuple[str, list[dict], str]:
     ], "faculty_schedule")
 
 
+def _faculty_schedule_day_first_train(rng: random.Random) -> tuple[str, list[dict], str]:
+    """Contrast day-first teaching requests with availability questions."""
+    return _record([
+        rng.choice(("On ", "For ", "During ")), _day(rng),
+        rng.choice((", list the classes taught by ", " show the teaching timetable for ",
+                    ", which lessons belong to ")),
+        _faculty(rng),
+    ], "faculty_schedule")
+
+
+def _availability_day_first_train(rng: random.Random) -> tuple[str, list[dict], str]:
+    """Provide a matched day-first availability contrast for intent learning."""
+    return _record([
+        rng.choice(("On ", "For ", "During ")), _day(rng),
+        rng.choice((", when is ", " find the free periods for ", ", show open time for ")),
+        _faculty(rng), rng.choice(("", " please", " during university hours")),
+    ], "faculty_availability")
+
+
 def _class_type(rng: random.Random) -> tuple[str, list[dict], str]:
     class_type = rng.choice(("theory", "lab", "FYP"))
     return _record([
@@ -407,10 +497,17 @@ def _credits_reordered_train(rng: random.Random) -> tuple[str, list[dict], str]:
 
 
 def _time_filter_train(rng: random.Random) -> tuple[str, list[dict], str]:
+    if rng.random() < 0.5:
+        return _record([
+            rng.choice(("For ", "In ", "From ")), _section(rng, "FILTER_SECTION"),
+            rng.choice((" find anything ", " show classes ", " list lectures ")),
+            Mention(rng.choice(TIME_RANGES), "TIME_RANGE"),
+        ], "schedule")
     return _record([
-        rng.choice(("For ", "In ", "From ")), _section(rng, "FILTER_SECTION"),
-        rng.choice((" find anything ", " show classes ", " list lectures ")),
-        Mention(rng.choice(TIME_RANGES), "TIME_RANGE"),
+        rng.choice(("List ", "Find ", "Which ")),
+        _section(rng, "FILTER_SECTION"),
+        rng.choice((" classes running ", " lessons scheduled ", " courses held ")),
+        Mention(rng.choice(TIME_RANGES), "TIME_RANGE"), " on ", _day(rng),
     ], "schedule")
 
 
@@ -476,6 +573,41 @@ def _unknown(rng: random.Random) -> tuple[str, list[dict], str]:
     return text, [], "unknown"
 
 
+def _unknown_catalog_train(rng: random.Random) -> tuple[str, list[dict], str]:
+    """Hard negatives contain catalog words but request unsupported actions."""
+    faculty = _faculty(rng).text
+    course = _course(rng, "FILTER_COURSE").text
+    text = rng.choice((
+        f"Email {faculty} about the {course} assignment",
+        f"Send a message to {faculty} regarding {course}",
+        f"Download the course outline for {course}",
+    ))
+    return text, [], "unknown"
+
+
+def _unknown_catalog_validation(rng: random.Random) -> tuple[str, list[dict], str]:
+    section = _section(rng, "FILTER_SECTION").text
+    day = _day(rng).text
+    text = rng.choice((
+        f"Reserve a classroom for {section} on {day}",
+        f"Mark attendance for {section} this {day}",
+        f"Move the {section} exam to {day}",
+    ))
+    return text, [], "unknown"
+
+
+def _unknown_catalog_test(rng: random.Random) -> tuple[str, list[dict], str]:
+    faculty = _faculty(rng).text
+    section = _section(rng, "FILTER_SECTION").text
+    course = _course(rng, "FILTER_COURSE").text
+    text = rng.choice((
+        f"Ask {faculty} to upload marks for {section}",
+        f"Can {faculty} share the {course} slides",
+        f"Submit an attendance correction for {section} in {course}",
+    ))
+    return text, [], "unknown"
+
+
 FAMILIES: dict[str, tuple[str, Builder]] = {
     "base_plain_train": ("train", _base_plain),
     "base_day_train": ("train", _base_day),
@@ -487,11 +619,14 @@ FAMILIES: dict[str, tuple[str, Builder]] = {
     "base_add_one_polite_validation": ("validation", _base_add_one_polite),
     "base_add_two_train": ("train", _base_add_two),
     "base_add_section_first_train": ("train", _base_add_section_first_train),
+    "base_add_possessive_train": ("train", _base_add_possessive_train),
+    "base_add_section_pairs_train": ("train", _base_add_section_pairs_train),
     "base_add_two_reordered_test": ("test", _base_add_two_reordered),
     "base_exclude_train": ("train", _base_exclude),
     "base_exclude_add_test": ("test", _base_exclude_add),
     "base_exclude_validation": ("validation", _base_exclude_validation),
     "base_exclude_two_train": ("train", _base_exclude_two_train),
+    "base_add_then_exclude_train": ("train", _base_add_then_exclude_train),
     "base_exclude_two_reordered_test": ("test", _base_exclude_two_test),
     "availability_train": ("train", _availability),
     "availability_day_train": ("train", _availability_day),
@@ -501,6 +636,8 @@ FAMILIES: dict[str, tuple[str, Builder]] = {
     "availability_two_people_reordered_test": ("test", _availability_two_people_test),
     "faculty_schedule_train": ("train", _faculty_schedule),
     "faculty_schedule_day_validation": ("validation", _faculty_schedule_day),
+    "faculty_schedule_day_first_train": ("train", _faculty_schedule_day_first_train),
+    "availability_day_first_train": ("train", _availability_day_first_train),
     "faculty_schedule_reordered_test": ("test", _faculty_schedule_test),
     "faculty_course_train": ("train", _faculty_course_train),
     "faculty_course_reordered_train": ("train", _faculty_course_reordered_train),
@@ -514,16 +651,18 @@ FAMILIES: dict[str, tuple[str, Builder]] = {
     "time_filter_validation": ("validation", _time_filter_validation),
     "time_filter_test": ("test", _time_filter_test),
     "unknown_train": ("train", _unknown),
+    "unknown_catalog_train": ("train", _unknown_catalog_train),
     "unknown_validation": ("validation", _unknown),
+    "unknown_catalog_validation": ("validation", _unknown_catalog_validation),
     "unknown_test": ("test", _unknown),
+    "unknown_catalog_test": ("test", _unknown_catalog_test),
 }
 
 
-def generate_examples(total: int = 12_000, seed: int = 41) -> list[dict]:
+def generate_examples(total: int = 18_000, seed: int = 41) -> list[dict]:
     """Create a deterministic, unique corpus with family-isolated splits."""
     if total < len(FAMILIES) * 8:
         raise ValueError(f"total must be at least {len(FAMILIES) * 8}")
-    rng = random.Random(seed)
     families_by_split = {
         split: [(family, builder) for family, (assigned, builder) in FAMILIES.items() if assigned == split]
         for split in ("train", "validation", "test")
@@ -537,6 +676,7 @@ def generate_examples(total: int = 12_000, seed: int = 41) -> list[dict]:
     records: list[dict] = []
     seen: set[str] = set()
     for split, target in targets.items():
+        rng = random.Random(f"{seed}:{split}")
         families = families_by_split[split]
         family_index = 0
         attempts = 0
@@ -561,7 +701,7 @@ def generate_examples(total: int = 12_000, seed: int = 41) -> list[dict]:
                 "split": split,
             })
             split_count += 1
-    rng.shuffle(records)
+    random.Random(f"{seed}:shuffle").shuffle(records)
     return records
 
 
