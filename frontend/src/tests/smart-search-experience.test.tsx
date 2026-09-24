@@ -58,10 +58,13 @@ test('a search answer can be hidden and restored without removing its data', asy
       free_slots: {},
       faculty_availability: [{
         faculty: 'Zainab Iftikhar Chaudhary',
-        slots: { Monday: ['8:00 AM – 9:30 AM'] } as Record<string, string[]>,
+        slots: {
+          Monday: ['8:00 AM – 9:30 PM'],
+          Tuesday: [],
+        } as Record<string, string[]>,
       }, {
         faculty: 'Hamza Imran',
-        slots: { Tuesday: ['10:00 AM – 12:00 PM'] } as Record<string, string[]>,
+        slots: { Wednesday: ['10:00 AM – 12:00 PM'] } as Record<string, string[]>,
       }],
     },
   } satisfies TimetableData;
@@ -78,12 +81,20 @@ test('a search answer can be hidden and restored without removing its data', asy
   const facultySections = resultPanel?.querySelectorAll('.smart-search__faculty');
   expect(facultySections).toHaveLength(2);
   expect(facultySections?.[0].nextElementSibling).toBe(facultySections?.[1]);
-  expect(screen.getAllByText('Available')).toHaveLength(2);
+  expect(screen.queryByText('Available')).not.toBeInTheDocument();
+  expect(resultPanel?.querySelector('.smart-search__day--all-day')).toHaveTextContent(
+    'Possible off day. Contact the teacher before visiting.',
+  );
+  expect(resultPanel?.querySelector('.smart-search__day--unavailable')).toHaveTextContent(
+    'Not available this day',
+  );
+  expect(screen.getByRole('alert')).toHaveTextContent('Not available this day');
   expect(resultBody).toHaveAttribute('aria-hidden', 'false');
 
   await user.click(screen.getByLabelText('Hide search result'));
   expect(screen.getByText('Search result hidden')).toBeInTheDocument();
   expect(resultPanel).toHaveClass('smart-search__answer--hidden');
+  expect(screen.getByRole('button', { name: 'Show' }).closest('.smart-search__answer-header')).toBeInTheDocument();
   expect(resultBody).toHaveAttribute('aria-hidden', 'true');
 
   await user.click(screen.getByRole('button', { name: 'Show' }));

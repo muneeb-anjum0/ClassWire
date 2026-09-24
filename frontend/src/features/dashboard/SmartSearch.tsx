@@ -452,19 +452,30 @@ export default function SmartSearch({
                 <div className="smart-search__days">
                   {Object.entries(slots)
                     .sort(([left], [right]) => WEEKDAY_ORDER.indexOf(left) - WEEKDAY_ORDER.indexOf(right))
-                    .map(([day, freeSlots]) => <div className="smart-search__day" key={`${faculty}-${day}`}>
-                      <div className="smart-search__day-label">
-                        <strong>{day}</strong>
-                        <small>{freeSlots.length > 0 ? 'Available' : 'Fully booked'}</small>
-                      </div>
-                      {freeSlots.length > 0
-                        ? <div className="smart-search__slots">
-                          {isAllDay(freeSlots)
-                            ? <span className="smart-search__slot smart-search__slot--all-day"><b>All day</b><small>8:00 AM to 9:30 PM</small></span>
-                            : freeSlots.map((slot, index) => <span className="smart-search__slot" key={slot}>{freeSlots.length > 1 && <i>{index + 1}</i>}{readableTime(slot)}</span>)}
+                    .map(([day, freeSlots]) => {
+                      const allDay = isAllDay(freeSlots);
+                      const unavailable = freeSlots.length === 0;
+                      return <div
+                        className={`smart-search__day ${allDay ? 'smart-search__day--all-day' : ''} ${unavailable ? 'smart-search__day--unavailable' : ''}`}
+                        key={`${faculty}-${day}`}
+                      >
+                        <div className="smart-search__day-label">
+                          <strong>{day}</strong>
+                          {unavailable && <small>Unavailable</small>}
                         </div>
-                        : <span className="smart-search__none">No free time</span>}
-                    </div>)}
+                        {!unavailable
+                          ? <div className="smart-search__slots">
+                            {allDay
+                              ? <span className="smart-search__slot smart-search__slot--all-day">
+                                <b>All day</b>
+                                <small>8:00 AM to 9:30 PM</small>
+                                <em>Possible off day. Contact the teacher before visiting.</em>
+                              </span>
+                              : freeSlots.map((slot, index) => <span className="smart-search__slot" key={slot}>{freeSlots.length > 1 && <i>{index + 1}</i>}{readableTime(slot)}</span>)}
+                          </div>
+                          : <span className="smart-search__none" role="alert">Not available this day</span>}
+                      </div>;
+                    })}
                 </div>
               </section>)}
             </div> : <p>{result.answer}</p>}
