@@ -18,10 +18,14 @@ from transformers import AutoTokenizer, get_linear_schedule_with_warmup
 from ml.query_understanding.dataset import read_jsonl
 from ml.query_understanding.labels import INTENTS, SLOT_LABELS
 from ml.query_understanding.modeling import ClassWireTinyNluModel, save_checkpoint
-from ml.query_understanding.training_data import EncodedNluDataset, evaluate_model
+from ml.query_understanding.training_data import (
+    EncodedNluDataset,
+    balanced_label_weights,
+    evaluate_model,
+)
 from ml.query_understanding.validate_dataset import validate_records
 
-DEFAULT_MODEL = "google/bert_uncased_L-2_H-128_A-2"
+DEFAULT_MODEL = "google/bert_uncased_L-4_H-256_A-4"
 
 
 def seed_everything(seed: int, *, use_cuda: bool) -> None:
@@ -37,13 +41,14 @@ def main() -> None:
     parser.add_argument("--dataset", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=Path("ml/query_understanding/checkpoints/best"))
     parser.add_argument("--base-model", default=DEFAULT_MODEL)
-    parser.add_argument("--epochs", type=int, default=6)
+    parser.add_argument("--epochs", type=int, default=12)
     parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--learning-rate", type=float, default=3e-5)
+    parser.add_argument("--learning-rate", type=float, default=5e-5)
     parser.add_argument("--weight-decay", type=float, default=0.01)
     parser.add_argument("--warmup-ratio", type=float, default=0.1)
     parser.add_argument("--max-length", type=int, default=96)
-    parser.add_argument("--patience", type=int, default=2)
+    parser.add_argument("--patience", type=int, default=3)
+    parser.add_argument("--slot-loss-weight", type=float, default=1.4)
     parser.add_argument("--seed", type=int, default=41)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     args = parser.parse_args()
@@ -99,8 +104,21 @@ def main() -> None:
         num_warmup_steps=int(total_steps * args.warmup_ratio),
         num_training_steps=total_steps,
     )
-    intent_loss = nn.CrossEntropyLoss()
-    slot_loss = nn.CrossEntropyLoss(ignore_index=-100)
+    intent_weights = balanced_label_weights(
+        train_dataset, "intent_labels", len(intent_labels)
+    ).to(device)
+    slot_weights = balanced_label_weights(
+        train_dataset,
+        "slot_labels",
+        len(slot_labels),
+        ignore_index=-100,
+    ).to(device)
+    intent_loss = nn.CrossEntropyLoss(weight=intent_weights, label_smoothing=0.02)
+    slot_loss = nn.CrossEntropyLoss(
+        weight=slot_weights,
+        ignore_index=-100,
+        label_smoothing=0.02,
+    )
 
     history: list[dict] = []
     best_score = -1.0
@@ -116,7 +134,7 @@ def main() -> None:
             intent_labels_tensor = batch["intent_labels"].to(device)
             slot_labels_tensor = batch["slot_labels"].to(device)
             intent_logits, slot_logits = model(input_ids, attention_mask)
-            loss = intent_loss(intent_logits, intent_labels_tensor) + slot_loss(
+            loss = intent_loss(intent_logits, intent_labels_tensor) + args.slot_loss_weight * slot_loss(
                 slot_logits.reshape(-1, len(slot_labels)), slot_labels_tensor.reshape(-1)
             )
             loss.backward()
@@ -126,7 +144,11 @@ def main() -> None:
             running_loss += float(loss.detach())
 
         metrics = evaluate_model(model, validation_loader, device, slot_to_id["O"])
-        score = float(metrics["intent_accuracy"]) + float(metrics["slot_f1"])
+        score = (
+            float(metrics["intent_accuracy"])
+            + float(metrics["slot_f1"])
+            + float(metrics["joint_exact_match"])
+        )
         epoch_report = {
             "epoch": epoch,
             "train_loss": running_loss / max(len(train_loader), 1),
@@ -162,6 +184,9 @@ def main() -> None:
         "device": device.type,
         "duration_seconds": time.perf_counter() - started,
         "best_score": best_score,
+        "intent_class_weights": intent_weights.detach().cpu().tolist(),
+        "slot_class_weights": slot_weights.detach().cpu().tolist(),
+        "slot_loss_weight": args.slot_loss_weight,
         "history": history,
     }
     args.output.mkdir(parents=True, exist_ok=True)

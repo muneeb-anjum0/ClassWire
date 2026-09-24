@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ml.query_understanding.dataset import generate_examples, write_jsonl
 
-DATASET_VERSION = "classwire-nlu-v1"
+DATASET_VERSION = "classwire-nlu-v2"
 
 
 def main() -> None:

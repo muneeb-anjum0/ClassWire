@@ -165,6 +165,13 @@ def _filter_course_day(rng: random.Random) -> tuple[str, list[dict], str]:
     ], "schedule")
 
 
+def _filter_course_validation(rng: random.Random) -> tuple[str, list[dict], str]:
+    return _record([
+        "During ", _day(rng), rng.choice((" locate ", " where is ", " find the slot for ")),
+        _course(rng, "FILTER_COURSE"),
+    ], "schedule")
+
+
 def _section_pair_days(rng: random.Random) -> tuple[str, list[dict], str]:
     first = _section(rng, "FILTER_SECTION")
     second = _section(rng, "FILTER_SECTION", exclude=first.text)
@@ -218,6 +225,17 @@ def _base_add_two_reordered(rng: random.Random) -> tuple[str, list[dict], str]:
     ], "schedule")
 
 
+def _base_add_section_first_train(rng: random.Random) -> tuple[str, list[dict], str]:
+    base = _section(rng, "BASE_SECTION")
+    return _record([
+        rng.choice(("Use ", "Keep ", "Start with ")), base,
+        rng.choice((" and borrow from ", " then include from ", " together with ")),
+        _section(rng, "ADDED_SECTION", exclude=base.text, group=1),
+        rng.choice((" the course ", " its ", " class for ")),
+        _course(rng, "ADDED_COURSE", group=1),
+    ], "schedule")
+
+
 def _base_exclude(rng: random.Random) -> tuple[str, list[dict], str]:
     return _record([
         rng.choice(("I take everything in ", "Show all of ", "My timetable is ")),
@@ -233,6 +251,15 @@ def _base_exclude_add(rng: random.Random) -> tuple[str, list[dict], str]:
         "I am in ", base, ", not taking ", _course(rng, "EXCLUDED_COURSE"),
         ", and taking ", _course(rng, "ADDED_COURSE", group=1), " with ",
         _section(rng, "ADDED_SECTION", exclude=base.text, group=1),
+    ], "schedule")
+
+
+def _base_exclude_validation(rng: random.Random) -> tuple[str, list[dict], str]:
+    base = _section(rng, "BASE_SECTION")
+    return _record([
+        "Use ", base, " minus ", _course(rng, "EXCLUDED_COURSE"),
+        ", then include ", _section(rng, "ADDED_SECTION", exclude=base.text, group=1),
+        " for ", _course(rng, "ADDED_COURSE", group=1),
     ], "schedule")
 
 
@@ -272,6 +299,13 @@ def _availability_day(rng: random.Random) -> tuple[str, list[dict], str]:
     return _record([
         rng.choice(("When can I meet ", "When is ", "Availability of ")),
         _faculty(rng), rng.choice((" on ", " this ", " during ")), _day(rng),
+    ], "faculty_availability")
+
+
+def _availability_validation(rng: random.Random) -> tuple[str, list[dict], str]:
+    return _record([
+        rng.choice(("Free periods for ", "Open time belonging to ", "Find gaps for ")),
+        _faculty(rng), rng.choice((" on ", " during ", " this ")), _day(rng),
     ], "faculty_availability")
 
 
@@ -329,7 +363,10 @@ def _class_type(rng: random.Random) -> tuple[str, list[dict], str]:
 
 
 def _credits_train(rng: random.Random) -> tuple[str, list[dict], str]:
-    credit = rng.choice(("1 credit hour", "2 credit hour", "3 CH"))
+    credit = rng.choice((
+        "1 credit hour", "2 credit hour", "3 CH", "1 CH", "2 CH",
+        "3 credits", "one credit", "two credits", "three credit hours",
+    ))
     class_type = rng.choice(("theory", "lab", "FYP"))
     return _record([
         rng.choice(("Find ", "Show ", "List every ", "I need ")),
@@ -339,7 +376,9 @@ def _credits_train(rng: random.Random) -> tuple[str, list[dict], str]:
 
 
 def _credits_validation(rng: random.Random) -> tuple[str, list[dict], str]:
-    credit = rng.choice(("one credit", "two credits", "three credit hours"))
+    credit = rng.choice((
+        "one credit", "two credits", "three credit hours", "1 CH", "2 CH", "3 CH",
+    ))
     class_type = rng.choice(("theory", "lab", "FYP"))
     return _record([
         rng.choice(("Across the week show ", "For the full week list ", "Find any ")),
@@ -349,12 +388,21 @@ def _credits_validation(rng: random.Random) -> tuple[str, list[dict], str]:
 
 
 def _credits_test(rng: random.Random) -> tuple[str, list[dict], str]:
-    credit = rng.choice(("1 CH", "2 CH", "3 credits"))
+    credit = rng.choice(("1 CH", "2 CH", "3 credits", "one credit", "two credits"))
     class_type = rng.choice(("theory", "lab", "FYP"))
     return _record([
         "On ", _day(rng), rng.choice((", which ", " show the ", " give me ")),
         Mention(class_type, "CLASS_TYPE"), " subjects carrying ",
         Mention(credit, "CREDIT_HOURS"), rng.choice(("", " in total", " only")),
+    ], "schedule")
+
+
+def _credits_reordered_train(rng: random.Random) -> tuple[str, list[dict], str]:
+    return _record([
+        "On ", _day(rng), rng.choice((" list ", " show every ", " find a ")),
+        Mention(rng.choice(("theory", "lab", "FYP")), "CLASS_TYPE"),
+        rng.choice((" course worth ", " subject carrying ", " class with ")),
+        Mention(rng.choice(("1 CH", "2 CH", "3 credits", "one credit")), "CREDIT_HOURS"),
     ], "schedule")
 
 
@@ -373,6 +421,13 @@ def _time_filter_test(rng: random.Random) -> tuple[str, list[dict], str]:
     ], "schedule")
 
 
+def _time_filter_validation(rng: random.Random) -> tuple[str, list[dict], str]:
+    return _record([
+        "On ", _day(rng), " limit ", _section(rng, "FILTER_SECTION"),
+        " to classes ", Mention(rng.choice(TIME_RANGES), "TIME_RANGE"),
+    ], "schedule")
+
+
 def _faculty_schedule_test(rng: random.Random) -> tuple[str, list[dict], str]:
     return _record([
         "On ", _day(rng), rng.choice((", what is ", " show what ", " list what ")),
@@ -383,6 +438,14 @@ def _faculty_schedule_test(rng: random.Random) -> tuple[str, list[dict], str]:
 def _faculty_course_train(rng: random.Random) -> tuple[str, list[dict], str]:
     return _record([
         "Show ", _course(rng, "FILTER_COURSE"), " classes taught by ", _faculty(rng),
+    ], "faculty_schedule")
+
+
+def _faculty_course_reordered_train(rng: random.Random) -> tuple[str, list[dict], str]:
+    return _record([
+        rng.choice(("Does ", "Check whether ", "Tell me if ")), _faculty(rng),
+        rng.choice((" teach ", " handle ", " have ")), _course(rng, "FILTER_COURSE"),
+        rng.choice(("", " this week", " on the schedule")),
     ], "faculty_schedule")
 
 
@@ -417,18 +480,22 @@ FAMILIES: dict[str, tuple[str, Builder]] = {
     "base_plain_train": ("train", _base_plain),
     "base_day_train": ("train", _base_day),
     "filter_course_train": ("train", _filter_course),
+    "filter_course_validation": ("validation", _filter_course_validation),
     "filter_course_day_test": ("test", _filter_course_day),
     "section_pair_days_validation": ("validation", _section_pair_days),
     "base_add_one_train": ("train", _base_add_one),
     "base_add_one_polite_validation": ("validation", _base_add_one_polite),
     "base_add_two_train": ("train", _base_add_two),
+    "base_add_section_first_train": ("train", _base_add_section_first_train),
     "base_add_two_reordered_test": ("test", _base_add_two_reordered),
     "base_exclude_train": ("train", _base_exclude),
     "base_exclude_add_test": ("test", _base_exclude_add),
+    "base_exclude_validation": ("validation", _base_exclude_validation),
     "base_exclude_two_train": ("train", _base_exclude_two_train),
     "base_exclude_two_reordered_test": ("test", _base_exclude_two_test),
     "availability_train": ("train", _availability),
     "availability_day_train": ("train", _availability_day),
+    "availability_validation": ("validation", _availability_validation),
     "availability_two_days_test": ("test", _availability_two_days),
     "availability_two_people_train": ("train", _availability_two_people_train),
     "availability_two_people_reordered_test": ("test", _availability_two_people_test),
@@ -436,12 +503,15 @@ FAMILIES: dict[str, tuple[str, Builder]] = {
     "faculty_schedule_day_validation": ("validation", _faculty_schedule_day),
     "faculty_schedule_reordered_test": ("test", _faculty_schedule_test),
     "faculty_course_train": ("train", _faculty_course_train),
+    "faculty_course_reordered_train": ("train", _faculty_course_reordered_train),
     "faculty_course_reordered_test": ("test", _faculty_course_test),
     "class_type_train": ("train", _class_type),
     "credits_train": ("train", _credits_train),
+    "credits_reordered_train": ("train", _credits_reordered_train),
     "credits_validation": ("validation", _credits_validation),
     "credits_reordered_test": ("test", _credits_test),
     "time_filter_train": ("train", _time_filter_train),
+    "time_filter_validation": ("validation", _time_filter_validation),
     "time_filter_test": ("test", _time_filter_test),
     "unknown_train": ("train", _unknown),
     "unknown_validation": ("validation", _unknown),

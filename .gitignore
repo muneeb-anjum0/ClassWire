@@ -23,6 +23,7 @@ backend/FIREBASE_SERVICE_ACCOUNT.json
 /ml/query_understanding/checkpoints/
 /ml/query_understanding/output/
 /ml/query_understanding/reports/
+/classwire_nlu_delivery.zip
 
 # production
 /build

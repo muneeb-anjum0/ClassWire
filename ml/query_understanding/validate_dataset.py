@@ -80,7 +80,7 @@ def validate_records(records: list[dict]) -> dict:
         errors.append(f"missing intents: {sorted(missing_intents)}")
     if missing_roles:
         errors.append(f"missing entity roles: {sorted(missing_roles)}")
-    for split in ("train", "test"):
+    for split in ("train", "validation", "test"):
         split_missing_intents = set(INTENTS) - set(intents_by_split[split])
         split_missing_roles = set(ENTITY_ROLES) - set(roles_by_split[split])
         if split_missing_intents:

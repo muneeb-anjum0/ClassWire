@@ -6,13 +6,14 @@ The model is a guarded assistant to the deterministic search engine. It does not
 
 ## Why this design
 
-- `google/bert_uncased_L-2_H-128_A-2` has two encoder layers and approximately 4.4 million parameters.
+- `google/bert_uncased_L-4_H-256_A-4` has four compact encoder layers and remains small enough for an INT8 artifact below the 30 MB deployment gate.
 - One shared encoder serves both intent classification and BIO entity tagging.
 - Dynamic INT8 ONNX export keeps the production artifact small and CPU-friendly.
 - Training dependencies never enter the normal Flask deployment.
 - The runtime loads lazily, uses one CPU thread, and safely disables itself when no artifact is installed.
 - Synthetic examples are labeled during sentence construction, independently of the production parser.
 - Template families are isolated by split, so validation and test phrases are structurally unseen during training.
+- Bounded inverse-square-root class weights prevent frequent base-section and outside-token labels from drowning out rarer filters and exclusions.
 
 ## Directory map
 
@@ -44,7 +45,7 @@ Create a Kaggle notebook, choose a GPU accelerator, enable Internet access, and 
 8. Benchmark the exact production runtime on CPU.
 9. Package the artifact and reports into one downloadable ZIP file.
 
-The notebook writes `classwire_nlu_delivery.zip` to `/kaggle/working`. Download it from the Kaggle Output pane after every quality gate passes.
+The notebook writes `classwire_nlu_delivery.zip` to `/kaggle/working`. Download it from the Kaggle Output pane, then inspect `reports/cpu_benchmark.json`. Never install a package whose top-level `passed` value is `false`.
 
 ## Local smoke check
 
@@ -71,6 +72,8 @@ The benchmark exits unsuccessfully unless all defaults pass:
 | Complete artifact size | at most 30 MB |
 
 These are acceptance gates, not claimed measurements. Actual results are written by the Kaggle run and must be reviewed before enabling the artifact.
+
+The benchmark also records an intent confusion matrix and exact-span precision, recall, and F1 for every entity role. A failed run can therefore be improved from concrete evidence instead of lowering a gate blindly.
 
 After a successful run:
 

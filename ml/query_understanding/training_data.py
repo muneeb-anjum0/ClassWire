@@ -60,6 +60,29 @@ class EncodedNluDataset(Dataset):
         return self.rows[index]
 
 
+def balanced_label_weights(
+    dataset: EncodedNluDataset,
+    field: str,
+    label_count: int,
+    *,
+    ignore_index: int | None = None,
+    maximum: float = 5.0,
+) -> torch.Tensor:
+    """Return bounded inverse-square-root weights for an encoded label field."""
+    counts = torch.zeros(label_count, dtype=torch.float64)
+    for row in dataset.rows:
+        values = row[field].reshape(-1)
+        if ignore_index is not None:
+            values = values[values != ignore_index]
+        counts += torch.bincount(values, minlength=label_count).to(torch.float64)
+    observed = counts > 0
+    weights = torch.zeros(label_count, dtype=torch.float64)
+    weights[observed] = torch.sqrt(counts[observed].sum() / counts[observed])
+    weights[observed] /= weights[observed].mean()
+    weights[observed] = weights[observed].clamp(min=0.25, max=maximum)
+    return weights.to(torch.float32)
+
+
 @dataclass
 class MetricAccumulator:
     intent_correct: int = 0
