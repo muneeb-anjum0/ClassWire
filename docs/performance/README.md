@@ -69,6 +69,9 @@ The deployed v4 Kaggle artifact measured 14.77 MB, 17.13 ms warm CPU p95,
 match on 2,640 held-out generated queries. These numbers describe that fixed
 benchmark, not arbitrary real-world language. The benchmark process reached a
 425.60 MiB peak before the low-memory production session settings were added.
+The packaged production runtime then measured a 92.77 MiB cold-process peak and
+a 225.04 ms first prediction in GitHub Actions. CI rejects future artifacts that
+exceed a 192 MiB cold-process peak.
 
 Render's protected metrics endpoint reports current RSS, peak RSS, cgroup use,
 limit, and remaining headroom. Cache capacities are deliberately smaller for
