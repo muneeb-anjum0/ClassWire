@@ -7,6 +7,7 @@ import json
 import resource
 import statistics
 import time
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from backend.search_nlu.runtime import TinyNluRuntime
@@ -50,10 +51,13 @@ def main() -> None:
     false_positive = 0
     false_negative = 0
     joint_correct = 0
+    intent_confusion: Counter = Counter()
+    role_counts: dict[str, Counter] = defaultdict(Counter)
     for record in records:
         prediction = runtime.predict(record["text"])
         intent_match = prediction.intent == record["intent"]
         intent_correct += int(intent_match)
+        intent_confusion[(record["intent"], prediction.intent)] += 1
         expected = {entity_key(entity) for entity in record["entities"]}
         predicted = {
             (entity.label, entity.start, entity.end)
@@ -62,6 +66,12 @@ def main() -> None:
         true_positive += len(expected & predicted)
         false_positive += len(predicted - expected)
         false_negative += len(expected - predicted)
+        for role, _, _ in expected & predicted:
+            role_counts[role]["true_positive"] += 1
+        for role, _, _ in predicted - expected:
+            role_counts[role]["false_positive"] += 1
+        for role, _, _ in expected - predicted:
+            role_counts[role]["false_negative"] += 1
         joint_correct += int(intent_match and expected == predicted)
 
     for index in range(args.warmup):
@@ -76,6 +86,23 @@ def main() -> None:
     recall = true_positive / (true_positive + false_negative) if true_positive + false_negative else 0.0
     entity_f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
     artifact_bytes = sum(path.stat().st_size for path in args.artifact.iterdir() if path.is_file())
+    per_role = {}
+    for role, counts in sorted(role_counts.items()):
+        role_tp = counts["true_positive"]
+        role_fp = counts["false_positive"]
+        role_fn = counts["false_negative"]
+        role_precision = role_tp / (role_tp + role_fp) if role_tp + role_fp else 0.0
+        role_recall = role_tp / (role_tp + role_fn) if role_tp + role_fn else 0.0
+        role_f1 = (
+            2 * role_precision * role_recall / (role_precision + role_recall)
+            if role_precision + role_recall else 0.0
+        )
+        per_role[role] = {
+            "precision": role_precision,
+            "recall": role_recall,
+            "f1": role_f1,
+            **dict(counts),
+        }
     report = {
         "split": args.split,
         "examples": len(records),
@@ -93,6 +120,11 @@ def main() -> None:
         "artifact_bytes": artifact_bytes,
         "artifact_megabytes": artifact_bytes / (1024 * 1024),
         "process_peak_rss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+        "intent_confusion": {
+            f"{expected} -> {predicted}": count
+            for (expected, predicted), count in sorted(intent_confusion.items())
+        },
+        "entity_metrics_by_role": per_role,
     }
     gates = {
         "intent_accuracy": report["intent_accuracy"] >= args.min_intent_accuracy,
