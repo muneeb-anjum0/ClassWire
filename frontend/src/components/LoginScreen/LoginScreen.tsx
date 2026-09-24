@@ -69,6 +69,12 @@ const LoginScreen: React.FC = () => {
           </p>
         </div>
 
+        <div className="login-card__signal" aria-label="Read-only Gmail access for SZABIST Islamabad timetables">
+          <span>Read-only Gmail</span>
+          <i aria-hidden="true" />
+          <span>SZABIST Islamabad</span>
+        </div>
+
         <button
           type="button"
           className="gmail-btn"
@@ -111,7 +117,7 @@ const LoginScreen: React.FC = () => {
         </div>
 
         {wakeMessage && (
-          <div className="status-box status-box--info" role="status">
+          <div className="status-box status-box--wake" role="status">
             <Loader className="status-icon status-icon--spin" />
             <div>
               <p className="status-title">Starting backend</p>

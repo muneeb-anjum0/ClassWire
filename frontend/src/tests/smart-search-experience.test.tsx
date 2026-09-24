@@ -69,6 +69,9 @@ test('a search answer can be hidden and restored without removing its data', asy
   const resultPanel = screen.getByText('Search result').closest('.smart-search__answer');
   const resultBody = resultPanel?.querySelector('.smart-search__answer-body');
   expect(resultPanel).toHaveClass('smart-search__answer--visible');
+  expect(resultPanel).toHaveClass('smart-search__answer--availability');
+  expect(resultPanel?.querySelector('.smart-search__faculty > header')).toBeInTheDocument();
+  expect(screen.getByText('Available')).toBeInTheDocument();
   expect(resultBody).toHaveAttribute('aria-hidden', 'false');
 
   await user.click(screen.getByLabelText('Hide search result'));

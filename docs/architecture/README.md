@@ -19,6 +19,8 @@ flowchart LR
   PARSER --> NORMAL[Normalized weekly source]
   NORMAL --> FS
   NORMAL --> PLAN[Query planner]
+  PLAN -. unresolved language .-> NLU[Optional TinyBERT ONNX]
+  NLU -. validated roles .-> PLAN
   PLAN --> ENGINE[Schedule engine]
   ENGINE --> UI
 
@@ -34,7 +36,8 @@ flowchart LR
 | Gmail integration | Read-only discovery and retrieval of the newest available timetable source for each weekday |
 | Parser | Structured-table extraction, text fallback, validation, normalization, deduplication, and diagnostics |
 | Firestore layer | Encrypted token storage, settings, compact timetable documents, normalized source persistence, and retention metadata |
-| Search engine | Entity recognition, explicit query planning, row matching, availability calculation, and clash detection |
+| Search engine | Entity recognition, structural intent inference, semantic query planning, row matching, availability calculation, and custom-schedule clash detection |
+| Optional NLU fallback | Artifact-gated TinyBERT intent and role prediction for unresolved phrasing, followed by normal catalog grounding |
 | GitHub Actions | Quality gates and scheduled daily delivery without a dedicated paid worker |
 
 ## Request lifecycle
@@ -46,8 +49,8 @@ flowchart LR
 5. Gmail is queried independently for the newest available message for each weekday.
 6. Message IDs determine which weekday sources can be reused and which must be fetched again.
 7. Changed messages are decoded, parsed, normalized, deduplicated, and persisted.
-8. The query planner records the requested days, sections, courses, codes, faculty, credit values, and class types.
-9. The engine applies intersection or union semantics, calculates availability and conflicts, and returns a human-readable answer with exact rows.
+8. The query planner records intent, days, sections, courses, codes, faculty, credit values, class types, exclusions, base-section roles, and course-section relationships.
+9. The engine applies intersection or union semantics, calculates availability and custom-schedule conflicts, and returns a human-readable answer with exact rows.
 
 Production browser requests use a Vercel same-origin `/api` proxy. Google still returns to the registered Render OAuth callback, which creates a random, single-use, two-minute handoff and redirects back through a URL fragment. The frontend exchanges that handoff through its own origin to establish the signed first-party session. This avoids third-party-cookie blocking in private browsing without exposing OAuth credentials to the browser.
 
@@ -93,6 +96,8 @@ ClassWire/
 │       ├── features/         Dashboard and conversational search experience
 │       ├── services/         API client and IndexedDB persistence
 │       └── tests/            UI behavior, hooks, API contracts, and rendering
+├── ml/
+│   └── query_understanding/  Kaggle data, training, evaluation, export, and benchmarks
 ├── docs/                     Focused technical documentation
 ├── .github/workflows/        CI, security, build, and scheduled delivery
 └── tools/                    Repository security guard
@@ -109,6 +114,7 @@ ClassWire/
 | Database | Cloud Firestore | Direct per-user documents with simple durable storage |
 | Source | Gmail API and Google OAuth 2.0 | Read-only access to authoritative timetable emails |
 | Parsing | Beautiful Soup and deterministic heuristics | Structured and malformed timetable extraction without per-query AI cost |
+| Optional NLU | TinyBERT and quantized ONNX Runtime | Guarded fallback for language the deterministic planner cannot resolve |
 | Verification | Pytest, Vitest, Testing Library | Unit, integration, acceptance, contract, and interface checks |
 | Automation | GitHub Actions | CI and scheduled delivery without a paid job service |
 | Hosting | Vercel and Render | Independently deployable static client and Python API |

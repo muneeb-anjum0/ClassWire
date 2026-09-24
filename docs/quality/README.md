@@ -8,7 +8,7 @@ ClassWire treats timetable extraction and natural-language search as correctness
 backend/tests/
 ├── unit/          Parser, search, cache, normalization, limits, and runtime behavior
 ├── integration/   API, Gmail, Firestore, security, deletion, and delivery contracts
-├── acceptance/    Representative parsing data and forty natural-language scenarios
+├── acceptance/    Parsing data, semantic queries, and NLU dataset guarantees
 └── fixtures/      Small anonymized or synthetic timetable examples
 
 frontend/src/tests/
@@ -19,6 +19,7 @@ frontend/src/tests/
 ├── dashboard-controller-behavior.test.tsx
 ├── initial-page-shell.test.ts
 ├── large-timetable-rendering.test.tsx
+├── login-screen-presentation.test.tsx
 ├── schedule-feedback-presentation.test.tsx
 ├── search-suggestion-rotation.test.ts
 ├── smart-search-experience.test.tsx
@@ -34,11 +35,11 @@ Test names describe user-visible behavior. A failing path should make the broken
 
 | Layer | Checks | Purpose |
 | --- | ---: | --- |
-| Backend unit | 84 | Small deterministic checks around one behavior |
+| Backend unit | 94 | Small deterministic checks around one behavior |
 | Backend integration | 53 | Contracts between layers and controlled service doubles |
-| Backend acceptance | 41 | Exact parser output and end-user query scenarios |
-| Frontend behavior | 55 | Browser-like API, state, interaction, persistence, and presentation behavior |
-| **Total** | **233** | One coherent regression suite |
+| Backend acceptance | 72 | Exact parser output, end-user queries, and NLU data guarantees |
+| Frontend behavior | 58 | Browser-like API, state, interaction, persistence, and presentation behavior |
+| **Total** | **277** | One coherent regression suite |
 
 ## Backend guarantees
 
@@ -46,12 +47,27 @@ Test names describe user-visible behavior. A failing path should make the broken
 - exact theory `(1,0)`, lab `(0,1)`, and FYP `(0,3)` semantics;
 - aliases, compact names, honorifics, spelling errors, and ambiguous faculty identities;
 - exact course-to-section binding in custom schedules;
+- structural base-section inference, reordered clauses, and explicit course exclusions;
 - multi-day filtering, relative weekdays, availability windows, and overlap conflicts;
 - latest-per-weekday Gmail selection and unchanged-message reuse;
 - compact Firestore payloads, stable hashes, stale-source recovery, and cache behavior;
 - authentication boundaries, headers, token encryption, rate limits, and account deletion;
 - API response shapes, compression, request tracing, and daily delivery;
 - Gunicorn binding and production configuration behavior.
+- optional NLU schema, lazy-artifact behavior, routing policy, exact spans, data reproducibility, and split isolation.
+
+## NLU quality gates
+
+The Kaggle pipeline adds model-specific checks without weakening the deterministic suite:
+
+- every labeled entity points to its exact source substring;
+- duplicate queries and template-family leakage are rejected;
+- every supported intent and entity role appears in training and held-out test data;
+- intent accuracy, exact-span entity precision, recall, F1, and joint exact match are recorded;
+- quantized artifact size, cold load time, CPU latency percentiles, and peak resident memory are recorded;
+- export fails its final benchmark unless the configured accuracy, latency, and size gates pass.
+
+Generated model measurements are not committed as claims. A reviewed Kaggle report must accompany any production artifact update.
 
 ## Frontend guarantees
 
@@ -64,6 +80,7 @@ Test names describe user-visible behavior. A failing path should make the broken
 - chronological desktop and mobile timetable ordering;
 - section and room badge presentation;
 - connected conflict grouping and red diagonal clash treatment;
+- suppression of false clash styling for broad and faculty results;
 - search feedback spacing and presentation;
 - Social Sciences normalization and lab-title display;
 - browser data cleanup during permanent account deletion;
@@ -72,7 +89,7 @@ Test names describe user-visible behavior. A failing path should make the broken
 
 ## Acceptance policy
 
-The forty-query matrix covers common, misspelled, compact, additive, ambiguous, and multi-constraint requests. Every case asserts the complete expected identity set and rejects unexpected rows. This is essential because overmatching can look convincing while producing an unusable timetable.
+The semantic query matrix covers common, misspelled, compact, additive, negative, reordered, ambiguous, and multi-constraint requests. It includes paraphrase families for base schedules, course-section bindings, exclusions, faculty availability, and relative dates. Every case asserts the complete expected identity set and rejects unexpected rows. This is essential because overmatching can look convincing while producing an unusable timetable.
 
 Parser acceptance fixtures use explicit expected rows for representative HTML and text formats. Fixtures contain anonymized or synthetic data only.
 
@@ -100,7 +117,7 @@ npm run build
 
 ## Coverage policy
 
-Backend coverage uses branch tracking and has a repository-wide floor of 61%. Frontend coverage has independent statement, branch, function, and line floors. Current measured baselines are 63.7% backend branch-aware coverage and 71.6% frontend line coverage.
+Backend coverage uses branch tracking and has a repository-wide floor of 61%. Frontend coverage has independent statement, branch, function, and line floors. Current measured baselines are 64.2% backend branch-aware coverage and 73.8% frontend line coverage.
 
 Coverage is a guardrail, not a replacement for exact behavioral assertions. Reports are generated locally and in CI but are not committed.
 

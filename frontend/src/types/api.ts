@@ -37,6 +37,10 @@ export interface TimetableData {
       day_scope: string[];
       combination: 'intersection' | 'union';
       filters: Record<string, string[]>;
+      exclusions?: {
+        courses: string[];
+        codes: string[];
+      };
       selection_scope?: {
         base_sections: string[];
         course_section_pairs: Array<{

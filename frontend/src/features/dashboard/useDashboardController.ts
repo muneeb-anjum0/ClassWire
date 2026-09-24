@@ -12,7 +12,7 @@ import { useDashboardStatusToast } from './useDashboardStatusToast';
 import { useDashboardUiState } from './useDashboardUiState';
 import { expandSocialSciencesSemesterItems, isSzabistIslamabadEmail } from './utils';
 
-const SEARCH_PARSER_VERSION = 13;
+const SEARCH_PARSER_VERSION = 15;
 
 export const useDashboardController = ({
   bootstrap: authBootstrap,

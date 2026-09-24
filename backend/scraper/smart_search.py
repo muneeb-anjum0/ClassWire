@@ -12,13 +12,22 @@ from typing import Dict, List, Tuple
 from zoneinfo import ZoneInfo
 
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-PARSER_VERSION = 13
+PARSER_VERSION = 15
+DAY_ALIASES = {
+    "Monday": ("mon", "mond"),
+    "Tuesday": ("tue", "tues", "tuesd"),
+    "Wednesday": ("wed", "weds", "wednes"),
+    "Thursday": ("thu", "thur", "thurs"),
+    "Friday": ("fri",),
+    "Saturday": ("sat",),
+}
 DAY_START = 8 * 60
 DAY_END = 21 * 60 + 30
 NOISE = {
     "schedule", "timetable", "time", "table", "class", "classes", "course", "courses",
     "when", "where", "what", "does", "have", "has", "their", "there", "entire", "week",
-    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "free", "office",
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "free", "available",
+    "availability", "open", "slot", "slots", "meet", "meeting", "office",
     "next", "this", "following", "today", "tomorrow", "yesterday", "all", "every", "my",
     "is", "are", "was", "were", "be", "in", "on", "at", "for", "show", "find", "give", "tell",
     "me", "the", "a", "an", "of", "and", "or", "to", "from", "with", "without", "please",
@@ -59,7 +68,12 @@ def parse_days(query: str, reference_date: date | None = None) -> List[str]:
     lowered = query.lower()
     if "entire week" in lowered or "all week" in lowered or "whole week" in lowered:
         return DAYS
-    selected = [day for day in DAYS if day.lower() in lowered]
+    query_tokens = words(query)
+    selected = [
+        day for day in DAYS
+        if day.lower() in query_tokens
+        or any(alias in query_tokens for alias in DAY_ALIASES[day])
+    ]
     if not selected:
         relative_offset = 0 if re.search(r"\btoday\b", lowered) else (
             1 if re.search(r"\btomorrow\b", lowered) else (
@@ -75,7 +89,6 @@ def parse_days(query: str, reference_date: date | None = None) -> List[str]:
                     reference_date = datetime.now(ZoneInfo("Asia/Karachi")).date()
             return [(reference_date + timedelta(days=relative_offset)).strftime("%A")]
     if not selected:
-        query_tokens = words(query)
         selected = [
             day for day in DAYS
             if any(SequenceMatcher(None, token, day.lower()).ratio() >= 0.78 for token in query_tokens)
@@ -171,6 +184,17 @@ def _is_broad_schedule_request(query: str) -> bool:
     if has_day_scope and re.search(r"\b(?:classes|courses|schedule|timetable)\b", lowered):
         return True
     return bool(re.search(r"\bwhat\s+classes\s+(?:do\s+i\s+have|are\s+scheduled)\b", lowered))
+
+
+def _wants_faculty_availability(query: str) -> bool:
+    """Recognize common ways students ask for a faculty member's free time."""
+    return bool(re.search(
+        r"\b(?:free|available|availability|free\s+(?:slot|slots|period|periods|time)|"
+        r"open\s+(?:slot|slots|period|periods|time)|gaps?|office\s+hours?|"
+        r"no\s+class|not\s+(?:have|having|teaching)\s+(?:a\s+)?class|"
+        r"(?:when|what\s+time|could|can)\s+(?:i|we)\s+meet|time\s+to\s+meet)\b",
+        query.lower(),
+    ))
 
 
 def _format_credit_hours(values: List[str]) -> str:
@@ -285,6 +309,40 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
             for other in matched_sections
         )
     ]
+    # Resolve compact section typos per token. This runs independently of
+    # exact course/faculty matches, so one correct entity can no longer hide a
+    # misspelled section elsewhere in the same sentence. Ambiguous shorthand
+    # is deliberately left unresolved instead of guessing.
+    unmatched_section_tokens = [
+        token for token in words(query)
+        if any(character.isalpha() for character in token)
+        and any(character.isdigit() for character in token)
+        and not any(normalize(token) == normalize(value) for value in matched_sections)
+    ]
+    for token in unmatched_section_tokens:
+        normalized_token = normalize(token)
+        if len(normalized_token) == 2:
+            suffix_matches = [
+                value for value in sections
+                if normalize(value).endswith(normalized_token)
+            ]
+            if len(suffix_matches) == 1 and suffix_matches[0] not in matched_sections:
+                matched_sections.append(suffix_matches[0])
+            continue
+        scored_sections = sorted(
+            (
+                _similar(normalized_token, normalize(value)),
+                value,
+            )
+            for value in sections
+            if value not in matched_sections and len(normalize(value)) >= 4
+        )
+        if not scored_sections:
+            continue
+        best_score = scored_sections[-1][0]
+        best_matches = [value for score, value in scored_sections if score == best_score]
+        if best_score >= 0.86 and len(best_matches) == 1:
+            matched_sections.append(best_matches[0])
     explicitly_named_faculty = [value for value in faculty if normalize(value) and normalize(value) in compact_query]
     explicitly_named_faculty = [
         value for value in explicitly_named_faculty
@@ -352,54 +410,20 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
         )
     ]
 
-    # Exact entities are overwhelmingly the common path and always outrank
-    # fuzzy candidates. Return before running thousands of SequenceMatcher
-    # comparisons across a university-wide timetable.
-    explicit_values = [
-        (kind, value)
-        for kind, values in (
-            ("section", matched_sections),
-            ("faculty", named_faculty),
-            ("course", explicitly_named_courses),
-            ("code", matched_codes),
-        )
-        for value in values
-    ]
-    if explicit_values:
-        dominated = {
-            (kind, value)
-            for kind, value in explicit_values
-            if any(
-                kind != other_kind
-                and normalize(value) != normalize(other)
-                and normalize(value) in normalize(other)
-                for other_kind, other in explicit_values
-            )
-        }
-        return {
-            "sections": [value for value in matched_sections if ("section", value) not in dominated],
-            "faculty": [value for value in named_faculty if ("faculty", value) not in dominated],
-            "courses": [value for value in explicitly_named_courses if ("course", value) not in dominated],
-            "codes": [value for value in matched_codes if ("code", value) not in dominated],
-            "class_types": _requested_class_types(query, explicitly_named_courses),
-            "credit_hours": _requested_credit_hours(query),
-        }
-
-    faculty_scores = []
     meaningful_query_words = set(meaningful_query_sequence)
     meaningful_query_compact = "".join(meaningful_query_sequence)
     faculty_intent = bool(re.search(
-        r"\b(?:free|available|faculty|teacher|professor|sir|madam|maam|mam|miss|ms|mr|dr|class|classes)\b|\bwhen\s+(?:does|is)\b",
+        r"\b(?:free|available|availability|open|faculty|teacher|professor|sir|madam|maam|mam|miss|ms|mr|dr|class|classes|meet)\b|\bwhen\s+(?:does|is)\b",
         query.lower(),
     ))
-    for value in faculty:
-        name_words = [word for word in _name_words(value) if len(word) >= 3 and word not in NOISE]
-        overlap = sum(1 for word in name_words if word in meaningful_query_words)
-        if not name_words:
-            continue
-        if normalize(value) in compact_query:
-            score = 100 + len(name_words)
-        else:
+    matched_faculty = list(named_faculty)
+    if not matched_faculty:
+        faculty_scores = []
+        for value in faculty:
+            name_words = [word for word in _name_words(value) if len(word) >= 3 and word not in NOISE]
+            overlap = sum(1 for word in name_words if word in meaningful_query_words)
+            if not name_words:
+                continue
             similarities = [
                 max((_similar(name_word, query_word) for query_word in meaningful_query_words), default=0)
                 for name_word in name_words
@@ -409,64 +433,84 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
                 score = max(covered, default=0)
             else:
                 score = (10 * len(covered) / len(name_words)) + (sum(covered) / len(name_words)) if covered else 0
-            # Users commonly omit spaces while typing a full name. Compare the
-            # complete meaningful phrase as well as individual tokens, but do
-            # not apply this to short surname-only searches.
             compact_name = "".join(name_words)
             if meaningful_query_compact and len(meaningful_query_compact) >= max(6, int(len(compact_name) * 0.7)):
                 compact_similarity = _similar(compact_name, meaningful_query_compact)
                 if compact_similarity >= 0.78:
                     score = max(score, compact_similarity * 20)
-        if score > 0:
-            faculty_scores.append((score, overlap, value))
-    if not faculty_scores:
-        for value in faculty:
-            name_words = [word for word in _name_words(value) if len(word) >= 3 and word not in NOISE]
-            similarity = max(
-                (_similar(query_word, name_word) for query_word in meaningful_query_words for name_word in name_words),
-                default=0,
-            )
-            if similarity >= 0.78:
-                faculty_scores.append((similarity, 0, value))
-    best_faculty_score = max((score for score, _, _ in faculty_scores), default=0)
-    matched_faculty = [value for score, _, value in faculty_scores if score == best_faculty_score]
-    if not faculty_intent and len(meaningful_query_words) > 1:
-        matched_faculty = []
+            if score > 0:
+                faculty_scores.append((score, overlap, value))
+        best_faculty_score = max((score for score, _, _ in faculty_scores), default=0)
+        matched_faculty = [value for score, _, value in faculty_scores if score == best_faculty_score]
+        if not faculty_intent and len(meaningful_query_words) > 1:
+            matched_faculty = []
 
-    course_scores = []
-    for value in courses:
-        title_words = [word for word in words(value) if len(word) >= 4 and word not in NOISE]
-        compact_title = normalize(value)
-        overlap = sum(1 for word in title_words if word in meaningful_query_words)
-        fuzzy_threshold = 0.90 if len(meaningful_query_words) == 1 else 0.82
-        fuzzy_overlap = sum(
-            1 for title_word in title_words
-            if title_word not in meaningful_query_words
-            and any(_similar(query_word, title_word) >= fuzzy_threshold for query_word in meaningful_query_words)
-        )
-        if len(compact_title) >= 3 and compact_title in compact_query:
-            score = 100 + len(title_words)
-        elif overlap or fuzzy_overlap:
-            score = (overlap + fuzzy_overlap) / max(len(title_words), 1)
-        else:
-            score = 0
-        if meaningful_query_compact and len(meaningful_query_compact) >= max(8, int(len(compact_title) * 0.7)):
-            compact_similarity = _similar(compact_title, meaningful_query_compact)
-            if compact_similarity >= 0.78:
-                score = max(score, compact_similarity * 20)
-        if score:
-            course_scores.append((score, value))
-    if len(meaningful_query_words) <= 1:
-        matched_courses = [value for _, value in course_scores]
-    else:
+    matched_courses = list(explicitly_named_courses)
+    resolved_context_tokens = {
+        normalize(token)
+        for value in matched_sections + matched_faculty + matched_codes
+        for token in (*words(value), normalize(value))
+        if token
+    }
+    residual_course_words = [
+        word for word in meaningful_query_sequence
+        if normalize(word) not in resolved_context_tokens
+    ]
+    should_fuzzy_course = any(
+        len(word) >= 4 and any(character.isalpha() for character in word)
+        for word in residual_course_words
+    )
+    if not matched_courses and should_fuzzy_course:
+        course_scores = []
+        for value in courses:
+            title_words = [word for word in words(value) if len(word) >= 3 and word not in NOISE]
+            compact_title = normalize(value)
+            overlap = sum(1 for word in title_words if word in meaningful_query_words)
+            fuzzy_threshold = 0.90 if len(meaningful_query_words) == 1 else 0.82
+            fuzzy_overlap = sum(
+                1 for title_word in title_words
+                if title_word not in meaningful_query_words
+                and any(_similar(query_word, title_word) >= fuzzy_threshold for query_word in meaningful_query_words)
+            )
+            if overlap or fuzzy_overlap:
+                score = (overlap + fuzzy_overlap) / max(len(title_words), 1)
+            else:
+                score = 0
+            if meaningful_query_compact and len(meaningful_query_compact) >= max(8, int(len(compact_title) * 0.7)):
+                compact_similarity = _similar(compact_title, meaningful_query_compact)
+                if compact_similarity >= 0.78:
+                    score = max(score, compact_similarity * 20)
+            if score:
+                course_scores.append((score, value))
         best_course_score = max((score for score, _ in course_scores), default=0)
         matched_courses = [value for score, value in course_scores if score == best_course_score]
 
+    resolved_values = [
+        (kind, value)
+        for kind, values in (
+            ("section", matched_sections),
+            ("faculty", matched_faculty),
+            ("course", matched_courses),
+            ("code", matched_codes),
+        )
+        for value in values
+    ]
+    dominated = {
+        (kind, value)
+        for kind, value in resolved_values
+        if any(
+            kind != other_kind
+            and normalize(value) != normalize(other)
+            and normalize(value) in normalize(other)
+            for other_kind, other in resolved_values
+        )
+    }
+
     return {
-        "sections": matched_sections,
-        "faculty": matched_faculty,
-        "courses": matched_courses,
-        "codes": matched_codes,
+        "sections": [value for value in matched_sections if ("section", value) not in dominated],
+        "faculty": [value for value in matched_faculty if ("faculty", value) not in dominated],
+        "courses": [value for value in matched_courses if ("course", value) not in dominated],
+        "codes": [value for value in matched_codes if ("code", value) not in dominated],
         "class_types": _requested_class_types(query, matched_courses),
         "credit_hours": _requested_credit_hours(query),
     }
@@ -501,12 +545,73 @@ def _uses_additive_course_scope(query: str, entities: Dict[str, List[str]]) -> b
         r"\balong\s+with\b",
         r"\bplus\b",
         r"\balso\b",
-        r"\b(?:add|include|take)\b",
+        r"\b(?:add|adding|include|including|take|taking)\b",
         r"\bbut\b.{0,80}\b(?:want|take|add|include)\b",
         r"\b(?:want|would\s+like)\s+to\s+(?:take|add|include)\b",
         r"\bi(?:\s+am|'m|m)\s+(?:from|in)\b",
     )
     return any(re.search(pattern, lowered) for pattern in additive_language)
+
+
+def _excluded_entity_scope(query: str, entities: Dict[str, List[str]]) -> Dict[str, List[str]]:
+    """Return explicitly negated course titles and codes.
+
+    Negation is attached to the entity immediately following language such as
+    "except", "without", or "I don't take". Keeping this separate from the
+    positive entity plan prevents an excluded base-section course from being
+    mistaken for an additional course selection.
+    """
+    compact_query = normalize(query)
+    has_negative_language = bool(re.search(
+        r"\b(?:except(?:\s+for)?|excluding|exclude|without|but\s+not|other\s+than|"
+        r"apart\s+from|don['’]?t\s+take|do\s+not\s+take|not\s+taking|"
+        r"not\s+enrolled\s+in|leave\s+out|skip|drop|remove)\b",
+        query.lower(),
+    ))
+    negative_prefix = re.compile(
+        r"(?:except(?:for)?|excluding|exclude|without|butnot|otherthan|apartfrom|"
+        r"donttake|donottake|nottaking|notenrolledin|leaveout|leavingout|skip|"
+        r"skipping|drop|dropping|remove|removing|no)"
+        r"(?:the)?(?:course|class|subject)?$"
+    )
+
+    def is_negated(value: str) -> bool:
+        occurrences = _entity_occurrences(query, value)
+        for start, _ in occurrences:
+            prefix = compact_query[max(0, start - 64):start]
+            if negative_prefix.search(prefix):
+                return True
+        # A fuzzy-resolved typo has no exact occurrence to inspect. If the
+        # sentence contains exclusion language and this entity was resolved
+        # only fuzzily, preserve the intended negative role.
+        return not occurrences and has_negative_language
+
+    return {
+        "courses": [value for value in entities["courses"] if is_negated(value)],
+        "codes": [value for value in entities["codes"] if is_negated(value)],
+    }
+
+
+def _without_excluded_entities(
+    entities: Dict[str, List[str]],
+    exclusions: Dict[str, List[str]],
+) -> Dict[str, List[str]]:
+    """Copy the entity plan without references reserved for exclusions."""
+    excluded_courses = {normalize(value) for value in exclusions["courses"]}
+    excluded_codes = {normalize(value) for value in exclusions["codes"]}
+    return {
+        **entities,
+        "courses": [value for value in entities["courses"] if normalize(value) not in excluded_courses],
+        "codes": [value for value in entities["codes"] if normalize(value) not in excluded_codes],
+    }
+
+
+def _matches_exclusion(item: Dict, exclusions: Dict[str, List[str]]) -> bool:
+    course = normalize(item.get("course_title") or item.get("course"))
+    code = normalize(item.get("course_code"))
+    return any(normalize(value) == course for value in exclusions["courses"]) or any(
+        normalize(value) == code for value in exclusions["codes"]
+    )
 
 
 def _entity_occurrences(query: str, value: str) -> List[Tuple[int, int]]:
@@ -555,9 +660,12 @@ def _additive_selection_scope(
 
     home_prefixes = (
         "iamfrom", "imfrom", "iamin", "imin", "mysectionis", "mysemesteris",
-        "myclassis", "ienrolledin", "ibelongto",
+        "myclassis", "mycoresectionis", "mybaseis", "ienrolledin", "ibelongto",
+        "classof", "classesof", "scheduleof", "timetableof",
+        "iamtakingeveryclasswith", "itakeeveryclasswith", "iamtakingallclasseswith",
+        "itakeallclasseswith", "takingeveryclasswith", "takingallclasseswith",
     )
-    home_suffixes = ("student", "timetable", "schedule")
+    home_suffixes = ("student", "timetable", "schedule", "classes", "classload", "courseload", "base")
     base_sections: List[str] = []
     base_mentions = set()
     for mention in section_mentions:
@@ -705,6 +813,7 @@ def _additive_selection_scope(
     }
     return {
         "base_sections": base_sections,
+        "_base_sections_explicit": bool(base_mentions),
         "course_section_pairs": pairs,
         "unpaired_courses": [
             value for value in entities["courses"] if ("course", value) not in paired_references
@@ -861,15 +970,31 @@ def faculty_free_slots(items: List[Dict], days: List[str]) -> Dict[str, List[str
 def search_timetable(query: str, items: List[Dict], reference_date: date | None = None) -> Dict:
     items = _canonicalize_faculty(items)
     days = parse_days(query, reference_date)
-    entities = find_entities(query, items)
-    additive_course_scope = _uses_additive_course_scope(query, entities)
-    selection_scope = _additive_selection_scope(query, entities, items) if additive_course_scope else None
+    discovered_entities = find_entities(query, items)
+    exclusions = _excluded_entity_scope(query, discovered_entities)
+    entities = _without_excluded_entities(discovered_entities, exclusions)
+    candidate_scope = (
+        _additive_selection_scope(query, entities, items)
+        if entities["sections"] and (entities["courses"] or entities["codes"])
+        else None
+    )
+    structural_addition = bool(candidate_scope and (
+        (
+            candidate_scope["_base_sections_explicit"]
+            and candidate_scope["course_section_pairs"]
+        )
+        or len(candidate_scope["course_section_pairs"]) > 1
+    ))
+    additive_course_scope = _uses_additive_course_scope(query, entities) or structural_addition
+    selection_scope = candidate_scope if additive_course_scope else None
+    if selection_scope:
+        selection_scope.pop("_base_sections_explicit", None)
     matches_scope = (
         (lambda item: _matches_additive_course_scope(item, entities, selection_scope))
         if additive_course_scope
         else (lambda item: _matches(item, entities))
     )
-    wants_free = any(phrase in query.lower() for phrase in ("free", "available", "office hour", "no class"))
+    wants_free = _wants_faculty_availability(query)
     if wants_free and entities["faculty"]:
         # Availability questions are faculty-first. Incidental words such as
         # "and" between requested days must never introduce a course filter
@@ -892,6 +1017,8 @@ def search_timetable(query: str, items: List[Dict], reference_date: date | None 
         matched = day_items
     else:
         matched = [item for item in day_items if matches_scope(item)]
+    if exclusions["courses"] or exclusions["codes"]:
+        matched = [item for item in matched if not _matches_exclusion(item, exclusions)]
     day_rank = {day: index for index, day in enumerate(DAYS)}
     matched.sort(key=lambda item: (
         day_rank.get(str(item.get("schedule_day")), len(DAYS)),
@@ -950,12 +1077,25 @@ def search_timetable(query: str, items: List[Dict], reference_date: date | None 
                 for pair in selection_scope["course_section_pairs"]
             ] + selection_scope["unpaired_courses"] + selection_scope["unpaired_codes"]
             requested_scope = f"{base} plus {', '.join(additions)}" if base else ", ".join(additions)
+            exclusion_labels = exclusions["courses"] + exclusions["codes"]
+            exclusion_suffix = (
+                f", excluding {', '.join(exclusion_labels)}"
+                if exclusion_labels else ""
+            )
             answer = (
                 f"Found {len(matched)} {'class' if len(matched) == 1 else 'classes'} "
-                f"for {requested_scope}{day_suffix}."
+                f"for {requested_scope}{exclusion_suffix}{day_suffix}."
             )
         elif matched:
-            answer = f"Found {len(matched)} {kind if len(matched) == 1 else kind + 'es'} for {subject}{day_suffix}."
+            exclusion_labels = exclusions["courses"] + exclusions["codes"]
+            exclusion_suffix = (
+                f", excluding {', '.join(exclusion_labels)}"
+                if exclusion_labels else ""
+            )
+            answer = (
+                f"Found {len(matched)} {kind if len(matched) == 1 else kind + 'es'} "
+                f"for {subject}{exclusion_suffix}{day_suffix}."
+            )
         elif not any(entities.values()) and not _is_broad_schedule_request(query):
             answer = (
                 "I couldn't identify a section, faculty member, course, class type, "
@@ -964,7 +1104,11 @@ def search_timetable(query: str, items: List[Dict], reference_date: date | None 
         else:
             answer = f"No {kind + 'es'} found for {subject}{day_suffix}."
     recognized = bool(any(entities.values()) or _is_broad_schedule_request(query))
-    conflicts = _schedule_conflicts(matched)
+    # Coincident rows are meaningful clashes only when the user is composing
+    # a custom timetable from a base section and explicit additions. Ordinary
+    # faculty, course, credit-hour, and broad schedule searches intentionally
+    # return parallel offerings and must not present those as personal clashes.
+    conflicts = _schedule_conflicts(matched) if additive_course_scope else []
     return {
         "parser_version": PARSER_VERSION,
         "items": matched,
@@ -980,6 +1124,7 @@ def search_timetable(query: str, items: List[Dict], reference_date: date | None 
             "day_scope": days,
             "combination": "union" if additive_course_scope else "intersection",
             "filters": entities,
+            "exclusions": exclusions,
             "selection_scope": selection_scope,
         },
         "conflicts": conflicts,

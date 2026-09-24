@@ -33,6 +33,49 @@
   line-height: 1.55;
 }
 
+.login-card__signal {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  margin-top: 25px;
+  padding: 8px 12px;
+  border-block: 1px solid var(--border);
+  background-color: color-mix(in srgb, var(--surface-secondary) 72%, var(--surface));
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 8px,
+    rgb(0 0 0 / 9%) 8px,
+    rgb(0 0 0 / 9%) 9px
+  );
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+
+.login-card__signal i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 12%, transparent);
+}
+
+html[data-theme='dark'] .login-card__signal {
+  background-color: color-mix(in srgb, var(--surface-secondary) 88%, white 12%);
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 8px,
+    rgb(0 0 0 / 28%) 8px,
+    rgb(0 0 0 / 28%) 9px
+  );
+}
+
 .gmail-btn {
   width: 100%;
   min-height: 54px;
@@ -40,7 +83,7 @@
   align-items: center;
   justify-content: center;
   gap: 11px;
-  margin-top: 32px;
+  margin-top: 18px;
   padding: 0 18px;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
@@ -139,6 +182,19 @@
   background: color-mix(in srgb, var(--danger) 7%, var(--surface));
 }
 
+.status-box--wake {
+  border-color: color-mix(in srgb, #d97706 34%, var(--border));
+  color: color-mix(in srgb, #d97706 88%, var(--text-primary));
+  background-color: color-mix(in srgb, #f59e0b 9%, var(--surface));
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 8px,
+    rgb(217 119 6 / 18%) 8px,
+    rgb(217 119 6 / 18%) 9px
+  );
+}
+
 .status-icon {
   width: 17px;
   height: 17px;
@@ -200,7 +256,8 @@
   .login-card { width: 100%; }
   .login-card h1 { font-size: clamp(31px, 9vw, 36px); }
   .login-copy { font-size: 15px; }
-  .gmail-btn { min-height: 56px; margin-top: 28px; }
+  .login-card__signal { margin-top: 21px; font-size: 10px; }
+  .gmail-btn { min-height: 56px; margin-top: 16px; }
   .legal-consent { gap: 6px; margin-top: 18px; }
   .legal-consent__check { min-height: 40px; align-items: center; }
   .legal-consent__check input { width: 18px; height: 18px; margin: 0; }

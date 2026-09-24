@@ -16,6 +16,7 @@ ALLOWED_ROOTS = {
     "backend",
     "docs",
     "frontend",
+    "ml",
     "pyproject.toml",
     "tools",
 }

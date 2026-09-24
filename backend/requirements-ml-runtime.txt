@@ -1,0 +1,7 @@
+-r requirements.txt
+
+# Optional ClassWire Tiny NLU inference runtime. Install only after a validated
+# INT8 ONNX artifact has been added under backend/search_nlu/artifacts/v1.
+onnxruntime>=1.26.0,<2.0
+tokenizers>=0.22.0,<1.0
+numpy>=1.26,<3.0

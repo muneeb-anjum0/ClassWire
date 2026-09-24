@@ -10,10 +10,11 @@ ClassWire is optimized for the limits that dominate its workload: Render cold st
 | Initial frontend JavaScript | **202.0 kB**, **64.4 kB gzip** |
 | Previous initial JavaScript | **300.9 kB**, **96.7 kB gzip** |
 | Initial schedule render window | **60 rows** |
-| Backend test coverage | **63.7% branch-aware** |
-| Frontend line coverage | **71.6%** |
+| Semantic search planning | **1.17 ms mean**, **2.73 ms p95** across 2,000 warm local fixture queries |
+| Backend test coverage | **64.2% branch-aware** |
+| Frontend line coverage | **73.8%** |
 
-These figures were measured locally. They are useful regression baselines, not claims about public-network speed, Google API latency, Firestore latency, or hosting-platform wake time.
+These figures were measured locally. The semantic-search measurement used four representative query families against a 40-row synthetic acceptance fixture after warm-up. They are useful regression baselines, not claims about public-network speed, Google API latency, Firestore latency, or hosting-platform wake time.
 
 ## Backend startup
 
@@ -48,6 +49,19 @@ React state
 ```
 
 Normal searches operate on already-normalized rows and do not call Gmail. Repeating the same query against the same source uses a parser-versioned result cache. User and source identity are part of the cache boundary.
+
+### Optional semantic inference
+
+The optional query-understanding model is designed around the free backend's memory and CPU limits:
+
+- two TinyBERT layers and one shared encoder for intent and entity prediction;
+- dynamic INT8 ONNX weights instead of a PyTorch production runtime;
+- lazy artifact loading, so startup and deterministic searches do not pay model initialization cost;
+- one ONNX intra-operation thread and one inter-operation thread;
+- a maximum 96-token query window;
+- an artifact gate of 30 MB and a warm CPU p95 gate of 50 ms.
+
+Those limits are pipeline acceptance targets, not measured production claims. The Kaggle notebook writes the actual size, load time, memory watermark, mean latency, p50, p95, p99, intent accuracy, exact-span entity F1, and joint exact match to machine-readable reports. The standard backend dependency set remains unchanged until an exported artifact passes those gates.
 
 ## Gmail efficiency
 
