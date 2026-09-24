@@ -50,7 +50,8 @@ def main() -> None:
     parser.add_argument("--warmup-ratio", type=float, default=0.1)
     parser.add_argument("--max-length", type=int, default=96)
     parser.add_argument("--patience", type=int, default=4)
-    parser.add_argument("--slot-loss-weight", type=float, default=1.6)
+    parser.add_argument("--intent-loss-weight", type=float, default=2.0)
+    parser.add_argument("--slot-loss-weight", type=float, default=1.2)
     parser.add_argument("--slot-weight-power", type=float, default=0.6)
     parser.add_argument("--seed", type=int, default=41)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="cpu")
@@ -138,8 +139,11 @@ def main() -> None:
             intent_labels_tensor = batch["intent_labels"].to(device)
             slot_labels_tensor = batch["slot_labels"].to(device)
             intent_logits, slot_logits = model(input_ids, attention_mask)
-            loss = intent_loss(intent_logits, intent_labels_tensor) + args.slot_loss_weight * slot_loss(
-                slot_logits.reshape(-1, len(slot_labels)), slot_labels_tensor.reshape(-1)
+            loss = (
+                args.intent_loss_weight * intent_loss(intent_logits, intent_labels_tensor)
+                + args.slot_loss_weight * slot_loss(
+                    slot_logits.reshape(-1, len(slot_labels)), slot_labels_tensor.reshape(-1)
+                )
             )
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -148,10 +152,17 @@ def main() -> None:
             running_loss += float(loss.detach())
 
         metrics = evaluate_model(
-            model, validation_loader, device, slot_to_id["O"], slot_labels
+            model,
+            validation_loader,
+            device,
+            slot_to_id["O"],
+            slot_labels,
+            intent_to_id["unknown"],
+            validation_dataset.family_names,
         )
         score = (
-            float(metrics["intent_accuracy"])
+            1.5 * float(metrics["intent_accuracy"])
+            + 0.5 * float(metrics["intent_accuracy_macro_family"])
             + float(metrics["entity_f1_exact_span"])
             + float(metrics["joint_exact_match"])
         )
@@ -192,6 +203,7 @@ def main() -> None:
         "best_score": best_score,
         "intent_class_weights": intent_weights.detach().cpu().tolist(),
         "slot_class_weights": slot_weights.detach().cpu().tolist(),
+        "intent_loss_weight": args.intent_loss_weight,
         "slot_loss_weight": args.slot_loss_weight,
         "slot_weight_power": args.slot_weight_power,
         "history": history,

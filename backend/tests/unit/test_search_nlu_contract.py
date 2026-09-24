@@ -8,7 +8,11 @@ import json
 import pytest
 
 from search_nlu.interpreter import optional_semantic_prediction, should_consult_model
-from search_nlu.runtime import TinyNluRuntime, predict_with_optional_model
+from search_nlu.runtime import (
+    _entities_for_intent,
+    TinyNluRuntime,
+    predict_with_optional_model,
+)
 from search_nlu.schema import EntityPrediction, NluPrediction, validate_entity_spans
 from search_nlu.schema import ENTITY_ROLES, INTENTS
 
@@ -159,3 +163,10 @@ def test_runtime_ignores_low_confidence_one_token_entities():
     )
 
     assert entities == []
+
+
+def test_unknown_intent_suppresses_catalog_like_entities():
+    entities = [EntityPrediction("BSSE7A", "FILTER_SECTION", 5, 11, 0.98)]
+
+    assert _entities_for_intent("unknown", entities) == []
+    assert _entities_for_intent("schedule", entities) == entities

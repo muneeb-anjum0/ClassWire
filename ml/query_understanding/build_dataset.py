@@ -10,13 +10,13 @@ from pathlib import Path
 
 from ml.query_understanding.dataset import generate_examples, write_jsonl
 
-DATASET_VERSION = "classwire-nlu-v3"
+DATASET_VERSION = "classwire-nlu-v4"
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=Path("ml/query_understanding/data/classwire_nlu.jsonl"))
-    parser.add_argument("--total", type=int, default=18_000)
+    parser.add_argument("--total", type=int, default=24_000)
     parser.add_argument("--seed", type=int, default=41)
     args = parser.parse_args()
 

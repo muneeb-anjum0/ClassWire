@@ -52,6 +52,20 @@ def test_validator_rejects_template_family_leakage():
         validate_records([*records, leaked])
 
 
+def test_intent_contrasts_are_isolated_and_catalog_negatives_have_no_entities():
+    records = generate_examples(total=1200, seed=73)
+    by_family = {record["family"]: record for record in records}
+
+    assert by_family["availability_two_people_semantic_test"]["intent"] == "faculty_availability"
+    assert by_family["faculty_schedule_semantic_test"]["intent"] == "faculty_schedule"
+    unknown = [
+        record for record in records
+        if record["family"] == "unknown_catalog_semantic_test"
+    ]
+    assert unknown
+    assert all(record["intent"] == "unknown" and record["entities"] == [] for record in unknown)
+
+
 def test_kaggle_notebook_contains_every_quality_stage():
     notebook_path = ROOT / "ml" / "query_understanding" / "classwire_nlu_kaggle.ipynb"
     notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
@@ -72,3 +86,6 @@ def test_kaggle_notebook_contains_every_quality_stage():
         "classwire_nlu_delivery",
     ):
         assert command in source
+    assert "--total 24000" in source
+    assert "--intent-loss-weight', '2.0" in source
+    assert "tinybert-nlu-v4" in source

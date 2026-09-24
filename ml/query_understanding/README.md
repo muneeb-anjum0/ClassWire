@@ -8,15 +8,18 @@ The model is a guarded assistant to the deterministic search engine. It does not
 
 - `google/bert_uncased_L-8_H-256_A-4` provides stronger language capacity while remaining below the 30 MB INT8 deployment gate.
 - One shared encoder serves both intent classification and BIO entity tagging.
+- The intent head combines the classification token with masked mean pooling, so decisions use the complete request instead of depending on its opening words.
 - Dynamic INT8 ONNX export keeps the production artifact small and CPU-friendly.
 - Training dependencies never enter the normal Flask deployment.
 - The runtime loads lazily, uses one CPU thread, and safely disables itself when no artifact is installed.
 - Synthetic examples are labeled during sentence construction, independently of the production parser.
 - Template families are isolated by split, so validation and test phrases are structurally unseen during training.
 - Tunable bounded inverse-frequency weights prevent frequent base-section and outside-token labels from drowning out rarer filters and exclusions.
-- Structurally different templates teach possessive bindings, section-first course pairs, trailing exclusions, time filters, and faculty intent contrasts.
+- Structurally different templates teach possessive bindings, section-first course pairs, trailing exclusions, time filters, faculty intent contrasts, and unsupported actions that contain valid catalog names.
+- Matched contrast families distinguish teaching schedules from availability requests and unsupported actions from timetable searches.
 - Three independently seeded candidates are compared using validation metrics only. The held-out test set remains untouched until final evaluation.
-- Checkpoint selection uses exact entity spans rather than relying only on token-level accuracy.
+- Checkpoint selection emphasizes intent accuracy, macro accuracy across validation families, exact entity spans, and whole-query correctness.
+- An `unknown` prediction discards extracted catalog spans before they can reach the deterministic planner.
 
 ## Directory map
 
@@ -41,10 +44,10 @@ Create a Kaggle notebook, choose a GPU accelerator, enable Internet access, and 
 
 1. Clone ClassWire and install only the offline training requirements.
 2. Confirm CUDA visibility and print package versions.
-3. Generate 18,000 deterministic labeled queries.
+3. Generate 24,000 deterministic labeled queries.
 4. Reject duplicate queries, invalid spans, missing labels, and family leakage.
 5. Fine-tune three independently seeded two-head TinyBERT candidates with early stopping.
-6. Select the strongest checkpoint using validation intent, exact-span entity, and joint metrics.
+6. Select the strongest checkpoint using overall and macro-family intent accuracy, exact-span entity F1, and joint metrics.
 7. Measure the held-out test split once.
 8. Export and dynamically quantize ONNX.
 9. Benchmark the exact production runtime on CPU.

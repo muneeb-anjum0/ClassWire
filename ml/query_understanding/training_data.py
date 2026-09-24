@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import torch
 from torch.utils.data import Dataset
@@ -60,6 +60,8 @@ class EncodedNluDataset(Dataset):
         max_length: int,
     ) -> None:
         self.rows: list[dict[str, torch.Tensor]] = []
+        self.family_names = sorted({str(record["family"]) for record in records})
+        family_to_id = {name: index for index, name in enumerate(self.family_names)}
         for record in records:
             encoded = tokenizer(
                 record["text"],
@@ -68,12 +70,15 @@ class EncodedNluDataset(Dataset):
                 max_length=max_length,
                 return_offsets_mapping=True,
             )
-            slot_labels = align_slot_labels(encoded.pop("offset_mapping"), record["entities"], slot_to_id)
+            slot_labels = align_slot_labels(
+                encoded.pop("offset_mapping"), record["entities"], slot_to_id
+            )
             self.rows.append({
                 "input_ids": torch.tensor(encoded["input_ids"], dtype=torch.long),
                 "attention_mask": torch.tensor(encoded["attention_mask"], dtype=torch.long),
                 "intent_labels": torch.tensor(intent_to_id[record["intent"]], dtype=torch.long),
                 "slot_labels": torch.tensor(slot_labels, dtype=torch.long),
+                "family_labels": torch.tensor(family_to_id[record["family"]], dtype=torch.long),
             })
 
     def __len__(self) -> int:
@@ -120,6 +125,8 @@ class MetricAccumulator:
     entity_true_positive: int = 0
     entity_false_positive: int = 0
     entity_false_negative: int = 0
+    family_correct: dict[int, int] = field(default_factory=dict)
+    family_rows: dict[int, int] = field(default_factory=dict)
 
     def update(
         self,
@@ -129,19 +136,29 @@ class MetricAccumulator:
         slot_labels: torch.Tensor,
         outside_id: int,
         label_names: list[str],
+        unknown_intent_id: int,
+        family_labels: torch.Tensor,
     ) -> None:
-        for intent_prediction, intent_label, slot_prediction, slot_label in zip(
+        for intent_prediction, intent_label, slot_prediction, slot_label, family_label in zip(
             intent_predictions.cpu(),
             intent_labels.cpu(),
             slot_predictions.cpu(),
             slot_labels.cpu(),
+            family_labels.cpu(),
         ):
             intent_match = int(intent_prediction) == int(intent_label)
             self.intent_correct += int(intent_match)
             self.rows += 1
+            family_id = int(family_label)
+            self.family_correct[family_id] = (
+                self.family_correct.get(family_id, 0) + int(intent_match)
+            )
+            self.family_rows[family_id] = self.family_rows.get(family_id, 0) + 1
             valid = slot_label != -100
             expected = slot_label[valid]
             predicted = slot_prediction[valid]
+            if int(intent_prediction) == unknown_intent_id:
+                predicted = torch.full_like(predicted, outside_id)
             self.joint_correct += int(intent_match and torch.equal(expected, predicted))
             expected_spans = _bio_spans(expected, label_names)
             predicted_spans = _bio_spans(predicted, label_names)
@@ -154,7 +171,7 @@ class MetricAccumulator:
             self.slot_false_positive += int((predicted_entity & (predicted != expected)).sum())
             self.slot_false_negative += int((expected_entity & (predicted != expected)).sum())
 
-    def as_dict(self) -> dict[str, float | int]:
+    def as_dict(self, family_names: list[str]) -> dict[str, object]:
         precision_denominator = self.slot_true_positive + self.slot_false_positive
         recall_denominator = self.slot_true_positive + self.slot_false_negative
         precision = self.slot_true_positive / precision_denominator if precision_denominator else 0.0
@@ -174,9 +191,18 @@ class MetricAccumulator:
             2 * entity_precision * entity_recall / (entity_precision + entity_recall)
             if entity_precision + entity_recall else 0.0
         )
+        family_accuracy = {
+            family_names[family_id]: self.family_correct.get(family_id, 0) / count
+            for family_id, count in sorted(self.family_rows.items())
+        }
+        macro_family_accuracy = (
+            sum(family_accuracy.values()) / len(family_accuracy) if family_accuracy else 0.0
+        )
         return {
             "examples": self.rows,
             "intent_accuracy": self.intent_correct / self.rows if self.rows else 0.0,
+            "intent_accuracy_macro_family": macro_family_accuracy,
+            "intent_accuracy_by_family": family_accuracy,
             "slot_precision": precision,
             "slot_recall": recall,
             "slot_f1": f1,
@@ -193,7 +219,9 @@ def evaluate_model(
     device: torch.device,
     outside_id: int,
     slot_labels: list[str],
-) -> dict[str, float | int]:
+    unknown_intent_id: int,
+    family_names: list[str],
+) -> dict[str, object]:
     metrics = MetricAccumulator()
     model.eval()
     with torch.inference_mode():
@@ -208,5 +236,7 @@ def evaluate_model(
                 batch["slot_labels"],
                 outside_id,
                 slot_labels,
+                unknown_intent_id,
+                batch["family_labels"],
             )
-    return metrics.as_dict()
+    return metrics.as_dict(family_names)

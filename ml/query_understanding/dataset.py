@@ -394,10 +394,15 @@ def _availability_two_people_train(rng: random.Random) -> tuple[str, list[dict],
     first_name, first_aliases = rng.choice(FACULTY)
     second_choices = [faculty for faculty in FACULTY if faculty[0] != first_name]
     _, second_aliases = rng.choice(second_choices)
-    return _record([
-        "When are ", Mention(rng.choice(first_aliases), "FACULTY"), " and ",
-        Mention(rng.choice(second_aliases), "FACULTY"), " free on ", _day(rng),
-    ], "faculty_availability")
+    first = Mention(rng.choice(first_aliases), "FACULTY")
+    second = Mention(rng.choice(second_aliases), "FACULTY")
+    day = _day(rng)
+    return _record(rng.choice((
+        ["When are ", first, " and ", second, " free on ", day],
+        ["Check ", day, " availability for ", first, " and ", second],
+        ["Compare free time for ", first, " with ", second, " on ", day],
+        ["Find a common open period for ", first, " plus ", second, " during ", day],
+    )), "faculty_availability")
 
 
 def _availability_two_people_test(rng: random.Random) -> tuple[str, list[dict], str]:
@@ -408,6 +413,16 @@ def _availability_two_people_test(rng: random.Random) -> tuple[str, list[dict], 
         "Check ", _day(rng), " availability separately for ",
         Mention(rng.choice(first_aliases), "FACULTY"), " plus ",
         Mention(rng.choice(second_aliases), "FACULTY"),
+    ], "faculty_availability")
+
+
+def _availability_two_people_v4_test(rng: random.Random) -> tuple[str, list[dict], str]:
+    first_name, first_aliases = rng.choice(FACULTY)
+    second_choices = [faculty for faculty in FACULTY if faculty[0] != first_name]
+    _, second_aliases = rng.choice(second_choices)
+    return _record([
+        "Compare the open hours of ", Mention(rng.choice(first_aliases), "FACULTY"),
+        " with ", Mention(rng.choice(second_aliases), "FACULTY"), " for ", _day(rng),
     ], "faculty_availability")
 
 
@@ -433,6 +448,18 @@ def _faculty_schedule_day_first_train(rng: random.Random) -> tuple[str, list[dic
                     ", which lessons belong to ")),
         _faculty(rng),
     ], "faculty_schedule")
+
+
+def _faculty_schedule_semantic_train(rng: random.Random) -> tuple[str, list[dict], str]:
+    """Cover natural teaching-language contrasts without availability cues."""
+    faculty = _faculty(rng)
+    day = _day(rng)
+    return _record(rng.choice((
+        ["On ", day, ", what is ", faculty, " teaching"],
+        ["What is ", faculty, " scheduled to teach on ", day],
+        ["Show what ", faculty, " is taking on ", day],
+        ["Give me the lectures assigned to ", faculty, " for ", day],
+    )), "faculty_schedule")
 
 
 def _availability_day_first_train(rng: random.Random) -> tuple[str, list[dict], str]:
@@ -532,6 +559,12 @@ def _faculty_schedule_test(rng: random.Random) -> tuple[str, list[dict], str]:
     ], "faculty_schedule")
 
 
+def _faculty_schedule_v4_test(rng: random.Random) -> tuple[str, list[dict], str]:
+    return _record([
+        "Which ", _day(rng), " teaching duties are assigned to ", _faculty(rng),
+    ], "faculty_schedule")
+
+
 def _faculty_course_train(rng: random.Random) -> tuple[str, list[dict], str]:
     return _record([
         "Show ", _course(rng, "FILTER_COURSE"), " classes taught by ", _faculty(rng),
@@ -577,10 +610,17 @@ def _unknown_catalog_train(rng: random.Random) -> tuple[str, list[dict], str]:
     """Hard negatives contain catalog words but request unsupported actions."""
     faculty = _faculty(rng).text
     course = _course(rng, "FILTER_COURSE").text
+    section = _section(rng, "FILTER_SECTION").text
+    day = _day(rng).text
     text = rng.choice((
         f"Email {faculty} about the {course} assignment",
         f"Send a message to {faculty} regarding {course}",
         f"Download the course outline for {course}",
+        f"Remind {faculty} to upload grades for {section}",
+        f"Ask {faculty} to share slides for {course}",
+        f"Correct my attendance in {course} for {section}",
+        f"Reserve a room for {section} on {day}",
+        f"Move the {course} exam to {day}",
     ))
     return text, [], "unknown"
 
@@ -604,6 +644,19 @@ def _unknown_catalog_test(rng: random.Random) -> tuple[str, list[dict], str]:
         f"Ask {faculty} to upload marks for {section}",
         f"Can {faculty} share the {course} slides",
         f"Submit an attendance correction for {section} in {course}",
+    ))
+    return text, [], "unknown"
+
+
+def _unknown_catalog_v4_test(rng: random.Random) -> tuple[str, list[dict], str]:
+    faculty = _faculty(rng).text
+    section = _section(rng, "FILTER_SECTION").text
+    course = _course(rng, "FILTER_COURSE").text
+    text = rng.choice((
+        f"Remind {faculty} to grade {course} for {section}",
+        f"Ask {faculty} to publish the marks for {section}",
+        f"Request an attendance update from {faculty} for {course}",
+        f"Tell {faculty} to send the assignment brief to {section}",
     ))
     return text, [], "unknown"
 
@@ -633,12 +686,15 @@ FAMILIES: dict[str, tuple[str, Builder]] = {
     "availability_validation": ("validation", _availability_validation),
     "availability_two_days_test": ("test", _availability_two_days),
     "availability_two_people_train": ("train", _availability_two_people_train),
-    "availability_two_people_reordered_test": ("test", _availability_two_people_test),
+    "availability_two_people_reordered_validation": ("validation", _availability_two_people_test),
+    "availability_two_people_semantic_test": ("test", _availability_two_people_v4_test),
     "faculty_schedule_train": ("train", _faculty_schedule),
     "faculty_schedule_day_validation": ("validation", _faculty_schedule_day),
     "faculty_schedule_day_first_train": ("train", _faculty_schedule_day_first_train),
+    "faculty_schedule_semantic_train": ("train", _faculty_schedule_semantic_train),
     "availability_day_first_train": ("train", _availability_day_first_train),
-    "faculty_schedule_reordered_test": ("test", _faculty_schedule_test),
+    "faculty_schedule_reordered_validation": ("validation", _faculty_schedule_test),
+    "faculty_schedule_semantic_test": ("test", _faculty_schedule_v4_test),
     "faculty_course_train": ("train", _faculty_course_train),
     "faculty_course_reordered_train": ("train", _faculty_course_reordered_train),
     "faculty_course_reordered_test": ("test", _faculty_course_test),
@@ -655,11 +711,12 @@ FAMILIES: dict[str, tuple[str, Builder]] = {
     "unknown_validation": ("validation", _unknown),
     "unknown_catalog_validation": ("validation", _unknown_catalog_validation),
     "unknown_test": ("test", _unknown),
-    "unknown_catalog_test": ("test", _unknown_catalog_test),
+    "unknown_catalog_reordered_validation": ("validation", _unknown_catalog_test),
+    "unknown_catalog_semantic_test": ("test", _unknown_catalog_v4_test),
 }
 
 
-def generate_examples(total: int = 18_000, seed: int = 41) -> list[dict]:
+def generate_examples(total: int = 24_000, seed: int = 41) -> list[dict]:
     """Create a deterministic, unique corpus with family-isolated splits."""
     if total < len(FAMILIES) * 8:
         raise ValueError(f"total must be at least {len(FAMILIES) * 8}")

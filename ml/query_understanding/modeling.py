@@ -24,6 +24,12 @@ class ClassWireTinyNluModel(nn.Module):
         config = AutoConfig.from_pretrained(base_model)
         self.encoder = AutoModel.from_pretrained(base_model, config=config)
         self.dropout = nn.Dropout(dropout)
+        self.intent_projection = nn.Sequential(
+            nn.Linear(config.hidden_size * 2, config.hidden_size),
+            nn.GELU(),
+            nn.LayerNorm(config.hidden_size),
+            nn.Dropout(dropout),
+        )
         self.intent_classifier = nn.Linear(config.hidden_size, intent_count)
         self.slot_classifier = nn.Linear(config.hidden_size, slot_count)
         self.base_model = base_model
@@ -33,7 +39,9 @@ class ClassWireTinyNluModel(nn.Module):
 
     def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor):
         hidden = self.encoder(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
-        pooled = self.dropout(hidden[:, 0])
+        mask = attention_mask.unsqueeze(-1).to(hidden.dtype)
+        mean_pooled = (hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp_min(1.0)
+        pooled = self.intent_projection(torch.cat((hidden[:, 0], mean_pooled), dim=-1))
         sequence = self.dropout(hidden)
         return self.intent_classifier(pooled), self.slot_classifier(sequence)
 
