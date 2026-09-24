@@ -48,6 +48,8 @@ def main() -> None:
         device,
         slot_to_id["O"],
         config["slot_labels"],
+        intent_to_id["unknown"],
+        dataset.family_names,
     )
     report = {
         "split": args.split,

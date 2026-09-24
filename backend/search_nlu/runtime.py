@@ -29,6 +29,14 @@ TRAILING_COURSE_CONNECTOR = re.compile(
 MIN_ENTITY_CONFIDENCE = 0.35
 
 
+def _entities_for_intent(
+    intent: str,
+    entities: list[EntityPrediction],
+) -> list[EntityPrediction]:
+    """Unsupported requests must never leak schedule entities into the planner."""
+    return [] if intent == "unknown" else entities
+
+
 def _softmax(values: list[float]) -> list[float]:
     if not values:
         return []
@@ -158,20 +166,22 @@ class TinyNluRuntime:
 
         intent_probabilities = _softmax(intent_logits[0].tolist())
         intent_index = max(range(len(intent_probabilities)), key=intent_probabilities.__getitem__)
+        intent = self._intent_labels[intent_index]
         token_probabilities = [_softmax(values.tolist()) for values in slot_logits[0]]
         token_labels = [
             max(range(len(probabilities)), key=probabilities.__getitem__)
             for probabilities in token_probabilities
         ]
-        entities = self._decode_entities(
+        decoded_entities = self._decode_entities(
             query,
             encoding.offsets,
             encoding.attention_mask,
             token_labels,
             token_probabilities,
         )
+        entities = _entities_for_intent(intent, decoded_entities)
         prediction = NluPrediction(
-            intent=self._intent_labels[intent_index],
+            intent=intent,
             confidence=float(intent_probabilities[intent_index]),
             entities=tuple(entities),
             model_version=str(self._metadata.get("model_version", "unknown")),

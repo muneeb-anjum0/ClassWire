@@ -63,7 +63,7 @@ The Kaggle pipeline adds model-specific checks without weakening the determinist
 - every labeled entity points to its exact source substring;
 - duplicate queries and template-family leakage are rejected;
 - every supported intent and entity role appears in training and held-out test data;
-- intent accuracy, exact-span entity precision, recall, F1, and joint exact match are recorded;
+- intent accuracy, macro accuracy across template families, exact-span entity precision, recall, F1, and joint exact match are recorded;
 - deployable artifacts must reach 96% intent accuracy, 94% exact-span entity F1, and 85% whole-query joint exact match;
 - quantized artifact size, cold load time, CPU latency percentiles, and peak resident memory are recorded;
 - export fails its final benchmark unless the configured accuracy, latency, and size gates pass.
