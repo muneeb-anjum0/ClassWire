@@ -91,13 +91,17 @@ test('a search answer can be hidden and restored without removing its data', asy
   expect(screen.getByRole('alert')).toHaveTextContent('Not available this day');
   expect(resultBody).toHaveAttribute('aria-hidden', 'false');
 
-  await user.click(screen.getByLabelText('Hide search result'));
-  expect(screen.getByText('Search result hidden')).toBeInTheDocument();
+  const resultToggle = screen.getByLabelText('Hide search result');
+  await user.click(resultToggle);
+  expect(resultPanel?.querySelector('.smart-search__answer-label')).toHaveTextContent('Search result hidden');
   expect(resultPanel).toHaveClass('smart-search__answer--hidden');
-  expect(screen.getByRole('button', { name: 'Show' }).closest('.smart-search__answer-header')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Show' })).toBe(resultToggle);
   expect(resultBody).toHaveAttribute('aria-hidden', 'true');
 
   await user.click(screen.getByRole('button', { name: 'Show' }));
+  expect(screen.getByLabelText('Hide search result')).toBe(resultToggle);
+  expect(resultPanel?.querySelector('.smart-search__answer-label')).toHaveTextContent('Search result');
+  expect(resultPanel?.querySelector('.smart-search__answer-label')).not.toHaveTextContent('hidden');
   expect(screen.getByText('Zainab Iftikhar Chaudhary')).toBeInTheDocument();
   expect(resultPanel).toHaveClass('smart-search__answer--visible');
   expect(resultBody).toHaveAttribute('aria-hidden', 'false');
