@@ -12,6 +12,7 @@ import {
   getSemesterLabel,
   getSectionColor,
   groupConflictingItems,
+  isOnlineClass,
   renderHighlightedText,
   shouldHighlightRow,
   sortTimetableItems,
@@ -47,8 +48,9 @@ function ScheduleRow({
   conflictPosition?: string | null;
 }) {
   const section = getSemesterLabel(item);
+  const online = isOnlineClass(item);
   return <article
-    className={`conversation-class ${shouldHighlightRow(item) ? 'conversation-class--cancelled' : ''} ${conflictPosition ? `conversation-class--conflict conversation-class--conflict-${conflictPosition}` : ''}`}
+    className={`conversation-class ${online ? 'conversation-class--online' : ''} ${shouldHighlightRow(item) ? 'conversation-class--cancelled' : ''} ${conflictPosition ? `conversation-class--conflict conversation-class--conflict-${conflictPosition}` : ''}`}
     data-conflict-group={conflictGroup}
     aria-label={conflictPosition ? `${getDisplayCourseTitle(item)}, schedule clash` : undefined}
   >
