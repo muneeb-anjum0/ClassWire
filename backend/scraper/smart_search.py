@@ -11,8 +11,15 @@ from functools import lru_cache
 from typing import Dict, List, Tuple
 from zoneinfo import ZoneInfo
 
+from .search_lexicon import (
+    ADDITIVE_SCOPE_WORDS,
+    COURSE_SECTION_CONNECTORS,
+    HOME_SECTION_PREFIXES,
+    QUERY_GRAMMAR_WORDS,
+)
+
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-PARSER_VERSION = 16
+PARSER_VERSION = 17
 DAY_ALIASES = {
     "Monday": ("mon", "mond"),
     "Tuesday": ("tue", "tues", "tuesd"),
@@ -31,11 +38,6 @@ NOISE = {
     "next", "this", "following", "today", "tomorrow", "yesterday", "all", "every", "my",
     "is", "are", "was", "were", "be", "in", "on", "at", "for", "show", "find", "give", "tell",
     "me", "the", "a", "an", "of", "and", "or", "to", "from", "with", "without", "please",
-    "take", "takes", "taking", "took", "want", "wants", "wanted", "add", "adds", "adding",
-    "include", "includes", "including", "enroll", "enrolled", "enrolling", "belong", "belongs",
-    "keep", "use", "using", "skip", "remove", "attend", "attends", "attending", "register",
-    "registered", "registering", "choose", "chooses", "choosing", "select", "selects", "selecting",
-    "faculty", "teacher", "professor", "instructor", "lecturer", "teach", "teaches", "teaching", "taught",
     "theory", "lab", "labs", "laboratory", "laboratories", "fyp", "final", "year", "project", "sir", "madam",
     "maam", "mam",
     "credit", "credits", "hour", "hours", "hr", "hrs", "ch",
@@ -385,6 +387,7 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
         word for word in words(query)
         if len(word) >= 3
         and word not in NOISE
+        and word not in QUERY_GRAMMAR_WORDS
         and word not in HONORIFICS
         and not any(_similar(word, day.lower()) >= 0.78 for day in DAYS)
     ]
@@ -577,12 +580,11 @@ def _uses_additive_course_scope(query: str, entities: Dict[str, List[str]]) -> b
         r"\balong\s+with\b",
         r"\bplus\b",
         r"\balso\b",
-        r"\b(?:add|adding|include|including|take|taking)\b",
-        r"\bbut\b.{0,80}\b(?:want|take|add|include)\b",
-        r"\b(?:want|would\s+like)\s+to\s+(?:take|add|include)\b",
         r"\bi(?:\s+am|'m|m)\s+(?:from|in)\b",
     )
-    return any(re.search(pattern, lowered) for pattern in additive_language)
+    return bool(set(words(query)) & ADDITIVE_SCOPE_WORDS) or any(
+        re.search(pattern, lowered) for pattern in additive_language
+    )
 
 
 def _excluded_entity_scope(query: str, entities: Dict[str, List[str]]) -> Dict[str, List[str]]:
@@ -690,20 +692,13 @@ def _additive_selection_scope(
     section_mentions.sort(key=lambda mention: (mention["start"], mention["end"]))
     references.sort(key=lambda mention: (mention["start"], mention["end"]))
 
-    home_prefixes = (
-        "iamfrom", "imfrom", "iamin", "imin", "mysectionis", "mysemesteris",
-        "myclassis", "mycoresectionis", "mybaseis", "ienrolledin", "ibelongto",
-        "classof", "classesof", "scheduleof", "timetableof",
-        "iamtakingeveryclasswith", "itakeeveryclasswith", "iamtakingallclasseswith",
-        "itakeallclasseswith", "takingeveryclasswith", "takingallclasseswith",
-    )
     home_suffixes = ("student", "timetable", "schedule", "classes", "classload", "courseload", "base")
     base_sections: List[str] = []
     base_mentions = set()
     for mention in section_mentions:
         before = compact_query[max(0, int(mention["start"]) - 32):int(mention["start"])]
         after = compact_query[int(mention["end"]):int(mention["end"]) + 16]
-        if any(before.endswith(marker) for marker in home_prefixes) or any(
+        if any(before.endswith(marker) for marker in HOME_SECTION_PREFIXES) or any(
             after.startswith(marker) for marker in home_suffixes
         ):
             value = str(mention["value"])
@@ -711,10 +706,6 @@ def _additive_selection_scope(
                 base_sections.append(value)
             base_mentions.add((mention["start"], mention["end"], mention["value"]))
 
-    connector_words = {
-        "", "with", "from", "in", "at", "for", "of", "under", "section",
-        "fromsection", "insection", "withsection", "offeredby",
-    }
     qualifier_words = {
         "theory": "theory",
         "lab": "lab",
@@ -734,7 +725,7 @@ def _additive_selection_scope(
                 if class_type not in selected_types:
                     selected_types.append(class_type)
         remaining = remaining.replace("classes", "").replace("class", "")
-        return remaining in connector_words, selected_types
+        return remaining in COURSE_SECTION_CONNECTORS, selected_types
 
     candidates = []
     for section_index, section in enumerate(section_mentions):
