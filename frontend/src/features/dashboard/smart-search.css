@@ -776,26 +776,27 @@ html[data-theme='dark'] .smart-search__answer-header {
 }
 
 .smart-search__answer-header > button.smart-search__show-result {
-  width: 58px;
-  min-width: 58px;
-  height: 34px;
-  padding: 0 10px;
-  border: 1px solid color-mix(in srgb, #3b82f6 22%, var(--border));
-  background: color-mix(in srgb, #3b82f6 5%, var(--surface));
+  width: auto;
+  min-width: 52px;
+  height: 100%;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--text-secondary);
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
-  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
+  transition: color 140ms ease;
 }
 
 .smart-search__answer-header > button.smart-search__show-result:hover {
-  border-color: color-mix(in srgb, #3b82f6 42%, var(--border));
-  background: color-mix(in srgb, #3b82f6 11%, var(--surface));
+  background: transparent;
+  color: var(--text-primary);
 }
 
 .smart-search__answer-header > button.smart-search__show-result:active {
-  transform: scale(.96);
+  color: #2563eb;
 }
 
 .smart-search__answer-header svg {
