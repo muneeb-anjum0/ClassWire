@@ -12,7 +12,7 @@ from typing import Dict, List, Tuple
 from zoneinfo import ZoneInfo
 
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-PARSER_VERSION = 15
+PARSER_VERSION = 16
 DAY_ALIASES = {
     "Monday": ("mon", "mond"),
     "Tuesday": ("tue", "tues", "tuesd"),
@@ -31,6 +31,11 @@ NOISE = {
     "next", "this", "following", "today", "tomorrow", "yesterday", "all", "every", "my",
     "is", "are", "was", "were", "be", "in", "on", "at", "for", "show", "find", "give", "tell",
     "me", "the", "a", "an", "of", "and", "or", "to", "from", "with", "without", "please",
+    "take", "takes", "taking", "took", "want", "wants", "wanted", "add", "adds", "adding",
+    "include", "includes", "including", "enroll", "enrolled", "enrolling", "belong", "belongs",
+    "keep", "use", "using", "skip", "remove", "attend", "attends", "attending", "register",
+    "registered", "registering", "choose", "chooses", "choosing", "select", "selects", "selecting",
+    "faculty", "teacher", "professor", "instructor", "lecturer", "teach", "teaches", "teaching", "taught",
     "theory", "lab", "labs", "laboratory", "laboratories", "fyp", "final", "year", "project", "sir", "madam",
     "maam", "mam",
     "credit", "credits", "hour", "hours", "hr", "hrs", "ch",
@@ -343,7 +348,27 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
         best_matches = [value for score, value in scored_sections if score == best_score]
         if best_score >= 0.86 and len(best_matches) == 1:
             matched_sections.append(best_matches[0])
-    explicitly_named_faculty = [value for value in faculty if normalize(value) and normalize(value) in compact_query]
+    matched_codes = [value for value in codes if normalize(value) and normalize(value) in compact_query]
+    explicitly_named_courses = [
+        value for value in courses
+        if len(normalize(value)) >= 3 and normalize(value) in compact_query
+    ]
+    explicitly_named_courses = [
+        value for value in explicitly_named_courses
+        if not any(
+            normalize(value) != normalize(other) and normalize(value) in normalize(other)
+            for other in explicitly_named_courses
+        )
+    ]
+
+    def explicitly_names_faculty(value: str) -> bool:
+        name_tokens = [token for token in _name_words(value) if token]
+        raw_tokens = words(value)
+        if len(name_tokens) == 1 and len(raw_tokens) == 1:
+            return normalize(name_tokens[0]) in {normalize(token) for token in query_words}
+        return bool(normalize(value) and normalize(value) in compact_query)
+
+    explicitly_named_faculty = [value for value in faculty if explicitly_names_faculty(value)]
     explicitly_named_faculty = [
         value for value in explicitly_named_faculty
         if not any(
@@ -363,6 +388,16 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
         and word not in HONORIFICS
         and not any(_similar(word, day.lower()) >= 0.78 for day in DAYS)
     ]
+    grounded_non_faculty_tokens = {
+        normalize(token)
+        for value in matched_sections + matched_codes + explicitly_named_courses
+        for token in (*words(value), normalize(value))
+        if token
+    }
+    faculty_query_sequence = [
+        word for word in meaningful_query_sequence
+        if normalize(word) not in grounded_non_faculty_tokens
+    ]
 
     def partial_name_position(value: str) -> int | None:
         name_sequence = [word for word in _name_words(value) if len(word) >= 3 and word not in NOISE]
@@ -371,8 +406,8 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
         for fragment_length in range(len(name_sequence) - 1, 1, -1):
             for name_index in range(len(name_sequence) - fragment_length + 1):
                 fragment = name_sequence[name_index:name_index + fragment_length]
-                for query_index in range(len(meaningful_query_sequence) - fragment_length + 1):
-                    if meaningful_query_sequence[query_index:query_index + fragment_length] == fragment:
+                for query_index in range(len(faculty_query_sequence) - fragment_length + 1):
+                    if faculty_query_sequence[query_index:query_index + fragment_length] == fragment:
                         return query_index
         return None
 
@@ -392,58 +427,55 @@ def find_entities(query: str, items: List[Dict]) -> Dict[str, List[str]]:
     named_faculty = list(dict.fromkeys(
         explicitly_named_faculty + [value for _, value in sorted(partially_named_faculty)]
     ))
-    query_word_positions = {word: index for index, word in enumerate(meaningful_query_sequence)}
+    query_word_positions = {word: index for index, word in enumerate(faculty_query_sequence)}
     named_faculty.sort(key=lambda value: min(
         (query_word_positions[word] for word in _name_words(value) if word in query_word_positions),
-        default=len(meaningful_query_sequence),
+        default=len(faculty_query_sequence),
     ))
-    matched_codes = [value for value in codes if normalize(value) and normalize(value) in compact_query]
-    explicitly_named_courses = [
-        value for value in courses
-        if len(normalize(value)) >= 3 and normalize(value) in compact_query
-    ]
-    explicitly_named_courses = [
-        value for value in explicitly_named_courses
-        if not any(
-            normalize(value) != normalize(other) and normalize(value) in normalize(other)
-            for other in explicitly_named_courses
-        )
-    ]
 
     meaningful_query_words = set(meaningful_query_sequence)
     meaningful_query_compact = "".join(meaningful_query_sequence)
-    faculty_intent = bool(re.search(
-        r"\b(?:free|available|availability|open|faculty|teacher|professor|sir|madam|maam|mam|miss|ms|mr|dr|class|classes|meet)\b|\bwhen\s+(?:does|is)\b",
-        query.lower(),
-    ))
+    faculty_query_words = set(faculty_query_sequence)
+    faculty_query_compact = "".join(faculty_query_sequence)
     matched_faculty = list(named_faculty)
-    if not matched_faculty:
+    if not matched_faculty and faculty_query_words:
         faculty_scores = []
         for value in faculty:
             name_words = [word for word in _name_words(value) if len(word) >= 3 and word not in NOISE]
-            overlap = sum(1 for word in name_words if word in meaningful_query_words)
+            overlap = sum(1 for word in name_words if word in faculty_query_words)
             if not name_words:
                 continue
             similarities = [
-                max((_similar(name_word, query_word) for query_word in meaningful_query_words), default=0)
+                max((_similar(name_word, query_word) for query_word in faculty_query_words), default=0)
                 for name_word in name_words
             ]
             covered = [similarity for similarity in similarities if similarity >= 0.72]
-            if len(meaningful_query_words) == 1:
+            if len(faculty_query_words) == 1:
                 score = max(covered, default=0)
             else:
                 score = (10 * len(covered) / len(name_words)) + (sum(covered) / len(name_words)) if covered else 0
             compact_name = "".join(name_words)
-            if meaningful_query_compact and len(meaningful_query_compact) >= max(6, int(len(compact_name) * 0.7)):
-                compact_similarity = _similar(compact_name, meaningful_query_compact)
+            compact_name_evidence = False
+            if faculty_query_compact and len(faculty_query_compact) >= max(6, int(len(compact_name) * 0.7)):
+                compact_similarity = _similar(compact_name, faculty_query_compact)
                 if compact_similarity >= 0.78:
                     score = max(score, compact_similarity * 20)
+                    compact_name_evidence = True
+            strong_name_evidence = bool(
+                overlap
+                or len(covered) >= 2
+                or compact_name_evidence
+                or (
+                    len(faculty_query_words) == 1
+                    and max(covered, default=0) >= 0.78
+                )
+            )
+            if not strong_name_evidence:
+                score = 0
             if score > 0:
                 faculty_scores.append((score, overlap, value))
         best_faculty_score = max((score for score, _, _ in faculty_scores), default=0)
         matched_faculty = [value for score, _, value in faculty_scores if score == best_faculty_score]
-        if not faculty_intent and len(meaningful_query_words) > 1:
-            matched_faculty = []
 
     matched_courses = list(explicitly_named_courses)
     resolved_context_tokens = {

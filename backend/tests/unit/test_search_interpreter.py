@@ -81,7 +81,7 @@ def test_short_honorific_name_is_not_renamed_or_merged_with_full_name():
         {"schedule_day": "Monday", "semester_display": "BSSE 8B", "course_title": "Data Science", "faculty": "Muhammad Qasim", "time": "02:00 PM - 03:30 PM"},
     ]
     exact = search_timetable("When is Muhammad Qasim free on Monday?", items)
-    assert exact["parser_version"] == 15
+    assert exact["parser_version"] == 16
     assert exact["entities"]["faculty"] == ["Muhammad Qasim"]
     assert {item["faculty"] for item in exact["items"]} == {"Muhammad Qasim"}
 
@@ -620,6 +620,119 @@ def test_course_type_qualifier_is_bound_to_its_course_section_pair_only():
         "unpaired_codes": [],
         "global_class_types": [],
     }
+
+
+def test_schedule_grammar_cannot_be_fuzzy_matched_as_a_faculty_name():
+    items = [
+        *CUSTOM_SCHEDULE_ITEMS,
+        {
+            "schedule_day": "Thursday",
+            "semester_display": "BBA-4A",
+            "course_code": "FIN 4401",
+            "course_title": "Banking Operations",
+            "course": "FIN 4401 Banking Operations (3,0)",
+            "faculty": "Banking Asma Arshad",
+            "time": "11:00 AM - 12:30 PM",
+        },
+    ]
+    queries = [
+        "im taking classes with BSSE7A and taking Software Construction and Development "
+        "theory with BSSE5B and Software Quality Engineering and testing with BSSE6A",
+        "I take classes with BSSE7A, add Software Construction and Development theory "
+        "from BSSE5B, and include Software Quality Engineering and Testing from BSSE6A",
+        "Use BSSE7A as my schedule plus Software Construction and Development theory "
+        "with BSSE5B and Software Quality Engineering and Testing with BSSE6A",
+    ]
+
+    for query in queries:
+        result = search_timetable(query, items)
+
+        assert result["entities"]["faculty"] == [], query
+        assert [
+            (item["semester_display"], item["course_code"])
+            for item in result["items"]
+        ] == [
+            ("BS(SE)-7A", "SEC 7001"),
+            ("BS(SE)-7A", "SEC 7002"),
+            ("BS(SE)-5B", "SEC 3604"),
+            ("BS(SE)-6A", "SEC 3608"),
+        ], query
+        assert result["query_plan"]["selection_scope"]["course_section_pairs"] == [
+            {
+                "section": "BS(SE)-5B",
+                "kind": "course",
+                "value": "Software Construction and Development",
+                "class_types": ["theory"],
+            },
+            {
+                "section": "BS(SE)-6A",
+                "kind": "course",
+                "value": "Software Quality Engineering and Testing",
+                "class_types": [],
+            },
+        ], query
+
+
+def test_explicit_faculty_language_still_allows_typo_tolerant_matching_with_a_course():
+    items = [
+        {
+            "schedule_day": "Monday",
+            "semester_display": "BS(SE)-5B",
+            "course_code": "CSC 3209",
+            "course_title": "Computer Networks",
+            "course": "CSC 3209 Computer Networks (2,0)",
+            "faculty": "Zainab Iftikhar Chaudhary",
+            "time": "02:00 PM - 03:00 PM",
+        },
+        {
+            "schedule_day": "Wednesday",
+            "semester_display": "BS(SE)-5B",
+            "course_code": "CSC 3209",
+            "course_title": "Computer Networks",
+            "course": "CSC 3209 Computer Networks (2,0)",
+            "faculty": "Someone Else",
+            "time": "05:00 PM - 06:00 PM",
+        },
+    ]
+
+    result = search_timetable(
+        "Show Computer Networks classes taught by Zainub Iftikhar",
+        items,
+    )
+
+    assert result["entities"]["faculty"] == ["Zainab Iftikhar Chaudhary"]
+    assert [item["faculty"] for item in result["items"]] == ["Zainab Iftikhar Chaudhary"]
+
+
+def test_short_faculty_names_do_not_match_inside_course_words():
+    items = [
+        {
+            "schedule_day": "Monday",
+            "semester_display": "BS(SE)-6A",
+            "course_code": "SEC 3608",
+            "course_title": "Software Quality Engineering and Testing",
+            "course": "SEC 3608 Software Quality Engineering and Testing (3,0)",
+            "faculty": "Arfa Asaf",
+            "time": "02:00 PM - 03:30 PM",
+        },
+        {
+            "schedule_day": "Tuesday",
+            "semester_display": "BBA-2A",
+            "course_code": "MKT 2101",
+            "course_title": "Marketing",
+            "course": "MKT 2101 Marketing (3,0)",
+            "faculty": "Ali",
+            "time": "11:00 AM - 12:30 PM",
+        },
+    ]
+
+    result = search_timetable(
+        "Show Software Quality Engineering and Testing classes",
+        items,
+    )
+
+    assert result["entities"]["faculty"] == []
+    assert [item["course_code"] for item in result["items"]] == ["SEC 3608"]
 
 
 def test_section_and_course_without_additive_language_remains_an_intersection():
