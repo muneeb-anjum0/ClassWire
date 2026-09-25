@@ -81,7 +81,7 @@ def test_short_honorific_name_is_not_renamed_or_merged_with_full_name():
         {"schedule_day": "Monday", "semester_display": "BSSE 8B", "course_title": "Data Science", "faculty": "Muhammad Qasim", "time": "02:00 PM - 03:30 PM"},
     ]
     exact = search_timetable("When is Muhammad Qasim free on Monday?", items)
-    assert exact["parser_version"] == 16
+    assert exact["parser_version"] == 17
     assert exact["entities"]["faculty"] == ["Muhammad Qasim"]
     assert {item["faculty"] for item in exact["items"]} == {"Muhammad Qasim"}
 
@@ -634,6 +634,15 @@ def test_schedule_grammar_cannot_be_fuzzy_matched_as_a_faculty_name():
             "faculty": "Banking Asma Arshad",
             "time": "11:00 AM - 12:30 PM",
         },
+        {
+            "schedule_day": "Friday",
+            "semester_display": "BBA-4B",
+            "course_code": "MGT 4402",
+            "course_title": "Organizational Leadership",
+            "course": "MGT 4402 Organizational Leadership (3,0)",
+            "faculty": "Adding Wanda Selected",
+            "time": "12:30 PM - 02:00 PM",
+        },
     ]
     queries = [
         "im taking classes with BSSE7A and taking Software Construction and Development "
@@ -642,6 +651,12 @@ def test_schedule_grammar_cannot_be_fuzzy_matched_as_a_faculty_name():
         "from BSSE5B, and include Software Quality Engineering and Testing from BSSE6A",
         "Use BSSE7A as my schedule plus Software Construction and Development theory "
         "with BSSE5B and Software Quality Engineering and Testing with BSSE6A",
+        "I am currently in BSSE7A; register for Software Construction and Development theory "
+        "via BSSE5B, then enroll in Software Quality Engineering and Testing under BSSE6A",
+        "BSSE7A is my base. Retain Software Construction and Development theory offered by "
+        "BSSE5B alongside Software Quality Engineering and Testing conducted by BSSE6A",
+        "I belong to BSSE7A and selected Software Construction and Development theory from "
+        "BSSE5B together with Software Quality Engineering and Testing from BSSE6A",
     ]
 
     for query in queries:
@@ -702,6 +717,28 @@ def test_explicit_faculty_language_still_allows_typo_tolerant_matching_with_a_co
 
     assert result["entities"]["faculty"] == ["Zainab Iftikhar Chaudhary"]
     assert [item["faculty"] for item in result["items"]] == ["Zainab Iftikhar Chaudhary"]
+
+
+def test_faculty_names_that_overlap_grammar_words_still_match_when_explicit():
+    items = [
+        {
+            "schedule_day": "Monday",
+            "course_title": "Technical Writing",
+            "faculty": "Will Register",
+            "time": "08:00 AM - 09:30 AM",
+        },
+        {
+            "schedule_day": "Tuesday",
+            "course_title": "Communication Skills",
+            "faculty": "Someone Else",
+            "time": "09:30 AM - 11:00 AM",
+        },
+    ]
+
+    result = search_timetable("When is Will Register free?", items)
+
+    assert result["entities"]["faculty"] == ["Will Register"]
+    assert [item["faculty"] for item in result["items"]] == ["Will Register"]
 
 
 def test_short_faculty_names_do_not_match_inside_course_words():
