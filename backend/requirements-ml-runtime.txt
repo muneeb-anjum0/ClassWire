@@ -1,4 +1,4 @@
 # ClassWire Tiny NLU inference runtime. Training dependencies remain excluded.
 onnxruntime>=1.26.0,<2.0
 tokenizers>=0.22.0,<1.0
-numpy>=1.26,<3.0
+numpy>=2.5.3,<3.0
