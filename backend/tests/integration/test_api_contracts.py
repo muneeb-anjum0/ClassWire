@@ -2,7 +2,7 @@
 
 import json
 import gzip
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -86,6 +86,7 @@ class TestBootstrapEndpoint:
         mock_store.get_bootstrap_data.return_value = {
             'timetable': {'items': [], 'for_day': 'Entire Week'},
             'last_update': '2026-09-22T10:00:00Z',
+            'search_history': ['BSSE7A on Monday'],
         }
         response = client.get('/api/bootstrap', headers={'X-User-Email': mock_user['email']})
         assert response.status_code == 200
@@ -94,6 +95,29 @@ class TestBootstrapEndpoint:
         assert data['authenticated'] is True
         assert 'config' not in data
         assert data['timetable']['for_day'] == 'Entire Week'
+        assert data['search_history'] == ['BSSE7A on Monday']
+
+    def test_account_search_history_can_be_read_and_replaced(self, client, mock_store, mock_user):
+        mock_store.get_or_create_user.return_value = mock_user
+        mock_store.get_search_history.return_value = ['When is Wahab free?']
+        mock_store.save_search_history.return_value = ['BSSE7A Monday', 'When is Wahab free?']
+
+        read_response = client.get(
+            '/api/search-history',
+            headers={'X-User-Email': mock_user['email']},
+        )
+        write_response = client.put(
+            '/api/search-history',
+            json={'searches': ['BSSE7A Monday', 'When is Wahab free?']},
+            headers={'X-User-Email': mock_user['email']},
+        )
+
+        assert read_response.get_json()['searches'] == ['When is Wahab free?']
+        assert write_response.get_json()['searches'] == ['BSSE7A Monday', 'When is Wahab free?']
+        mock_store.save_search_history.assert_called_once_with(
+            mock_user['id'],
+            ['BSSE7A Monday', 'When is Wahab free?'],
+        )
 
     def test_metrics_require_automation_secret(self, client):
         response = client.get('/api/metrics')
@@ -316,7 +340,11 @@ class TestSearchEndpoint:
                 'time': '02:00 PM - 03:30 PM',
             }],
             'for_day': 'Entire Week',
+            'parser_version': 2,
             'summary': {},
+            'refreshed_at_by_day': {
+                'Monday': datetime.now(timezone.utc).isoformat(),
+            },
         }
         mock_store.get_or_create_user.return_value = user
         mock_store.get_search_source_cache.return_value = source
@@ -403,7 +431,7 @@ class TestSearchEndpoint:
         source = {'items': [item], 'for_day': 'Entire Week', 'summary': {}}
         mock_store.get_or_create_user.return_value = user
         mock_store.get_user_settings.return_value = {}
-        mock_store.get_search_source_cache.side_effect = [None, source]
+        mock_store.get_search_source_cache.return_value = source
         mock_store.save_timetable_cache.return_value = True
         mock_run_once.return_value = {'success': False, 'error': 'Stored OAuth credentials could not be decrypted'}
 

@@ -36,6 +36,30 @@ test('recent searches can be reopened and removed', async () => {
   expect(localStorage.getItem('classwire:v3:recent-searches:student@example.com')).toBe('[]');
 });
 
+test('account history is merged with legacy device history and synced back', async () => {
+  localStorage.setItem(
+    'classwire:v3:recent-searches:student@example.com',
+    JSON.stringify(['Device-only search']),
+  );
+  const onSearchHistoryChange = vi.fn();
+
+  render(
+    <SmartSearch
+      {...baseProps}
+      data={null}
+      accountRecentSearches={['Account search']}
+      onSearchHistoryChange={onSearchHistoryChange}
+    />,
+  );
+
+  expect(await screen.findByText('Account search')).toBeInTheDocument();
+  expect(screen.getByText('Device-only search')).toBeInTheDocument();
+  expect(onSearchHistoryChange).toHaveBeenCalledWith([
+    'Account search',
+    'Device-only search',
+  ]);
+});
+
 test('a search answer can be hidden and restored without removing its data', async () => {
   const data = {
     for_day: 'Entire Week',

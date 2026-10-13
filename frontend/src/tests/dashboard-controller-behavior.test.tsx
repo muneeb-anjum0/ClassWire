@@ -5,6 +5,7 @@ import { TimetableData } from '../types/api';
 const apiMocks = vi.hoisted(() => ({
   getLatestTimetable: vi.fn(),
   initialize: vi.fn(),
+  saveSearchHistory: vi.fn(),
   searchTimetable: vi.fn(),
 }));
 
@@ -28,7 +29,7 @@ const makeSearchData = (query: string, answer: string, items: TimetableData['ite
     unique_faculty: 0,
   },
   search: {
-    parser_version: 15,
+    parser_version: 17,
     query,
     answer,
     intent: 'schedule',
@@ -36,6 +37,7 @@ const makeSearchData = (query: string, answer: string, items: TimetableData['ite
     entities: {},
     free_slots: {},
     recognized: items.length > 0,
+    saved_at: new Date().toISOString(),
   },
 });
 
@@ -95,7 +97,10 @@ test('a user search supersedes a slower background result restore', async () => 
   await waitFor(() => expect(result.current.timetableData?.search?.query).toBe(query));
   expect(result.current.timetableData?.items).toHaveLength(1);
 
-  act(() => result.current.clearSmartSearch());
+  await act(async () => {
+    result.current.clearSmartSearch();
+    await Promise.resolve();
+  });
   expect(result.current.searchQuery).toBe('');
   expect(result.current.timetableData).toBeNull();
 });
@@ -132,4 +137,46 @@ test('cached results render before session verification and survive a failed ref
   await waitFor(() => expect(apiMocks.getLatestTimetable).toHaveBeenCalledTimes(2));
   expect(result.current.timetableData?.search?.query).toBe(cachedQuery);
   expect(result.current.timetableData?.items).toHaveLength(1);
+});
+
+test('an exact repeated query renders from the device cache without a second API search', async () => {
+  const query = 'Unique BSSE7A timetable cache check';
+  const resultData = makeSearchData(query, 'Found one class.', [{
+    semester: 'BS(SE)-7A',
+    course_title: 'Software Project Management',
+    schedule_day: 'Monday',
+  }]);
+  apiMocks.getLatestTimetable.mockResolvedValue({ success: true, data: null });
+  apiMocks.searchTimetable.mockResolvedValue({
+    success: true,
+    data: resultData,
+    message: resultData.search?.answer,
+  });
+
+  const { result } = renderHook(() => useDashboardController({
+    bootstrap: null,
+    deleteAccount: vi.fn(),
+    isAuthenticated: true,
+    loading: false,
+    logout: vi.fn(),
+    user: { id: 'repeat-cache-user', email: 'repeat-cache@example.com' },
+  }));
+
+  await waitFor(() => expect(apiMocks.getLatestTimetable).toHaveBeenCalledOnce());
+  await act(async () => {
+    await result.current.runSmartSearch(query);
+  });
+  await waitFor(() => expect(result.current.timetableData?.search?.query).toBe(query));
+  await waitFor(() => expect(result.current.isScraperRunning).toBe(false));
+  await act(async () => {
+    result.current.clearSmartSearch();
+    await Promise.resolve();
+  });
+  await waitFor(() => expect(result.current.timetableData).toBeNull());
+  await act(async () => {
+    await result.current.runSmartSearch(query);
+  });
+
+  expect(apiMocks.searchTimetable).toHaveBeenCalledTimes(1);
+  expect(result.current.timetableData?.search?.query).toBe(query);
 });

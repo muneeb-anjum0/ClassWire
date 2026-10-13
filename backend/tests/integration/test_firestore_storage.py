@@ -7,8 +7,34 @@ from database.firestore_store import (
     _cache_content_hash,
     _decode_json_payload,
     _encode_json_payload,
+    _normalize_search_history,
 )
 
+
+def test_search_history_is_compact_deduplicated_and_account_safe():
+    searches = ["  BSSE7A   Monday ", "bsse7a monday", "When is Wahab free?"] + [
+        f"Query {index}" for index in range(20)
+    ]
+    assert _normalize_search_history(searches) == [
+        "BSSE7A Monday",
+        "When is Wahab free?",
+        "Query 0",
+        "Query 1",
+        "Query 2",
+        "Query 3",
+        "Query 4",
+        "Query 5",
+    ]
+
+
+def test_unchanged_search_history_does_not_create_another_firestore_write():
+    store = FirestoreStore.__new__(FirestoreStore)
+    store.search_history = Mock()
+    store._search_history_cache = TTLCache(ttl_seconds=300, max_entries=4)
+    store._search_history_cache.set("student", ["BSSE7A Monday"])
+
+    assert store.save_search_history("student", ["  BSSE7A Monday  "]) == ["BSSE7A Monday"]
+    store.search_history.document.assert_not_called()
 
 def test_firestore_payload_round_trip_is_compact_and_lossless():
     payload = {

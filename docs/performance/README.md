@@ -7,7 +7,7 @@ ClassWire is optimized for the limits that dominate its workload: Render cold st
 | Measurement | Current baseline |
 | --- | ---: |
 | Backend application import | Approximately **0.19 seconds** |
-| Initial frontend JavaScript | **202.0 kB**, **64.4 kB gzip** |
+| Initial frontend JavaScript | **203.2 kB**, **64.8 kB gzip** |
 | Previous initial JavaScript | **300.9 kB**, **96.7 kB gzip** |
 | Initial schedule render window | **60 rows** |
 | Semantic search planning | **1.17 ms mean**, **2.73 ms p95** across 2,000 warm local fixture queries |
@@ -42,13 +42,14 @@ Render free-tier suspension can still add provider-controlled delay. Application
 
 ```text
 React state
+  -> exact-query IndexedDB cache
   -> repeated-query process cache
   -> normalized source memory cache
   -> compressed Firestore source
-  -> Gmail refresh only when required
+  -> Gmail refresh only for stale requested weekdays
 ```
 
-Normal searches operate on already-normalized rows and do not call Gmail. Repeating the same query against the same source uses a parser-versioned result cache. User and source identity are part of the cache boundary.
+Normal searches operate on already-normalized rows and do not call Gmail. Each requested weekday has an exact seven-day freshness boundary. Repeating the same query on one device can bypass Render entirely through an account-scoped IndexedDB entry; a different device reaches the API but still uses the Firestore source without Gmail. User, parser, source, and query identity remain part of the cache boundaries.
 
 ### Optional semantic inference
 
@@ -81,6 +82,7 @@ are purged on writes and inspection instead of retaining stale object graphs.
 ## Gmail efficiency
 
 - Latest message metadata is batched across weekdays.
+- Only requested weekdays that reached their seven-day boundary are queried.
 - Weekday message IDs allow unchanged parsed rows to be reused.
 - Only changed weekday bodies are downloaded.
 - Failed batch parts are retried without repeating successful parts.
@@ -101,7 +103,7 @@ are purged on writes and inspection instead of retaining stale object graphs.
 
 ## Browser persistence
 
-Large authenticated results are stored in IndexedDB rather than synchronous `localStorage`. The connection is reused, existing local entries migrate forward, and an unavailable IndexedDB implementation falls back without breaking the application.
+Large authenticated results are stored in IndexedDB rather than synchronous `localStorage`. The connection is reused, exact query results follow server-provided per-weekday expiry times, existing local entries migrate forward, and an unavailable IndexedDB implementation falls back without breaking the application. Recent search labels are stored separately in Firestore so they follow the account across devices.
 
 React state keeps the current answer visible while a tab remains open. Failed background refreshes do not replace it with an empty state. Request ordering prevents a late older response from overwriting a newer search.
 
@@ -131,6 +133,9 @@ Large JSON responses are gzip-compressed only when the browser supports compress
 | Every refresh reparsing every day | Per-weekday message IDs and incremental fetch |
 | Gmail throttling and transient failure | Timeouts, bounded backoff, jitter, and partial retry |
 | Search reaching Gmail repeatedly | Durable normalized source separated from displayed result |
+| Same-day searches after Render sleeps | Seven-day per-weekday Firestore source reuse |
+| Exact repeated browser search | IndexedDB answer reuse without a backend request |
+| Device-local recent history | Compact account-scoped Firestore search history |
 | Identical search recomputation | Bounded parser-versioned result cache |
 | Search-time Firestore writes | Browser result persistence and server-side source persistence |
 | Repeated document reads | Service-specific memory TTL caches |

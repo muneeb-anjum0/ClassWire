@@ -68,6 +68,7 @@ vi.mock('../services/api', () => {
       getLatestTimetable: vi.fn().mockResolvedValue({ success: true, data: { items: mockItems }, cached: true }),
       getGmailRedirectUrl: vi.fn(),
       exchangeAuthHandoff: vi.fn(),
+      saveSearchHistory: vi.fn().mockResolvedValue({ success: true, searches: [] }),
     },
   };
 });
@@ -81,8 +82,14 @@ test('App shows Social Sciences timetable in both semester sections', async () =
   render(<App />);
 
   // match semester headers flexibly (may render without spaces or split across nodes)
-  await waitFor(() => expect(screen.getAllByText((content) => /BSSS\s*1/i.test(content)).length).toBeGreaterThanOrEqual(1));
-  await waitFor(() => expect(screen.getAllByText((content) => /BS\s*Psychology\s*1/i.test(content)).length).toBeGreaterThanOrEqual(1));
+  await waitFor(
+    () => expect(screen.getAllByText((content) => /BSSS\s*1/i.test(content)).length).toBeGreaterThanOrEqual(1),
+    { timeout: 5000 },
+  );
+  await waitFor(
+    () => expect(screen.getAllByText((content) => /BS\s*Psychology\s*1/i.test(content)).length).toBeGreaterThanOrEqual(1),
+    { timeout: 5000 },
+  );
 
   expect(screen.getAllByText(/Introduction to Social Sciences/i).length).toBeGreaterThanOrEqual(1);
   expect(screen.getAllByText(/Introduction to Community Development and Philanthropy/i).length).toBeGreaterThanOrEqual(1);

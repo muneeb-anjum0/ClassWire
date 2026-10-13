@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiService, getApiErrorMessage } from '../../services/api';
 import {
   deleteTimetableCache,
   readTimetableCache,
+  readSearchResultCache,
   writeTimetableCache,
 } from '../../services/timetableCache';
 import { TimetableData } from '../../types/api';
@@ -12,7 +13,7 @@ import { useDashboardStatusToast } from './useDashboardStatusToast';
 import { useDashboardUiState } from './useDashboardUiState';
 import { expandSocialSciencesSemesterItems, isSzabistIslamabadEmail } from './utils';
 
-const SEARCH_PARSER_VERSION = 15;
+const SEARCH_PARSER_VERSION = 17;
 
 export const useDashboardController = ({
   bootstrap: authBootstrap,
@@ -31,8 +32,21 @@ export const useDashboardController = ({
   const [searchQuery, setSearchQuery] = useState('');
   const hydratedUser = useRef<string | null>(null);
   const bootstrappedUser = useRef<string | null>(null);
+  const historySyncQueue = useRef<Promise<unknown>>(Promise.resolve());
   const dataRequestSequence = useRef(0);
   const searchInFlight = useRef(false);
+  const accountRecentSearches = useMemo(
+    () => authBootstrap?.search_history || [],
+    [authBootstrap?.search_history],
+  );
+
+  const syncSearchHistory = useCallback(async (searches: string[]) => {
+    if (!isAuthenticated) return;
+    historySyncQueue.current = historySyncQueue.current
+      .catch(() => undefined)
+      .then(() => apiService.saveSearchHistory(searches));
+    await historySyncQueue.current;
+  }, [isAuthenticated]);
 
   const filteredItems = useMemo(
     () => expandSocialSciencesSemesterItems(timetableData?.items || []),
@@ -127,6 +141,17 @@ export const useDashboardController = ({
     searchInFlight.current = true;
     try {
       setSearchQuery(cleaned);
+      const forceRefresh = /\b(?:refresh|latest|update)\b/i.test(cleaned);
+      if (!forceRefresh) {
+        const cachedResult = await readSearchResultCache(user?.email, cleaned);
+        if (
+          cachedResult?.search?.parser_version === SEARCH_PARSER_VERSION
+          && cachedResult.search.query?.trim().toLocaleLowerCase() === cleaned.toLocaleLowerCase()
+        ) {
+          applySuccessfulTimetable(cachedResult, 'Loaded instantly from this device', false);
+          return;
+        }
+      }
       setTimetableData(null);
       setIsScraperRunning(true);
       setOperationInProgress(true);
@@ -162,7 +187,7 @@ export const useDashboardController = ({
     dataRequestSequence.current += 1;
     setSearchQuery('');
     setTimetableData(null);
-    void deleteTimetableCache(user?.email);
+    void deleteTimetableCache(user?.email, false);
     statusToast.setStatus('idle');
     statusToast.setMessage('');
   };
@@ -215,6 +240,7 @@ export const useDashboardController = ({
 
   return {
     accountDomainWarning,
+    accountRecentSearches,
     cancelLogoutConfirm: ui.cancelLogoutConfirm,
     clearSmartSearch,
     deleteAccount: handleDeleteAccount,
@@ -227,6 +253,7 @@ export const useDashboardController = ({
     logoutConfirmArmed: ui.logoutConfirmArmed,
     message: statusToast.message,
     runSmartSearch,
+    syncSearchHistory,
     searchQuery,
     setSearchQuery,
     setTheme: ui.setTheme,

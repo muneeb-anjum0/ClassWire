@@ -43,14 +43,15 @@ flowchart LR
 ## Request lifecycle
 
 1. A cached identity allows the interface shell to paint while the signed server session is checked.
-2. One bootstrap request returns either an explicit guest state or the verified identity, latest timetable, and last-update timestamp.
+2. One bootstrap request returns either an explicit guest state or the verified identity, latest timetable, account search history, and last-update timestamp.
 3. IndexedDB can restore the last successful result before a slow refresh finishes.
-4. Search checks the normalized source in memory, then Firestore, then Gmail only when refresh is required.
-5. Gmail is queried independently for the newest available message for each weekday.
-6. Message IDs determine which weekday sources can be reused and which must be fetched again.
-7. Changed messages are decoded, parsed, normalized, deduplicated, and persisted.
-8. The query planner records intent, days, sections, courses, codes, faculty, credit values, class types, exclusions, base-section roles, and course-section relationships.
-9. The engine applies intersection or union semantics, calculates availability and custom-schedule conflicts, and returns a human-readable answer with exact rows.
+4. An exact repeated browser query checks account-scoped IndexedDB before making a network request.
+5. API search checks the normalized source in memory, then Firestore, then Gmail only for requested weekdays that are seven days old.
+6. Gmail is queried independently for the newest available message for each stale weekday.
+7. Message IDs determine which weekday sources can be reused and which must be fetched again.
+8. Changed messages are decoded, parsed, normalized, deduplicated, compared, and persisted.
+9. The query planner records intent, days, sections, courses, codes, faculty, credit values, class types, exclusions, base-section roles, and course-section relationships.
+10. The engine applies intersection or union semantics, calculates availability and custom-schedule conflicts, and returns a human-readable answer with exact rows.
 
 Production browser requests use a Vercel same-origin `/api` proxy. Google still returns to the registered Render OAuth callback, which creates a random, single-use, two-minute handoff and redirects back through a URL fragment. The frontend exchanges that handoff through its own origin to establish the signed first-party session. This avoids third-party-cookie blocking in private browsing without exposing OAuth credentials to the browser.
 

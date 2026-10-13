@@ -3,6 +3,8 @@ import os
 import sys
 import re
 import time
+import hashlib
+import json
 from datetime import datetime, timedelta
 from typing import Dict, Iterable, Optional
 
@@ -92,6 +94,15 @@ def _items_by_weekday(source: Optional[Dict]) -> Dict[str, list]:
         if day in grouped:
             grouped[day].append(dict(item))
     return grouped
+
+
+def _day_items_signature(items: list) -> str:
+    """Return an order-independent signature for one parsed weekday."""
+    normalized = sorted(
+        json.dumps(item, sort_keys=True, default=str, separators=(",", ":"))
+        for item in items
+    )
+    return hashlib.sha256("\n".join(normalized).encode("utf-8")).hexdigest()
 
 
 def _message_received_at(message: Optional[Dict]) -> Optional[str]:
@@ -198,6 +209,7 @@ def run_once(user_email: str = "me", user_id: Optional[str] = None, user_setting
         timetable_day = user_settings.get('timetable_day', 'Auto') if user_settings else 'Auto'
         should_save_cache = user_settings.get('_save_cache', True) if user_settings else True
         previous_source = user_settings.get('_previous_source') if user_settings else None
+        requested_refresh_days = user_settings.get('_refresh_days') if user_settings else None
         
         local_tz = tz.gettz(timezone)
         now_local = datetime.now(tz=local_tz)
@@ -284,12 +296,17 @@ def run_once(user_email: str = "me", user_id: Optional[str] = None, user_setting
                 )
         if timetable_day == 'Entire Week':
             items = []
-            message_ids = []
+            refresh_days = [
+                day for day in (requested_refresh_days or WEEKDAY_NAMES[:6])
+                if day in WEEKDAY_NAMES[:6]
+            ]
+            if not refresh_days:
+                refresh_days = list(WEEKDAY_NAMES[:6])
             latest_by_day = _latest_messages_by_weekday(
                 service,
                 user_email,
                 gmail_query_base,
-                WEEKDAY_NAMES[:6],
+                refresh_days,
             )
             previous_ids = (previous_source or {}).get("message_ids_by_day") or {}
             previous_items = _items_by_weekday(previous_source)
@@ -312,16 +329,33 @@ def run_once(user_email: str = "me", user_id: Optional[str] = None, user_setting
             ]
             fetched = get_messages_batch(service, user_email, candidate_ids)
             increment("gmail.messages_fetched", len(candidate_ids))
-            message_ids_by_day = {}
-            received_at_by_day = dict((previous_source or {}).get("source_received_at_by_day") or {})
-            parser_diagnostics = {}
+            message_ids_by_day = dict(previous_ids) if can_reuse_previous else {}
+            received_at_by_day = (
+                dict((previous_source or {}).get("source_received_at_by_day") or {})
+                if can_reuse_previous else {}
+            )
+            refreshed_at_by_day = (
+                dict((previous_source or {}).get("refreshed_at_by_day") or {})
+                if can_reuse_previous else {}
+            )
+            parser_diagnostics = (
+                dict((previous_source or {}).get("parser_diagnostics") or {})
+                if can_reuse_previous else {}
+            )
+            content_changed_days = []
 
             for day_name in WEEKDAY_NAMES[:6]:
+                if day_name not in refresh_days:
+                    if can_reuse_previous:
+                        items.extend(previous_items.get(day_name, []))
+                    continue
                 selected = latest_by_day.get(day_name) or {}
                 message_id = selected.get("id")
                 if not message_id:
+                    if can_reuse_previous:
+                        items.extend(previous_items.get(day_name, []))
+                    refreshed_at_by_day[day_name] = now_local.astimezone(tz.UTC).isoformat().replace("+00:00", "Z")
                     continue
-                message_ids.append(message_id)
                 message_ids_by_day[day_name] = message_id
                 if can_reuse_previous and previous_ids.get(day_name) == message_id:
                     day_items = previous_items.get(day_name, [])
@@ -348,20 +382,34 @@ def run_once(user_email: str = "me", user_id: Optional[str] = None, user_setting
                     parser_diagnostics[day_name] = {**diagnostics, "reused": False}
                 for item in day_items:
                     item["schedule_day"] = day_name
+                if _day_items_signature(day_items) != _day_items_signature(previous_items.get(day_name, [])):
+                    content_changed_days.append(day_name)
                 items.extend(day_items)
+                refreshed_at_by_day[day_name] = now_local.astimezone(tz.UTC).isoformat().replace("+00:00", "Z")
 
             items = _compact_items(items)
+            message_ids = [
+                message_ids_by_day[day]
+                for day in WEEKDAY_NAMES[:6]
+                if message_ids_by_day.get(day)
+            ]
             doc = {
                 "for_day": "Entire Week", "for_date": now_local.date().isoformat(),
                 "query": query, "message_id": message_ids[0] if message_ids else None,
                 "message_ids": message_ids, "items": items,
                 "message_ids_by_day": message_ids_by_day,
                 "source_received_at_by_day": received_at_by_day,
+                "refreshed_at_by_day": refreshed_at_by_day,
                 "parser_version": TIMETABLE_PARSER_VERSION,
                 "parser_diagnostics": parser_diagnostics,
                 "refresh": {
                     "changed_days": changed_days,
-                    "reused_days": [day for day in message_ids_by_day if day not in changed_days],
+                    "content_changed_days": content_changed_days,
+                    "reused_days": [
+                        day for day in refresh_days
+                        if message_ids_by_day.get(day) and day not in changed_days
+                    ],
+                    "requested_days": refresh_days,
                     "fetched_messages": len(candidate_ids),
                 },
                 "summary": _summarize(items),

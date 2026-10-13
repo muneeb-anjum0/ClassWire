@@ -5,7 +5,7 @@ ClassWire presents a conversational timetable search rather than a filter-heavy 
 ## Search composer
 
 - A centered empty state transitions into a compact result workspace.
-- Recent searches are stored per user.
+- Recent searches are stored per account in Firestore and mirrored locally, so the same signed-in account sees them across devices.
 - Suggested questions are randomized from the current timetable context.
 - Suggestion history prevents immediate repetition.
 - Individual recent searches and the complete history can be cleared.

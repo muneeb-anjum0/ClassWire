@@ -149,6 +149,53 @@ def test_week_refresh_fetches_and_parses_only_changed_weekdays(monkeypatch):
     assert result["success"] is True
     assert fetched_ids == ["new-mon"]
     assert result["data"]["refresh"] == {
-        "changed_days": ["Monday"], "reused_days": ["Tuesday"], "fetched_messages": 1,
+        "changed_days": ["Monday"],
+        "content_changed_days": ["Monday"],
+        "reused_days": ["Tuesday"],
+        "requested_days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+        "fetched_messages": 1,
     }
     assert {item["course_title"] for item in result["data"]["items"]} == {"New Course", "Reused Course"}
+
+
+def test_targeted_refresh_keeps_other_weekdays_without_querying_them(monkeypatch):
+    from unittest.mock import MagicMock
+
+    previous = {
+        "parser_version": TIMETABLE_PARSER_VERSION,
+        "message_ids_by_day": {"Monday": "same-mon", "Tuesday": "old-tue"},
+        "items": [
+            {"schedule_day": "Monday", "course_title": "Monday Course", "time": "08:00 AM - 09:30 AM"},
+            {"schedule_day": "Tuesday", "course_title": "Tuesday Course", "time": "09:30 AM - 11:00 AM"},
+        ],
+    }
+    fake_store = MagicMock()
+    fake_store.get_user_tokens.return_value = {"token": "token"}
+    monkeypatch.setattr("database.firestore_store.data_store", fake_store)
+    monkeypatch.setattr("scraper.scheduler.build_service", lambda _credentials: object())
+    requested = []
+
+    def fake_latest(_service, _email, _query, days):
+        requested.extend(days)
+        return {"Monday": {"id": "same-mon"}}
+
+    monkeypatch.setattr("scraper.scheduler._latest_messages_by_weekday", fake_latest)
+    monkeypatch.setattr("scraper.scheduler.get_messages_batch", lambda *_args: {})
+
+    result = run_once(
+        user_email="me",
+        user_id="user-1",
+        user_settings={
+            "timetable_day": "Entire Week",
+            "_save_cache": False,
+            "_previous_source": previous,
+            "_refresh_days": ["Monday"],
+        },
+    )
+
+    assert requested == ["Monday"]
+    assert {item["course_title"] for item in result["data"]["items"]} == {
+        "Monday Course", "Tuesday Course",
+    }
+    assert result["data"]["refresh"]["requested_days"] == ["Monday"]
+    assert result["data"]["refresh"]["reused_days"] == ["Monday"]

@@ -186,6 +186,11 @@ export const apiService = {
   logout: async (): Promise<void> => { await request('/api/auth/logout', { method: 'POST' }); },
   searchTimetable: (query: string, forceRefresh = false): Promise<ApiResponse<TimetableData>> =>
     request('/api/search', { method: 'POST', body: { query, force_refresh: forceRefresh } }),
+  saveSearchHistory: (searches: string[]) => request<{
+    success: true;
+    searches: string[];
+    timestamp: string;
+  }>('/api/search-history', { method: 'PUT', body: { searches } }),
   getLatestTimetable: () => request<ApiResponse<TimetableData>>('/api/timetable'),
 };
 

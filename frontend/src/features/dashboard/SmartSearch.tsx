@@ -32,6 +32,8 @@ type Props = {
   loading: boolean;
   data: TimetableData | null;
   userEmail?: string;
+  accountRecentSearches?: string[];
+  onSearchHistoryChange?: (searches: string[]) => void | Promise<unknown>;
   onLogout: () => void;
   onCancelLogout: () => void;
   onDeleteAccount?: () => Promise<void>;
@@ -41,6 +43,9 @@ type Props = {
 };
 
 const WEEKDAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const EMPTY_SEARCH_HISTORY: string[] = [];
+const sameSearchHistory = (left: string[], right: string[]) =>
+  left.length === right.length && left.every((value, index) => value === right[index]);
 
 export default function SmartSearch({
   query,
@@ -50,6 +55,8 @@ export default function SmartSearch({
   loading,
   data,
   userEmail,
+  accountRecentSearches = EMPTY_SEARCH_HISTORY,
+  onSearchHistoryChange,
   onLogout,
   onCancelLogout,
   onDeleteAccount,
@@ -89,19 +96,26 @@ export default function SmartSearch({
     } catch (error) {
       console.warn('Could not save recent timetable searches:', error);
     }
-  }, [recentStorageKey]);
+    void Promise.resolve(onSearchHistoryChange?.(searches)).catch((error) => {
+      console.warn('Could not sync recent timetable searches:', error);
+    });
+  }, [onSearchHistoryChange, recentStorageKey]);
 
   const rememberSearch = useCallback((search: string) => {
     setRecentSearches((current) => {
       const next = addRecentSearch(current, search);
+      if (sameSearchHistory(current, next)) return current;
       try {
         window.localStorage.setItem(recentStorageKey, JSON.stringify(next));
       } catch (error) {
         console.warn('Could not save recent timetable searches:', error);
       }
+      void Promise.resolve(onSearchHistoryChange?.(next)).catch((error) => {
+        console.warn('Could not sync recent timetable searches:', error);
+      });
       return next;
     });
-  }, [recentStorageKey]);
+  }, [onSearchHistoryChange, recentStorageKey]);
 
   const rotateSuggestions = useCallback((historyOverride?: string[]) => {
     let history = historyOverride || suggestionHistoryRef.current;
@@ -166,11 +180,22 @@ export default function SmartSearch({
 
   useEffect(() => {
     try {
-      setRecentSearches(parseRecentSearches(window.localStorage.getItem(recentStorageKey)));
+      const localSearches = parseRecentSearches(window.localStorage.getItem(recentStorageKey));
+      const merged = parseRecentSearches(JSON.stringify([
+        ...accountRecentSearches,
+        ...localSearches,
+      ]));
+      setRecentSearches(merged);
+      window.localStorage.setItem(recentStorageKey, JSON.stringify(merged));
+      if (JSON.stringify(merged) !== JSON.stringify(accountRecentSearches)) {
+        void Promise.resolve(onSearchHistoryChange?.(merged)).catch((error) => {
+          console.warn('Could not migrate recent timetable searches:', error);
+        });
+      }
     } catch {
       setRecentSearches([]);
     }
-  }, [recentStorageKey]);
+  }, [accountRecentSearches, onSearchHistoryChange, recentStorageKey]);
 
   useEffect(() => {
     let storedHistory: string[] = [];

@@ -28,6 +28,8 @@ ClassWire is an independent student project and is not an official SZABIST servi
 - Infers course-section relationships from sentence structure instead of requiring fixed command wording.
 - Detects timetable clashes only for intentionally composed custom schedules.
 - Restores the latest successful result from IndexedDB across visits.
+- Syncs recent searches to the signed-in account across devices.
+- Reuses each parsed weekday for seven days, refreshing and comparing only stale days.
 - Supports optional scheduled daily timetable delivery.
 
 Example questions:
@@ -45,10 +47,10 @@ Take every BSSE7A class except Software Re-Engineering, plus SEC 3604 from BSSE5
 | Area | Result |
 | --- | --- |
 | Backend import | Approximately **0.19 seconds** on the measured development machine |
-| Initial JavaScript | Reduced from **300.9 kB / 96.7 kB gzip** to **202.0 kB / 64.4 kB gzip** |
+| Initial JavaScript | Reduced from **300.9 kB / 96.7 kB gzip** to **203.2 kB / 64.8 kB gzip** |
 | Large-result rendering | Initial work limited to **60 schedule rows**, then expanded progressively |
 | Semantic planning | **1.17 ms mean**, **2.73 ms p95** across 2,000 warm local fixture queries |
-| Automated checks | **219 backend tests + 58 frontend tests = 277 tests** |
+| Automated checks | **247 backend tests + 64 frontend tests = 311 tests** |
 | Measured coverage | **64.2% backend branch-aware coverage**, **73.8% frontend line coverage** |
 | Search architecture | Structural intent inference, inspectable semantic plans, and parser-versioned caching |
 | Optional NLU pipeline | TinyBERT intent and entity training, held-out evaluation, INT8 ONNX export, and CPU gates |
