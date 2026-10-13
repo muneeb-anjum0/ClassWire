@@ -21,6 +21,7 @@ from .defaults import build_default_user_settings
 logger = logging.getLogger(__name__)
 MAX_FIRESTORE_PAYLOAD_BYTES = 900_000
 CACHE_RETENTION_DAYS = 7
+RECENT_SEARCH_LIMIT = 8
 
 
 def _utc_now() -> datetime:
@@ -64,6 +65,23 @@ def _cache_content_hash(cache_data: Dict[str, Any]) -> str:
     return hashlib.sha256(
         json.dumps(stable_payload, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+
+
+def _normalize_search_history(searches: Any) -> List[str]:
+    if not isinstance(searches, list):
+        return []
+    result = []
+    seen = set()
+    for search in searches:
+        value = " ".join(str(search or "").split()).strip()
+        key = value.casefold()
+        if not value or len(value) > 500 or key in seen:
+            continue
+        seen.add(key)
+        result.append(value)
+        if len(result) >= RECENT_SEARCH_LIMIT:
+            break
+    return result
 
 
 def _load_firebase_credentials():
@@ -116,6 +134,7 @@ class FirestoreStore:
         self.settings = self.client.collection("user_settings")
         self.cache = self.client.collection("timetable_cache")
         self.source_cache = self.client.collection("timetable_source_cache")
+        self.search_history = self.client.collection("search_history")
         compact_limit = positive_int_env("CLASSWIRE_COMPACT_CACHE_ENTRIES", 128, maximum=512)
         timetable_limit = positive_int_env("CLASSWIRE_TIMETABLE_CACHE_ENTRIES", 24, maximum=128)
         source_limit = positive_int_env("CLASSWIRE_SOURCE_CACHE_ENTRIES", 24, maximum=128)
@@ -132,10 +151,13 @@ class FirestoreStore:
             ttl_seconds=86400, max_entries=compact_limit
         )
         self._source_cache = TTLCache[str, tuple[Dict[str, Any], datetime]](
-            ttl_seconds=1800, max_entries=source_limit
+            ttl_seconds=7 * 24 * 60 * 60, max_entries=source_limit
         )
         self._source_hashes = TTLCache[str, str](
             ttl_seconds=86400, max_entries=compact_limit
+        )
+        self._search_history_cache = TTLCache[str, List[str]](
+            ttl_seconds=300, max_entries=compact_limit
         )
         self._health_cache = TTLCache[str, bool](ttl_seconds=60, max_entries=1)
         logger.info("Firestore client initialized")
@@ -317,6 +339,7 @@ class FirestoreStore:
             return {
                 "timetable": cached_timetable[0],
                 "last_update": cached_timetable[1] or None,
+                "search_history": self.get_search_history(user_id),
             }
 
         cache_ref = self.cache.document(user_id)
@@ -332,15 +355,54 @@ class FirestoreStore:
             if isinstance(timetable, dict):
                 self._timetable_cache.set(user_id, (timetable, last_update or ""))
                 self._timetable_hashes.set(user_id, _cache_content_hash(timetable))
-        return {"timetable": timetable, "last_update": last_update}
+        return {
+            "timetable": timetable,
+            "last_update": last_update,
+            "search_history": self.get_search_history(user_id),
+        }
+
+    def get_search_history(self, user_id: str) -> List[str]:
+        cached = self._search_history_cache.get(user_id)
+        if cached is not None:
+            increment("cache.search_history.hit")
+            return list(cached)
+        snapshot = self.search_history.document(user_id).get()
+        increment("firestore.read.search_history")
+        searches = _normalize_search_history(
+            (snapshot.to_dict() or {}).get("searches") if snapshot.exists else []
+        )
+        self._search_history_cache.set(user_id, searches)
+        return list(searches)
+
+    def save_search_history(self, user_id: str, searches: Any) -> List[str]:
+        normalized = _normalize_search_history(searches)
+        cached = self._search_history_cache.get(user_id)
+        if cached == normalized:
+            increment("cache.search_history.unchanged")
+            return list(normalized)
+        self.search_history.document(user_id).set({
+            "user_id": user_id,
+            "searches": normalized,
+            "updated_at": _utc_now(),
+        })
+        increment("firestore.write.search_history")
+        self._search_history_cache.set(user_id, normalized)
+        return list(normalized)
 
     def delete_user_data(self, user_id: str) -> bool:
         """Permanently delete every document and in-process cache for a user."""
         batch = self.client.batch()
-        for collection in (self.users, self.tokens, self.settings, self.cache, self.source_cache):
+        for collection in (
+            self.users,
+            self.tokens,
+            self.settings,
+            self.cache,
+            self.source_cache,
+            self.search_history,
+        ):
             batch.delete(collection.document(user_id))
         batch.commit()
-        increment("firestore.delete.account_documents", 5)
+        increment("firestore.delete.account_documents", 6)
         for cache in (
             self._settings_cache,
             self._token_cache,
@@ -348,6 +410,7 @@ class FirestoreStore:
             self._timetable_hashes,
             self._source_cache,
             self._source_hashes,
+            self._search_history_cache,
         ):
             cache.pop(user_id)
         return True

@@ -2,9 +2,12 @@ import { TimetableData } from '../types/api';
 
 const DATABASE_NAME = 'classwire';
 const STORE_NAME = 'timetables';
-const DATABASE_VERSION = 1;
+const SEARCH_STORE_NAME = 'search-results';
+const DATABASE_VERSION = 2;
+const SEARCH_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const LEGACY_PREFIX = 'classwire:v2:last-timetable:';
 const memoryCache = new Map<string, TimetableData>();
+const searchMemoryCache = new Map<string, TimetableData>();
 let databasePromise: Promise<IDBDatabase | null> | null = null;
 
 const normalizeKey = (email?: string) => (email || 'anonymous').trim().toLowerCase();
@@ -17,6 +20,9 @@ const openDatabase = (): Promise<IDBDatabase | null> => {
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(STORE_NAME)) {
         request.result.createObjectStore(STORE_NAME);
+      }
+      if (!request.result.objectStoreNames.contains(SEARCH_STORE_NAME)) {
+        request.result.createObjectStore(SEARCH_STORE_NAME);
       }
     };
     request.onsuccess = () => {
@@ -34,12 +40,16 @@ const openDatabase = (): Promise<IDBDatabase | null> => {
   return databasePromise;
 };
 
-const transact = async <T>(mode: IDBTransactionMode, operation: (store: IDBObjectStore) => IDBRequest<T>) => {
+const transact = async <T>(
+  mode: IDBTransactionMode,
+  operation: (store: IDBObjectStore) => IDBRequest<T>,
+  storeName = STORE_NAME,
+) => {
   const database = await openDatabase();
   if (!database) return undefined;
   return new Promise<T | undefined>((resolve) => {
-    const transaction = database.transaction(STORE_NAME, mode);
-    const request = operation(transaction.objectStore(STORE_NAME));
+    const transaction = database.transaction(storeName, mode);
+    const request = operation(transaction.objectStore(storeName));
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => resolve(undefined);
     transaction.onerror = () => resolve(undefined);
@@ -49,6 +59,41 @@ const transact = async <T>(mode: IDBTransactionMode, operation: (store: IDBObjec
 
 const validTimetable = (value: unknown): value is TimetableData =>
   Boolean(value && typeof value === 'object' && Array.isArray((value as TimetableData).items));
+
+const normalizeQuery = (query: string) => query.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+const searchKey = (email: string | undefined, query: string) => `${normalizeKey(email)}\n${normalizeQuery(query)}`;
+
+export const isSearchCacheFresh = (data: TimetableData, now = Date.now()): boolean => {
+  const requestedDays = data.source_cache?.requested_days || [];
+  const nextRefresh = data.source_cache?.next_refresh_at_by_day || {};
+  if (requestedDays.length > 0 && requestedDays.every((day) => nextRefresh[day])) {
+    return requestedDays.every((day) => {
+      const expires = Date.parse(nextRefresh[day]);
+      return Number.isFinite(expires) && expires > now;
+    });
+  }
+  const savedAt = Date.parse(data.search?.saved_at || '');
+  return Number.isFinite(savedAt) && now - savedAt < SEARCH_CACHE_MAX_AGE_MS;
+};
+
+export const readSearchResultCache = async (
+  email: string | undefined,
+  query: string,
+): Promise<TimetableData | null> => {
+  const key = searchKey(email, query);
+  const memoryResult = searchMemoryCache.get(key);
+  if (memoryResult && isSearchCacheFresh(memoryResult)) return memoryResult;
+  const result = await transact<TimetableData>(
+    'readonly',
+    (store) => store.get(key),
+    SEARCH_STORE_NAME,
+  );
+  if (validTimetable(result) && isSearchCacheFresh(result)) {
+    searchMemoryCache.set(key, result);
+    return result;
+  }
+  return null;
+};
 
 export const readTimetableCache = async (email?: string): Promise<TimetableData | null> => {
   const key = normalizeKey(email);
@@ -79,6 +124,8 @@ export const readTimetableCache = async (email?: string): Promise<TimetableData 
 export const writeTimetableCache = async (email: string | undefined, data: TimetableData): Promise<void> => {
   const key = normalizeKey(email);
   memoryCache.set(key, data);
+  const query = data.search?.query?.trim();
+  if (query) searchMemoryCache.set(searchKey(email, query), data);
   const persistedKey = await transact<IDBValidKey>('readwrite', (store) => store.put(data, key));
   if (persistedKey === undefined) {
     try {
@@ -93,12 +140,43 @@ export const writeTimetableCache = async (email: string | undefined, data: Timet
   } catch {
     // Ignore cleanup failures.
   }
+  if (query) {
+    await transact<IDBValidKey>(
+      'readwrite',
+      (store) => store.put(data, searchKey(email, query)),
+      SEARCH_STORE_NAME,
+    );
+  }
 };
 
-export const deleteTimetableCache = async (email?: string): Promise<void> => {
+export const deleteTimetableCache = async (
+  email?: string,
+  includeSearchResults = true,
+): Promise<void> => {
   const key = normalizeKey(email);
   memoryCache.delete(key);
+  if (includeSearchResults) {
+    for (const cachedKey of searchMemoryCache.keys()) {
+      if (cachedKey.startsWith(`${key}\n`)) searchMemoryCache.delete(cachedKey);
+    }
+  }
   await transact('readwrite', (store) => store.delete(key));
+  const database = await openDatabase();
+  if (database && includeSearchResults) {
+    await new Promise<void>((resolve) => {
+      const transaction = database.transaction(SEARCH_STORE_NAME, 'readwrite');
+      const request = transaction.objectStore(SEARCH_STORE_NAME).openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        if (String(cursor.key).startsWith(`${key}\n`)) cursor.delete();
+        cursor.continue();
+      };
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => resolve();
+      transaction.onabort = () => resolve();
+    });
+  }
   try {
     window.localStorage.removeItem(`${LEGACY_PREFIX}${key}`);
   } catch {

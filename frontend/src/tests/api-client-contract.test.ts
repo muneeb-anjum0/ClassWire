@@ -39,6 +39,26 @@ describe('native API client', () => {
     expect(options.headers).toMatchObject({ 'Content-Type': 'application/json' });
   });
 
+  test('syncs recent searches to the signed-in account', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      searches: ['BSSE7A on Monday'],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await apiService.saveSearchHistory(['BSSE7A on Monday']);
+
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:5001/api/search-history');
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      method: 'PUT',
+      body: JSON.stringify({ searches: ['BSSE7A on Monday'] }),
+      credentials: 'include',
+    });
+  });
+
   test('exchanges OAuth handoffs through the authenticated API client', async () => {
     const payload = {
       success: true,

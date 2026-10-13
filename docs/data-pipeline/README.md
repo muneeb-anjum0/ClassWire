@@ -15,16 +15,18 @@ This means:
 
 ## Incremental synchronization
 
-The normalized weekly source records the Gmail message ID used for each weekday. During refresh:
+The normalized weekly source records the Gmail message ID and last successful refresh time for each weekday. Each weekday remains fresh for exactly seven days. During refresh:
 
-1. Gmail returns the newest message ID for every weekday.
-2. Those IDs are compared with the stored source manifest.
-3. Unchanged weekdays reuse their normalized rows.
-4. Only changed weekday messages are downloaded and parsed.
-5. Missing or failed batch components are retried once.
-6. An unresolved partial batch fails explicitly instead of returning a silently incomplete week.
+1. Only requested weekdays that are missing or seven days old are queried in Gmail.
+2. Gmail returns the newest message ID for each weekday being refreshed.
+3. Those IDs are compared with the stored source manifest.
+4. Unchanged weekdays reuse their normalized rows without downloading the message body.
+5. Changed weekday messages are downloaded, parsed, and compared with their previous normalized rows.
+6. Unrequested weekdays remain intact in the same account-scoped source document.
+7. Missing or failed batch components are retried once.
+8. An unresolved partial batch fails explicitly instead of returning a silently incomplete result.
 
-The response exposes changed days, reused days, and fetched-message counts so refresh behavior can be measured.
+The response exposes requested, changed, content-changed, and reused days plus fetched-message counts. Later searches on the same day use the normalized Firestore source and do not touch Gmail. The next refresh boundary is returned per weekday so the browser can apply the identical policy.
 
 ## Gmail resilience
 
@@ -105,7 +107,8 @@ Each parse records privacy-safe counters for candidate rows, accepted rows, dupl
 | `gmail_tokens` | User ID | Encrypted Google credential | Five-minute memory cache and refresh-only writes |
 | `user_settings` | User ID | Timezone and delivery preferences | Five-minute memory cache and explicit writes |
 | `timetable_cache` | User ID | Compressed latest presented timetable | 60-second cache and content-hash deduplication |
-| `timetable_source_cache` | User ID | Compressed normalized weekly source | 30-minute cache and content-hash deduplication |
+| `timetable_source_cache` | User ID | Compressed normalized weekly source with per-day refresh metadata | Seven-day memory cache and content-hash deduplication |
+| `search_history` | User ID | Eight normalized recent searches shared by signed-in devices | Five-minute memory cache and direct account lookup |
 
 Interactive paths use direct document IDs and require no composite Firestore indexes. The bounded daily-delivery scan is the only collection-style access pattern.
 
@@ -115,8 +118,9 @@ Interactive paths use direct document IDs and require no composite Firestore ind
 - A safe compressed-payload limit rejects oversized documents before Firestore does.
 - Stable hashes exclude volatile timestamps and suppress identical writes.
 - Ordinary searches do not write their answer to Firestore.
-- Search results remain in React state, a bounded process cache, and the user's IndexedDB.
+- Search results remain in React state, a bounded process cache, and the user's account-scoped IndexedDB.
 - The normalized weekly source remains durable for cross-process search and stale fallback.
+- The same exact browser query can render from IndexedDB until its requested weekdays reach their server-provided refresh boundary.
 
 ## Retention and deletion
 
@@ -126,7 +130,7 @@ Permanent account deletion:
 
 1. loads the stored Google credential;
 2. attempts token revocation with Google;
-3. deletes user, token, settings, timetable, and source documents as one batch;
+3. deletes user, token, settings, timetable, source, and search-history documents as one batch;
 4. evicts related process caches;
 5. clears the signed session and browser IndexedDB state.
 

@@ -13,6 +13,14 @@ from flask import Blueprint, current_app, jsonify, request
 from core.authentication import authenticated_user
 from core.rate_limit import TokenBucketRateLimiter
 from core.resource_limits import positive_int_env
+from core.source_freshness import (
+    SOURCE_FRESHNESS,
+    SUPPORTED_DAYS,
+    has_cached_source,
+    next_refresh_by_day,
+    normalize_requested_days,
+    stale_source_days,
+)
 from core.ttl_cache import TTLCache
 from core.telemetry import increment, observe
 
@@ -29,11 +37,11 @@ EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
 def create_user_data_blueprint(*, logger, get_run_once, get_store):
     blueprint = Blueprint("user_data", __name__)
-    # The timetable emails change at most daily. Reuse the fully parsed weekly
-    # source for normal searches; users can include "refresh", "latest", or
-    # "update" to bypass this cache explicitly.
+    # Parsed weekday sources remain reusable for one week. Firestore provides
+    # persistence across Render sleeps while this bounded layer removes the
+    # database read for active sessions.
     search_source_cache = TTLCache[str, dict](
-        ttl_seconds=1800,
+        ttl_seconds=int(SOURCE_FRESHNESS.total_seconds()),
         max_entries=positive_int_env("CLASSWIRE_SOURCE_CACHE_ENTRIES", 24, maximum=128),
     )
     # Query interpretation is deterministic for a given in-memory weekly
@@ -67,11 +75,33 @@ def create_user_data_blueprint(*, logger, get_run_once, get_store):
     def current_timestamp():
         return timestamp_now()
 
-    def has_searchable_items(source) -> bool:
-        return isinstance(source, dict) and isinstance(source.get("items"), list) and bool(source["items"])
-
     def get_user_from_request():
         return authenticated_user(get_store(), logger)
+
+    @blueprint.route("/api/search-history", methods=["GET", "PUT"])
+    def search_history():
+        """Read or replace the small account-scoped recent-search list."""
+        try:
+            user, error_response, status_code = get_user_from_request()
+            if error_response:
+                return error_response, status_code
+            store = get_store()
+            if request.method == "GET":
+                searches = store.get_search_history(user["id"])
+            else:
+                payload = request.get_json(silent=True) or {}
+                searches = payload.get("searches")
+                if not isinstance(searches, list):
+                    return jsonify({"success": False, "error": "Search history must be a list"}), 400
+                searches = store.save_search_history(user["id"], searches)
+            return jsonify({
+                "success": True,
+                "searches": searches,
+                "timestamp": current_timestamp(),
+            })
+        except Exception as error:
+            logger.error("Search history sync failed: %s", error, exc_info=True)
+            return jsonify({"success": False, "error": "Could not sync search history"}), 500
 
     @blueprint.route("/api/config/personal-email", methods=["POST", "OPTIONS"])
     def update_personal_email():
@@ -171,6 +201,18 @@ def create_user_data_blueprint(*, logger, get_run_once, get_store):
                 return jsonify({"success": False, "error": "Too many searches; please wait a moment"}), 429
 
             store = get_store()
+            from scraper.smart_search import parse_days
+            from scraper.timetable_parser import TIMETABLE_PARSER_VERSION
+
+            requested_days = normalize_requested_days(parse_days(query)) or list(SUPPORTED_DAYS)
+
+            def days_requiring_refresh(candidate):
+                if not has_cached_source(candidate):
+                    return list(requested_days)
+                if candidate.get("parser_version") != TIMETABLE_PARSER_VERSION:
+                    return list(requested_days)
+                return stale_source_days(candidate, requested_days)
+
             force_source_refresh = bool(payload.get("force_refresh")) or bool(
                 re.search(r"\b(?:refresh|latest|update)\b", query, re.IGNORECASE)
             )
@@ -179,7 +221,8 @@ def create_user_data_blueprint(*, logger, get_run_once, get_store):
             cached_source = search_source_cache.get(user["id"])
             source_was_stale = False
             source_tier = "miss"
-            if has_searchable_items(cached_source) and not force_source_refresh:
+            cached_stale_days = days_requiring_refresh(cached_source)
+            if has_cached_source(cached_source) and not force_source_refresh and not cached_stale_days:
                 source = cached_source
                 source_tier = "memory"
             else:
@@ -187,18 +230,20 @@ def create_user_data_blueprint(*, logger, get_run_once, get_store):
                 # Gmail scrape. Waiters reuse the source produced by the first.
                 with refresh_lock_for(user["id"]):
                     cached_source = search_source_cache.get(user["id"])
-                    if has_searchable_items(cached_source) and not force_source_refresh:
+                    cached_stale_days = days_requiring_refresh(cached_source)
+                    if has_cached_source(cached_source) and not force_source_refresh and not cached_stale_days:
                         source = cached_source
                         source_tier = "memory_after_wait"
                     else:
-                        persisted_source = None
-                        if not force_source_refresh:
-                            persisted_source = store.get_search_source_cache(user["id"], max_age_seconds=1800)
-                        stale_source = persisted_source or store.get_search_source_cache(
-                            user["id"],
-                            max_age_seconds=None,
+                        persisted_source = cached_source if has_cached_source(cached_source) else (
+                            store.get_search_source_cache(user["id"], max_age_seconds=None)
                         )
-                        if has_searchable_items(persisted_source):
+                        days_to_refresh = (
+                            list(requested_days)
+                            if force_source_refresh
+                            else days_requiring_refresh(persisted_source)
+                        )
+                        if has_cached_source(persisted_source) and not days_to_refresh:
                             source = persisted_source
                             source_tier = "firestore"
                             search_source_cache.set(user["id"], source)
@@ -207,15 +252,16 @@ def create_user_data_blueprint(*, logger, get_run_once, get_store):
                             search_settings.update({
                                 "timetable_day": "Entire Week",
                                 "_save_cache": False,
-                                "_previous_source": stale_source,
+                                "_previous_source": persisted_source,
+                                "_refresh_days": days_to_refresh or requested_days,
                             })
                             scrape_result = get_run_once()(
                                 user_email=user["email"], user_id=user["id"],
                                 user_settings=search_settings,
                             )
                             if not scrape_result or not scrape_result.get("success"):
-                                if has_searchable_items(stale_source):
-                                    source = stale_source
+                                if has_cached_source(persisted_source):
+                                    source = persisted_source
                                     source_was_stale = True
                                     source_tier = "stale"
                                     search_source_cache.set(user["id"], source)
@@ -232,8 +278,7 @@ def create_user_data_blueprint(*, logger, get_run_once, get_store):
                                 if not store.save_search_source_cache(user["id"], source):
                                     logger.warning("Could not persist search source for user %s", user["id"])
 
-            source_items = source.get("items") or []
-            if not source_items:
+            if not has_cached_source(source):
                 logger.warning(
                     "No searchable timetable source for user=%s email_domain=%s",
                     user["id"][-6:],
@@ -248,6 +293,7 @@ def create_user_data_blueprint(*, logger, get_run_once, get_store):
                     "code": "TIMETABLE_SOURCE_EMPTY",
                     "timestamp": current_timestamp(),
                 }), 409
+            source_items = source.get("items") or []
 
             from scraper.smart_search import PARSER_VERSION, normalize, search_timetable
             normalized_query = normalize(query)
@@ -300,6 +346,12 @@ def create_user_data_blueprint(*, logger, get_run_once, get_store):
                     "unique_courses": len({item.get("course_code") or item.get("course") for item in matched_items}),
                     "unique_faculty": len({item.get("faculty") for item in matched_items if item.get("faculty")}),
                 },
+                "source_cache": {
+                    "tier": source_tier,
+                    "requested_days": requested_days,
+                    "refreshed_at_by_day": source.get("refreshed_at_by_day") or {},
+                    "next_refresh_at_by_day": next_refresh_by_day(source),
+                },
             }
             # The normalized source remains persisted server-side. Search
             # answers are kept in IndexedDB by the browser instead of writing
@@ -326,6 +378,7 @@ def create_user_data_blueprint(*, logger, get_run_once, get_store):
                         "authenticated": False,
                         "user": None,
                         "timetable": None,
+                        "search_history": [],
                         "last_update": None,
                         "timestamp": current_timestamp(),
                     })
@@ -336,6 +389,7 @@ def create_user_data_blueprint(*, logger, get_run_once, get_store):
                 "authenticated": True,
                 "user": {"id": user["id"], "email": user["email"]},
                 "timetable": state.get("timetable"),
+                "search_history": state.get("search_history") or [],
                 "last_update": state.get("last_update"),
                 "timestamp": current_timestamp(),
             })

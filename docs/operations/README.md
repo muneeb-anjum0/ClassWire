@@ -34,6 +34,7 @@ Workflow concurrency prevents overlapping runs. Temporary network failures recei
 | Failure | Behavior |
 | --- | --- |
 | Gmail temporarily unavailable | Use the last persisted normalized source and label the answer stale |
+| Render sleeps after a successful scrape | Reuse the account's normalized Firestore weekdays without Gmail |
 | One Gmail batch component fails | Retry the failed component; reject unresolved partial weeks |
 | Firestore source is stale | Decode once, retain it for fallback, and attempt refresh |
 | Browser request fails | Preserve the last successful visible result |
@@ -73,6 +74,7 @@ A secret-protected endpoint exposes snapshots. Metrics reset when the Render pro
 ClassWire does not claim access to a provider invoice. It counts the operations controlled by the application:
 
 - normal searches use normalized rows and perform no Gmail read;
+- each requested weekday is refreshed at most once per exact seven-day window unless the user explicitly requests a refresh;
 - repeated reads are absorbed by TTL caches;
 - ordinary searches create no Firestore write;
 - unchanged timetable and source writes are suppressed by hashes;

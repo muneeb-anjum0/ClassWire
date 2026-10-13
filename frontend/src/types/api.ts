@@ -22,6 +22,12 @@ export interface TimetableData {
     unique_courses: number;
     unique_faculty: number;
   };
+  source_cache?: {
+    tier: string;
+    requested_days: string[];
+    refreshed_at_by_day: Record<string, string>;
+    next_refresh_at_by_day: Record<string, string>;
+  };
   search?: {
     parser_version?: number;
     query?: string;
@@ -84,6 +90,7 @@ export interface BootstrapData {
   authenticated: boolean;
   user: { id: string; email: string } | null;
   timetable: TimetableData | null;
+  search_history?: string[];
   last_update: string | null;
   timestamp: string;
 }

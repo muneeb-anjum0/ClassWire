@@ -61,6 +61,8 @@ export default function DashboardPage() {
             loading={controller.isScraperRunning}
             data={controller.timetableData}
             userEmail={controller.userEmail}
+            accountRecentSearches={controller.accountRecentSearches}
+            onSearchHistoryChange={controller.syncSearchHistory}
             onLogout={controller.handleLogoutClick}
             onCancelLogout={controller.cancelLogoutConfirm}
             onDeleteAccount={controller.deleteAccount}
