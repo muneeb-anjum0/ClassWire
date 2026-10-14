@@ -1,14 +1,23 @@
-import { TimetableData } from '../types/api';
+import { TimetableData, TimetableItem } from '../types/api';
 
 const DATABASE_NAME = 'classwire';
 const STORE_NAME = 'timetables';
 const SEARCH_STORE_NAME = 'search-results';
-const DATABASE_VERSION = 2;
+const SOURCE_STORE_NAME = 'timetable-sources';
+const DATABASE_VERSION = 3;
 const SEARCH_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const LEGACY_PREFIX = 'classwire:v2:last-timetable:';
 const memoryCache = new Map<string, TimetableData>();
 const searchMemoryCache = new Map<string, TimetableData>();
+const sourceMemoryCache = new Map<string, CachedTimetableSource>();
 let databasePromise: Promise<IDBDatabase | null> | null = null;
+
+export interface CachedTimetableSource {
+  items: TimetableItem[];
+  parser_version?: number;
+  refreshed_at_by_day: Record<string, string>;
+  next_refresh_at_by_day: Record<string, string>;
+}
 
 const normalizeKey = (email?: string) => (email || 'anonymous').trim().toLowerCase();
 
@@ -23,6 +32,9 @@ const openDatabase = (): Promise<IDBDatabase | null> => {
       }
       if (!request.result.objectStoreNames.contains(SEARCH_STORE_NAME)) {
         request.result.createObjectStore(SEARCH_STORE_NAME);
+      }
+      if (!request.result.objectStoreNames.contains(SOURCE_STORE_NAME)) {
+        request.result.createObjectStore(SOURCE_STORE_NAME);
       }
     };
     request.onsuccess = () => {
@@ -76,6 +88,54 @@ export const isSearchCacheFresh = (data: TimetableData, now = Date.now()): boole
   return Number.isFinite(savedAt) && now - savedAt < SEARCH_CACHE_MAX_AGE_MS;
 };
 
+const validSource = (value: unknown): value is CachedTimetableSource => Boolean(
+  value && typeof value === 'object'
+  && Array.isArray((value as CachedTimetableSource).items)
+  && typeof (value as CachedTimetableSource).next_refresh_at_by_day === 'object',
+);
+
+export const requestedSourceDaysAreFresh = (
+  source: CachedTimetableSource,
+  requestedDays: string[],
+  now = Date.now(),
+): boolean => requestedDays.length > 0 && requestedDays.every((day) => {
+  const expiry = Date.parse(source.next_refresh_at_by_day[day] || '');
+  return Number.isFinite(expiry) && expiry > now;
+});
+
+export const readTimetableSourceCache = async (
+  email?: string,
+): Promise<CachedTimetableSource | null> => {
+  const key = normalizeKey(email);
+  const memoryResult = sourceMemoryCache.get(key);
+  if (memoryResult) return memoryResult;
+  const result = await transact<CachedTimetableSource>(
+    'readonly',
+    (store) => store.get(key),
+    SOURCE_STORE_NAME,
+  );
+  if (!validSource(result)) return null;
+  sourceMemoryCache.set(key, result);
+  return result;
+};
+
+export const writeTimetableSourceCache = async (
+  email: string | undefined,
+  data: TimetableData,
+): Promise<void> => {
+  const metadata = data.source_cache;
+  if (!metadata?.source_items || !Array.isArray(metadata.source_items)) return;
+  const source: CachedTimetableSource = {
+    items: metadata.source_items,
+    parser_version: metadata.parser_version,
+    refreshed_at_by_day: metadata.refreshed_at_by_day || {},
+    next_refresh_at_by_day: metadata.next_refresh_at_by_day || {},
+  };
+  const key = normalizeKey(email);
+  sourceMemoryCache.set(key, source);
+  await transact<IDBValidKey>('readwrite', (store) => store.put(source, key), SOURCE_STORE_NAME);
+};
+
 export const readSearchResultCache = async (
   email: string | undefined,
   query: string,
@@ -126,10 +186,17 @@ export const writeTimetableCache = async (email: string | undefined, data: Timet
   memoryCache.set(key, data);
   const query = data.search?.query?.trim();
   if (query) searchMemoryCache.set(searchKey(email, query), data);
-  const persistedKey = await transact<IDBValidKey>('readwrite', (store) => store.put(data, key));
+  await writeTimetableSourceCache(email, data);
+  const persistedData = data.source_cache?.source_items
+    ? {
+      ...data,
+      source_cache: { ...data.source_cache, source_items: undefined },
+    }
+    : data;
+  const persistedKey = await transact<IDBValidKey>('readwrite', (store) => store.put(persistedData, key));
   if (persistedKey === undefined) {
     try {
-      window.localStorage.setItem(`${LEGACY_PREFIX}${key}`, JSON.stringify(data));
+      window.localStorage.setItem(`${LEGACY_PREFIX}${key}`, JSON.stringify(persistedData));
     } catch {
       // Keep the in-memory cache when browser persistence is unavailable.
     }
@@ -143,7 +210,7 @@ export const writeTimetableCache = async (email: string | undefined, data: Timet
   if (query) {
     await transact<IDBValidKey>(
       'readwrite',
-      (store) => store.put(data, searchKey(email, query)),
+      (store) => store.put(persistedData, searchKey(email, query)),
       SEARCH_STORE_NAME,
     );
   }
@@ -156,12 +223,16 @@ export const deleteTimetableCache = async (
   const key = normalizeKey(email);
   memoryCache.delete(key);
   if (includeSearchResults) {
+    sourceMemoryCache.delete(key);
     for (const cachedKey of searchMemoryCache.keys()) {
       if (cachedKey.startsWith(`${key}\n`)) searchMemoryCache.delete(cachedKey);
     }
   }
   await transact('readwrite', (store) => store.delete(key));
   const database = await openDatabase();
+  if (database && includeSearchResults) {
+    await transact('readwrite', (store) => store.delete(key), SOURCE_STORE_NAME);
+  }
   if (database && includeSearchResults) {
     await new Promise<void>((resolve) => {
       const transaction = database.transaction(SEARCH_STORE_NAME, 'readwrite');

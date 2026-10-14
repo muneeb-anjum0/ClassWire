@@ -17,7 +17,7 @@ ClassWire presents a conversational timetable search rather than a filter-heavy 
 
 Google authentication uses a full-page redirect rather than a popup. After Google returns to the backend callback, the browser receives a short-lived handoff and exchanges it through ClassWire's own origin. This works when private browsing blocks third-party cookies and avoids opener-policy warnings from popup polling.
 
-Logged-out startup is represented as a normal guest bootstrap state, so opening the public login page does not generate expected-but-noisy `401` console errors.
+Logged-out startup is entirely local, so opening the public login page neither wakes Render nor generates expected-but-noisy `401` console errors.
 
 The login page uses a restrained diagonal access band to identify read-only Gmail access and SZABIST Islamabad context without turning the page into a decorative card. A delayed Render wake message uses an amber striped treatment distinct from active search loading.
 

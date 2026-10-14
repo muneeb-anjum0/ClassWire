@@ -15,9 +15,9 @@ This means:
 
 ## Incremental synchronization
 
-The normalized weekly source records the Gmail message ID and last successful refresh time for each weekday. Each weekday remains fresh for exactly seven days. During refresh:
+The normalized weekly source records the Gmail message ID and last successful refresh time for each weekday. Each weekday remains fresh through that calendar week and expires when the same weekday begins again in Karachi. During refresh:
 
-1. Only requested weekdays that are missing or seven days old are queried in Gmail.
+1. Only requested weekdays that are missing or have reached their next weekly calendar boundary are queried in Gmail.
 2. Gmail returns the newest message ID for each weekday being refreshed.
 3. Those IDs are compared with the stored source manifest.
 4. Unchanged weekdays reuse their normalized rows without downloading the message body.
@@ -120,7 +120,8 @@ Interactive paths use direct document IDs and require no composite Firestore ind
 - Ordinary searches do not write their answer to Firestore.
 - Search results remain in React state, a bounded process cache, and the user's account-scoped IndexedDB.
 - The normalized weekly source remains durable for cross-process search and stale fallback.
-- The same exact browser query can render from IndexedDB until its requested weekdays reach their server-provided refresh boundary.
+- The signed-in browser also stores that normalized source, allowing differently worded questions for fresh weekdays to be answered without a Render request.
+- Only a missing/stale requested weekday, an explicit refresh, or a server-only account action wakes Render.
 
 ## Retention and deletion
 

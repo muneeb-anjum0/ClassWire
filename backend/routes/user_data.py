@@ -351,6 +351,12 @@ def create_user_data_blueprint(*, logger, get_run_once, get_store):
                     "requested_days": requested_days,
                     "refreshed_at_by_day": source.get("refreshed_at_by_day") or {},
                     "next_refresh_at_by_day": next_refresh_by_day(source),
+                    "parser_version": source.get("parser_version"),
+                    # The signed-in browser keeps the normalized source so it
+                    # can answer new questions locally while these weekdays
+                    # remain fresh. Render is then needed only to refresh a
+                    # missing/stale requested day (or for an explicit refresh).
+                    "source_items": source_items,
                 },
             }
             # The normalized source remains persisted server-side. Search

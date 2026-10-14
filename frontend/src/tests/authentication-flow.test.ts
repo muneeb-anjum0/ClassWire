@@ -1,6 +1,13 @@
-import { describe, expect, test } from 'vitest';
+import React from 'react';
+import { render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import vercelConfig from '../../vercel.json';
-import { parseAuthRedirect } from '../context/AuthContext';
+import { AuthProvider, parseAuthRedirect, useAuth } from '../context/AuthContext';
+
+afterEach(() => {
+  localStorage.clear();
+  vi.unstubAllGlobals();
+});
 
 describe('private-browser authentication flow', () => {
   test('reads a successful single-use handoff from the URL fragment', () => {
@@ -19,5 +26,23 @@ describe('private-browser authentication flow', () => {
       source: '/api/:path*',
       destination: 'https://timetable-wizard.onrender.com/api/:path*',
     });
+  });
+
+  test('restores a cached signed-in user without waking the backend', async () => {
+    localStorage.setItem('classwire:v1:session-user', JSON.stringify({
+      id: 'student',
+      email: 'student@szabist-isb.pk',
+    }));
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const Probe = () => {
+      const auth = useAuth();
+      return React.createElement('span', null, auth.loading ? 'loading' : auth.user?.email);
+    };
+
+    render(React.createElement(AuthProvider, null, React.createElement(Probe)));
+
+    await waitFor(() => expect(screen.getByText('student@szabist-isb.pk')).toBeInTheDocument());
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

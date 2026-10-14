@@ -21,7 +21,7 @@ ClassWire runs a static React client on Vercel and a Flask API on Render. Firest
 - Threaded handling supports lightweight concurrent requests without multiplying cloud clients unnecessarily.
 - Shared-memory worker temporary files avoid slower disk-backed heartbeat behavior.
 
-The free Render instance can suspend after inactivity. Early frontend connection hints and a lightweight wake request reduce avoidable delay, but provider suspension can still make the first request substantially slower than warm traffic.
+The free Render instance can suspend after inactivity. ClassWire deliberately leaves it asleep while local identity and fresh weekday data can answer the user. The first missing/stale weekday, OAuth, or server-only account operation can still incur provider-controlled cold-start delay.
 
 ## Background delivery
 
@@ -74,13 +74,13 @@ A secret-protected endpoint exposes snapshots. Metrics reset when the Render pro
 ClassWire does not claim access to a provider invoice. It counts the operations controlled by the application:
 
 - normal searches use normalized rows and perform no Gmail read;
-- each requested weekday is refreshed at most once per exact seven-day window unless the user explicitly requests a refresh;
+- each requested weekday is refreshed at most once before the next occurrence of that weekday in Karachi unless the user explicitly requests a refresh;
 - repeated reads are absorbed by TTL caches;
 - ordinary searches create no Firestore write;
 - unchanged timetable and source writes are suppressed by hashes;
 - only changed weekday messages are downloaded;
 - browser restoration uses IndexedDB;
-- one bootstrap request replaces multiple startup calls.
+- no bootstrap request is made solely for startup; OAuth completion verifies the session and stale-data operations verify it naturally.
 
 These measurements support cost estimation without a paid monitoring platform or fabricated billing figures.
 

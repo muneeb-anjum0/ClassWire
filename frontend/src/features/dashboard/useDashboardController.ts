@@ -4,10 +4,12 @@ import {
   deleteTimetableCache,
   readTimetableCache,
   readSearchResultCache,
+  readTimetableSourceCache,
+  requestedSourceDaysAreFresh,
   writeTimetableCache,
 } from '../../services/timetableCache';
+import { parseLocalQueryDays, searchCachedTimetable } from '../../services/localTimetableSearch';
 import { TimetableData } from '../../types/api';
-import { withInitializeRetry } from './dashboardApi';
 import { DashboardAuthState } from './dashboardControllerTypes';
 import { useDashboardStatusToast } from './useDashboardStatusToast';
 import { useDashboardUiState } from './useDashboardUiState';
@@ -33,6 +35,7 @@ export const useDashboardController = ({
   const hydratedUser = useRef<string | null>(null);
   const bootstrappedUser = useRef<string | null>(null);
   const historySyncQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const pendingSearchHistory = useRef<string[] | null>(null);
   const dataRequestSequence = useRef(0);
   const searchInFlight = useRef(false);
   const accountRecentSearches = useMemo(
@@ -42,10 +45,24 @@ export const useDashboardController = ({
 
   const syncSearchHistory = useCallback(async (searches: string[]) => {
     if (!isAuthenticated) return;
+    // Search-history writes must not be the reason a sleeping backend wakes.
+    // Keep the newest account state queued and flush it alongside the next
+    // server-required timetable refresh.
+    pendingSearchHistory.current = searches;
+  }, [isAuthenticated]);
+
+  const flushSearchHistory = useCallback(async () => {
+    const searches = pendingSearchHistory.current;
+    if (!isAuthenticated || !searches) return;
+    pendingSearchHistory.current = null;
     historySyncQueue.current = historySyncQueue.current
       .catch(() => undefined)
       .then(() => apiService.saveSearchHistory(searches));
-    await historySyncQueue.current;
+    try {
+      await historySyncQueue.current;
+    } catch {
+      pendingSearchHistory.current = searches;
+    }
   }, [isAuthenticated]);
 
   const filteredItems = useMemo(
@@ -82,57 +99,6 @@ export const useDashboardController = ({
     if (!silent) showStatus(status, message || 'Data loaded successfully');
   };
 
-  const loadLatestTimetable = async (force = false, silent = false) => {
-    if (operationInProgress && !force) return;
-
-    const requestSequence = ++dataRequestSequence.current;
-    try {
-      if (!silent) showStatus('warning', 'Loading your saved timetable...');
-      setOperationInProgress(true);
-      const response = await withInitializeRetry(
-        () => apiService.getLatestTimetable(),
-        'Network error when fetching timetable, retrying after API initialization',
-      );
-      if (requestSequence !== dataRequestSequence.current) return;
-
-      if (!response.success || !response.data) {
-        if (!silent) showStatus('warning', 'Search for a class to load your timetable.');
-        return;
-      }
-
-      if (response.data.search?.query && response.data.search.parser_version !== SEARCH_PARSER_VERSION) {
-        const staleQuery = response.data.search.query.trim();
-        const refreshed = await apiService.searchTimetable(staleQuery);
-        if (requestSequence !== dataRequestSequence.current) return;
-        if (refreshed.success && refreshed.data) {
-          setSearchQuery(staleQuery);
-          applySuccessfulTimetable(
-            refreshed.data,
-            'Updated your saved search',
-            silent,
-            refreshed.data.search?.recognized === false ? 'warning' : 'success',
-          );
-          return;
-        }
-      }
-
-      const localSearch = await readSavedSearch();
-      const restoredData = response.data.search ? response.data : (localSearch || response.data);
-      setSearchQuery(restoredData.search?.query?.trim() || '');
-      applySuccessfulTimetable(
-        restoredData,
-        restoredData.search ? 'Restored your last search' : 'Loaded your saved timetable',
-        silent,
-      );
-    } catch (error) {
-      if (requestSequence !== dataRequestSequence.current) return;
-      console.error('Error loading timetable:', error);
-      if (!silent) showStatus('error', 'Failed to load timetable data');
-    } finally {
-      if (requestSequence === dataRequestSequence.current) setOperationInProgress(false);
-    }
-  };
-
   const runSmartSearch = async (query = searchQuery) => {
     const cleaned = query.trim();
     if (cleaned.length < 2 || searchInFlight.current || isScraperRunning) return;
@@ -149,6 +115,18 @@ export const useDashboardController = ({
           && cachedResult.search.query?.trim().toLocaleLowerCase() === cleaned.toLocaleLowerCase()
         ) {
           applySuccessfulTimetable(cachedResult, 'Loaded instantly from this device', false);
+          return;
+        }
+        const cachedSource = await readTimetableSourceCache(user?.email);
+        const requestedDays = parseLocalQueryDays(cleaned);
+        if (cachedSource && requestedSourceDaysAreFresh(cachedSource, requestedDays)) {
+          const localResult = searchCachedTimetable(
+            cleaned,
+            cachedSource,
+            SEARCH_PARSER_VERSION,
+          );
+          applySuccessfulTimetable(localResult, 'Loaded instantly from your saved timetable', false,
+            localResult.search?.recognized === false ? 'warning' : 'success');
           return;
         }
       }
@@ -168,6 +146,7 @@ export const useDashboardController = ({
         false,
         response.data.search?.recognized === false ? 'warning' : 'success',
       );
+      void flushSearchHistory();
     } catch (error) {
       if (requestSequence !== dataRequestSequence.current) return;
       setTimetableData(null);
@@ -233,7 +212,10 @@ export const useDashboardController = ({
         }
         return;
       }
-      await loadLatestTimetable(true, Boolean(cached));
+      // Do not wake Render merely to restore state. A cached browser paints
+      // immediately; a browser without data waits until the user asks for a
+      // weekday whose source is missing or stale.
+      if (cached) return;
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authBootstrap, isAuthenticated, loading, user?.email]);

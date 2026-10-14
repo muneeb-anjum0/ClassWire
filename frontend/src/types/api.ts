@@ -27,6 +27,8 @@ export interface TimetableData {
     requested_days: string[];
     refreshed_at_by_day: Record<string, string>;
     next_refresh_at_by_day: Record<string, string>;
+    parser_version?: number;
+    source_items?: TimetableItem[];
   };
   search?: {
     parser_version?: number;

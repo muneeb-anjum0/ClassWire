@@ -284,7 +284,7 @@ class TestDailyEmailToggle:
 
 class TestSearchEndpoint:
     @patch('app.run_once')
-    def test_search_persists_compact_source_and_does_not_duplicate_items(self, mock_run_once, client, mock_store, mock_user):
+    def test_search_returns_browser_source_snapshot_without_nesting_items_in_search_metadata(self, mock_run_once, client, mock_store, mock_user):
         item = {
             'schedule_day': 'Monday',
             'semester_display': 'BS(SE)-7A',
@@ -322,6 +322,7 @@ class TestSearchEndpoint:
         data = response.get_json()['data']
         assert data['items'] == [item]
         assert 'items' not in data['search']
+        assert data['source_cache']['source_items'] == [item]
         mock_store.save_search_source_cache.assert_called_once_with(mock_user['id'], source)
         mock_store.save_timetable_cache.assert_not_called()
 

@@ -28,6 +28,7 @@ ClassWire is an independent student project and is not an official SZABIST servi
 - Infers course-section relationships from sentence structure instead of requiring fixed command wording.
 - Detects timetable clashes only for intentionally composed custom schedules.
 - Restores the latest successful result from IndexedDB across visits.
+- Answers new questions from the fresh per-account browser timetable without waking Render.
 - Syncs recent searches to the signed-in account across devices.
 - Reuses each parsed weekday for seven days, refreshing and comparing only stale days.
 - Supports optional scheduled daily timetable delivery.

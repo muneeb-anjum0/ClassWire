@@ -8,7 +8,7 @@ ClassWire separates the public interface, authenticated application API, source 
 flowchart LR
   U[Student] --> UI[React interface]
   UI --> IDB[(IndexedDB result cache)]
-  UI -->|bootstrap and search| API[Flask API]
+  UI -->|stale or missing weekday, OAuth, account actions| API[Flask API]
 
   API --> AUTH[Signed session and Google OAuth]
   API --> CACHE[Bounded TTL caches]
@@ -42,11 +42,11 @@ flowchart LR
 
 ## Request lifecycle
 
-1. A cached identity allows the interface shell to paint while the signed server session is checked.
-2. One bootstrap request returns either an explicit guest state or the verified identity, latest timetable, account search history, and last-update timestamp.
-3. IndexedDB can restore the last successful result before a slow refresh finishes.
-4. An exact repeated browser query checks account-scoped IndexedDB before making a network request.
-5. API search checks the normalized source in memory, then Firestore, then Gmail only for requested weekdays that are seven days old.
+1. A durable cached identity opens the dashboard without a background server request; backend sleep or temporary unavailability cannot force the login page.
+2. IndexedDB restores the last successful result and the normalized per-account timetable source.
+3. The browser derives requested weekdays and answers new wording locally while every requested weekday remains fresh.
+4. Missing or stale requested weekdays—and explicit refresh requests—call the API; ordinary fresh searches do not wake Render.
+5. API search checks the normalized source in memory, then Firestore, then Gmail only for requested weekdays that reached their next Karachi calendar-week boundary.
 6. Gmail is queried independently for the newest available message for each stale weekday.
 7. Message IDs determine which weekday sources can be reused and which must be fetched again.
 8. Changed messages are decoded, parsed, normalized, deduplicated, compared, and persisted.
@@ -93,7 +93,7 @@ ClassWire/
 ├── frontend/
 │   └── src/
 │       ├── components/       Timetable, login, status, and shared UI
-│       ├── context/          Authenticated bootstrap and account lifecycle
+│       ├── context/          Durable local identity and account lifecycle
 │       ├── features/         Dashboard and conversational search experience
 │       ├── services/         API client and IndexedDB persistence
 │       └── tests/            UI behavior, hooks, API contracts, and rendering

@@ -12,6 +12,7 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock('../services/api', () => ({
   BACKEND_WAKE_EVENT: 'backend-wake-state',
   apiService: apiMocks,
+  getApiErrorMessage: () => undefined,
 }));
 
 import { useDashboardController } from '../features/dashboard/useDashboardController';
@@ -47,11 +48,6 @@ beforeEach(() => {
 });
 
 test('a user search supersedes a slower background result restore', async () => {
-  let resolveLatest!: (value: unknown) => void;
-  apiMocks.getLatestTimetable.mockReturnValue(new Promise((resolve) => {
-    resolveLatest = resolve;
-  }));
-
   const query = 'BSSE7A timetable on Monday';
   const matchingItems = [{
     semester: 'BS(SE)-7A',
@@ -59,10 +55,6 @@ test('a user search supersedes a slower background result restore', async () => 
     schedule_day: 'Monday',
   }];
   const currentResult = makeSearchData(query, 'Found 3 classes for BS(SE)-7A on Monday.', matchingItems);
-  const staleResult = makeSearchData(
-    'please solve something mysterious',
-    "I couldn't identify a section, faculty member, course, class type, credit-hour value, or schedule scope in that question.",
-  );
   apiMocks.searchTimetable.mockResolvedValue({
     success: true,
     data: currentResult,
@@ -79,7 +71,7 @@ test('a user search supersedes a slower background result restore', async () => 
     user: { id: 'student', email: 'student@example.com' },
   }));
 
-  await waitFor(() => expect(apiMocks.getLatestTimetable).toHaveBeenCalledOnce());
+  expect(apiMocks.getLatestTimetable).not.toHaveBeenCalled();
 
   await act(async () => {
     await result.current.runSmartSearch(query);
@@ -87,14 +79,6 @@ test('a user search supersedes a slower background result restore', async () => 
 
   expect(apiMocks.searchTimetable).toHaveBeenCalledWith(query);
   expect(result.current.timetableData?.search?.query).toBe(query);
-  expect(result.current.timetableData?.items).toHaveLength(1);
-
-  await act(async () => {
-    resolveLatest({ success: true, data: staleResult, timestamp: '2026-09-20T02:32:00' });
-    await Promise.resolve();
-  });
-
-  await waitFor(() => expect(result.current.timetableData?.search?.query).toBe(query));
   expect(result.current.timetableData?.items).toHaveLength(1);
 
   await act(async () => {
@@ -116,7 +100,7 @@ test('cached results render before session verification and survive a failed ref
     'classwire:v2:last-timetable:student@example.com',
     JSON.stringify(cachedResult),
   );
-  apiMocks.getLatestTimetable.mockRejectedValue(new Error('Backend is sleeping'));
+  apiMocks.getLatestTimetable.mockRejectedValue(new Error('Backend must remain asleep'));
 
   const auth = {
     bootstrap: null,
@@ -134,7 +118,7 @@ test('cached results render before session verification and survive a failed ref
   expect(apiMocks.getLatestTimetable).not.toHaveBeenCalled();
 
   rerender({ loading: false });
-  await waitFor(() => expect(apiMocks.getLatestTimetable).toHaveBeenCalledTimes(2));
+  expect(apiMocks.getLatestTimetable).not.toHaveBeenCalled();
   expect(result.current.timetableData?.search?.query).toBe(cachedQuery);
   expect(result.current.timetableData?.items).toHaveLength(1);
 });
@@ -162,7 +146,7 @@ test('an exact repeated query renders from the device cache without a second API
     user: { id: 'repeat-cache-user', email: 'repeat-cache@example.com' },
   }));
 
-  await waitFor(() => expect(apiMocks.getLatestTimetable).toHaveBeenCalledOnce());
+  expect(apiMocks.getLatestTimetable).not.toHaveBeenCalled();
   await act(async () => {
     await result.current.runSmartSearch(query);
   });
@@ -179,4 +163,86 @@ test('an exact repeated query renders from the device cache without a second API
 
   expect(apiMocks.searchTimetable).toHaveBeenCalledTimes(1);
   expect(result.current.timetableData?.search?.query).toBe(query);
+});
+
+test('a differently worded query for a fresh cached weekday never contacts Render', async () => {
+  const firstQuery = 'BSSE7A timetable on Monday';
+  const secondQuery = 'Software Project Management on Monday';
+  const item = {
+    semester: 'BS(SE)-7A',
+    semester_display: 'BS(SE)-7A',
+    course_title: 'Software Project Management',
+    course_code: 'SEC 3603',
+    schedule_day: 'Monday',
+    time: '02:00 PM - 03:30 PM',
+  };
+  const serverResult = {
+    ...makeSearchData(firstQuery, 'Found one class.', [item]),
+    source_cache: {
+      tier: 'firestore',
+      requested_days: ['Monday'],
+      refreshed_at_by_day: { Monday: '2099-01-01T00:00:00Z' },
+      next_refresh_at_by_day: { Monday: '2099-01-08T00:00:00Z' },
+      parser_version: 4,
+      source_items: [item],
+    },
+  };
+  apiMocks.searchTimetable.mockResolvedValue({ success: true, data: serverResult });
+
+  const { result } = renderHook(() => useDashboardController({
+    bootstrap: null,
+    deleteAccount: vi.fn(),
+    isAuthenticated: true,
+    loading: false,
+    logout: vi.fn(),
+    user: { id: 'fresh-source-user', email: 'fresh-source@example.com' },
+  }));
+
+  await act(async () => { await result.current.runSmartSearch(firstQuery); });
+  await act(async () => { result.current.clearSmartSearch(); await Promise.resolve(); });
+  await act(async () => { await result.current.runSmartSearch(secondQuery); });
+
+  expect(apiMocks.searchTimetable).toHaveBeenCalledTimes(1);
+  expect(result.current.timetableData?.source_cache?.tier).toBe('browser');
+  expect(result.current.timetableData?.items[0]?.course_title).toBe('Software Project Management');
+});
+
+test('a requested weekday past its refresh boundary contacts Render', async () => {
+  const firstQuery = 'BSSE7A timetable on Monday';
+  const secondQuery = 'Software Project Management on Monday';
+  const item = {
+    semester: 'BS(SE)-7A',
+    course_title: 'Software Project Management',
+    schedule_day: 'Monday',
+  };
+  const staleResult = {
+    ...makeSearchData(firstQuery, 'Found one class.', [item]),
+    source_cache: {
+      tier: 'firestore',
+      requested_days: ['Monday'],
+      refreshed_at_by_day: { Monday: '2020-01-01T00:00:00Z' },
+      next_refresh_at_by_day: { Monday: '2020-01-08T00:00:00Z' },
+      parser_version: 4,
+      source_items: [item],
+    },
+  };
+  apiMocks.searchTimetable.mockImplementation(async (query: string) => ({
+    success: true,
+    data: { ...staleResult, search: { ...staleResult.search!, query } },
+  }));
+
+  const { result } = renderHook(() => useDashboardController({
+    bootstrap: null,
+    deleteAccount: vi.fn(),
+    isAuthenticated: true,
+    loading: false,
+    logout: vi.fn(),
+    user: { id: 'stale-source-user', email: 'stale-source@example.com' },
+  }));
+
+  await act(async () => { await result.current.runSmartSearch(firstQuery); });
+  await act(async () => { result.current.clearSmartSearch(); await Promise.resolve(); });
+  await act(async () => { await result.current.runSmartSearch(secondQuery); });
+
+  expect(apiMocks.searchTimetable).toHaveBeenCalledTimes(2);
 });

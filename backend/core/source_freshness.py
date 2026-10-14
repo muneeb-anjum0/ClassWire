@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+import os
+from datetime import datetime, time, timedelta, timezone
 from typing import Any, Iterable
+from zoneinfo import ZoneInfo
 
 
 SOURCE_FRESHNESS = timedelta(days=7)
@@ -30,24 +32,37 @@ def normalize_requested_days(days: Iterable[str]) -> list[str]:
     return [day for day in SUPPORTED_DAYS if day in selected]
 
 
+def _schedule_timezone() -> ZoneInfo:
+    try:
+        return ZoneInfo(os.getenv("TZ", "Asia/Karachi"))
+    except Exception:
+        return ZoneInfo("Asia/Karachi")
+
+
+def _next_weekday_boundary(timestamp: datetime) -> datetime:
+    local = timestamp.astimezone(_schedule_timezone())
+    next_date = local.date() + SOURCE_FRESHNESS
+    return datetime.combine(next_date, time.min, tzinfo=local.tzinfo)
+
+
 def stale_source_days(
     source: dict[str, Any] | None,
     requested_days: Iterable[str],
     *,
     now: datetime | None = None,
 ) -> list[str]:
-    """Return requested weekdays that have never refreshed or are seven days old."""
+    """Return requested weekdays missing or at their next Karachi week boundary."""
     days = normalize_requested_days(requested_days)
     if not days:
         return []
-    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    current = (now or datetime.now(timezone.utc)).astimezone(_schedule_timezone())
     refreshed = (source or {}).get("refreshed_at_by_day")
     if not isinstance(refreshed, dict):
         return days
     return [
         day for day in days
         if (timestamp := _as_utc_datetime(refreshed.get(day))) is None
-        or current - timestamp >= SOURCE_FRESHNESS
+        or current >= _next_weekday_boundary(timestamp)
     ]
 
 
@@ -59,7 +74,8 @@ def next_refresh_by_day(source: dict[str, Any] | None) -> dict[str, str]:
     for day in SUPPORTED_DAYS:
         timestamp = _as_utc_datetime(refreshed.get(day))
         if timestamp is not None:
-            result[day] = (timestamp + SOURCE_FRESHNESS).isoformat().replace("+00:00", "Z")
+            boundary = _next_weekday_boundary(timestamp).astimezone(timezone.utc)
+            result[day] = boundary.isoformat().replace("+00:00", "Z")
     return result
 
 

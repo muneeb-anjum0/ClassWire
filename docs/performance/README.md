@@ -27,10 +27,9 @@ Gunicorn binds to Render's assigned `PORT` through both the process command and 
 ## Browser startup
 
 - The production API origin is known immediately, avoiding a blocking discovery health check.
-- DNS prefetch and preconnect start connection setup while the static shell loads.
-- An early non-blocking request begins waking the free Render instance.
-- One authenticated bootstrap replaces separate session, configuration, and timetable calls.
-- Logged-out bootstrap returns an explicit guest state instead of a noisy authorization failure.
+- No startup health probe or background bootstrap wakes Render.
+- A locally remembered signed-in identity opens the cached dashboard immediately; an unreachable sleeping backend is never interpreted as a logout.
+- OAuth completion remains authoritative and establishes both the signed cookie and the durable local identity marker.
 - Production API traffic is reverse-proxied through the Vercel origin so signed cookies remain first-party in private browsing.
 - Bootstrap returns identity and the latest timetable without reading obsolete filtering configuration.
 - Login, legal pages, and the authenticated dashboard load as separate route chunks.
@@ -43,13 +42,16 @@ Render free-tier suspension can still add provider-controlled delay. Application
 ```text
 React state
   -> exact-query IndexedDB cache
+  -> normalized weekday source in IndexedDB + browser-side matching
   -> repeated-query process cache
   -> normalized source memory cache
   -> compressed Firestore source
   -> Gmail refresh only for stale requested weekdays
 ```
 
-Normal searches operate on already-normalized rows and do not call Gmail. Each requested weekday has an exact seven-day freshness boundary. Repeating the same query on one device can bypass Render entirely through an account-scoped IndexedDB entry; a different device reaches the API but still uses the Firestore source without Gmail. User, parser, source, and query identity remain part of the cache boundaries.
+The first server result stores both the answer and its normalized weekly source in account-scoped IndexedDB. Later wording that targets fresh locally available weekdays is interpreted against that source in the browser, so it does not contact or wake Render. Render is contacted only when a requested weekday is absent, reaches the next occurrence of that weekday at Karachi midnight, the user explicitly asks for a refresh, or an account operation genuinely requires the server. On the server, Gmail is likewise contacted only for missing or stale requested weekdays.
+
+A new device has no local source yet, so its first timetable question contacts Render once to obtain the account's persisted source. Thereafter it follows the same local freshness boundaries.
 
 ### Optional semantic inference
 
@@ -103,7 +105,7 @@ are purged on writes and inspection instead of retaining stale object graphs.
 
 ## Browser persistence
 
-Large authenticated results are stored in IndexedDB rather than synchronous `localStorage`. The connection is reused, exact query results follow server-provided per-weekday expiry times, existing local entries migrate forward, and an unavailable IndexedDB implementation falls back without breaking the application. Recent search labels are stored separately in Firestore so they follow the account across devices.
+Large authenticated results and normalized timetable sources are stored in IndexedDB rather than synchronous `localStorage`. The connection is reused, browser-side searches follow server-provided per-weekday expiry times, existing local entries migrate forward, and an unavailable IndexedDB implementation falls back without breaking the application. Recent search labels are stored separately in Firestore; local changes synchronize the next time another operation already needs Render, so history alone never wakes it.
 
 React state keeps the current answer visible while a tab remains open. Failed background refreshes do not replace it with an empty state. Request ordering prevents a late older response from overwriting a newer search.
 
@@ -126,14 +128,14 @@ Large JSON responses are gzip-compressed only when the browser supports compress
 | --- | --- |
 | Eager backend dependency initialization | Lazy request-time service construction |
 | Health checks waking cloud dependencies | Constant-time application health route |
-| Multiple dashboard startup requests | Consolidated bootstrap endpoint |
-| Production API discovery round trip | Immediate known-origin selection and early wake |
+| Dashboard startup waking Render | Durable local identity and source restore with no background request |
+| Production API discovery round trip | Immediate known-origin selection without probing it |
 | Incognito blocking cross-site session cookies | Same-origin API proxy plus single-use OAuth handoff |
 | Synchronous large-result storage | IndexedDB with connection reuse |
 | Every refresh reparsing every day | Per-weekday message IDs and incremental fetch |
 | Gmail throttling and transient failure | Timeouts, bounded backoff, jitter, and partial retry |
 | Search reaching Gmail repeatedly | Durable normalized source separated from displayed result |
-| Same-day searches after Render sleeps | Seven-day per-weekday Firestore source reuse |
+| Same-day searches after Render sleeps | Per-weekday IndexedDB source and browser-side matching |
 | Exact repeated browser search | IndexedDB answer reuse without a backend request |
 | Device-local recent history | Compact account-scoped Firestore search history |
 | Identical search recomputation | Bounded parser-versioned result cache |

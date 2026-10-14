@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { isSearchCacheFresh } from '../services/timetableCache';
+import { isSearchCacheFresh, requestedSourceDaysAreFresh } from '../services/timetableCache';
 import { TimetableData } from '../types/api';
 
 const resultAt = (savedAt: string, nextRefresh?: string): TimetableData => ({
@@ -47,4 +47,22 @@ test('legacy cached results use the same seven-day maximum age', () => {
 
   expect(isSearchCacheFresh(result, Date.parse('2026-10-19T04:59:59Z'))).toBe(true);
   expect(isSearchCacheFresh(result, Date.parse('2026-10-19T05:00:00Z'))).toBe(false);
+});
+
+test('all requested weekdays must be locally present and before their refresh boundary', () => {
+  const source = {
+    items: [],
+    refreshed_at_by_day: {
+      Monday: '2026-10-12T05:00:00Z',
+      Tuesday: '2026-10-13T05:00:00Z',
+    },
+    next_refresh_at_by_day: {
+      Monday: '2026-10-19T05:00:00Z',
+      Tuesday: '2026-10-20T05:00:00Z',
+    },
+  };
+
+  expect(requestedSourceDaysAreFresh(source, ['Monday'], Date.parse('2026-10-14T05:00:00Z'))).toBe(true);
+  expect(requestedSourceDaysAreFresh(source, ['Monday', 'Wednesday'], Date.parse('2026-10-14T05:00:00Z'))).toBe(false);
+  expect(requestedSourceDaysAreFresh(source, ['Monday'], Date.parse('2026-10-19T05:00:00Z'))).toBe(false);
 });

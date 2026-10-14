@@ -17,8 +17,7 @@ if (typeof window.matchMedia === 'undefined') {
   });
 }
 
-vi.mock('../services/api', () => {
-  const mockItems = [
+const mockItems = vi.hoisted(() => [
     {
       row_number: 1,
       department: 'Social Sciences',
@@ -53,8 +52,9 @@ vi.mock('../services/api', () => {
       time: '11:10 AM - 2:10 PM',
       campus: 'SZABIST University H-8/4 ISB Campus',
     },
-  ];
+  ]);
 
+vi.mock('../services/api', () => {
   return {
     BACKEND_WAKE_EVENT: 'backend-wake-state',
     apiService: {
@@ -75,6 +75,14 @@ vi.mock('../services/api', () => {
 
 beforeEach(() => {
   localStorage.setItem('user', JSON.stringify({ id: 'test-user', email: '2380223@szabist-isb.pk' }));
+  localStorage.setItem('classwire:v2:last-timetable:2380223@szabist-isb.pk', JSON.stringify({
+    for_day: 'Entire Week',
+    for_date: '2026-10-14',
+    query: '',
+    message_id: null,
+    items: mockItems,
+    summary: { total_items: 2, semester_breakdown: {}, unique_courses: 2, unique_faculty: 1 },
+  }));
 });
 
 test('App shows Social Sciences timetable in both semester sections', async () => {

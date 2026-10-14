@@ -113,26 +113,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [authenticationError, setAuthenticationError] = useState('');
 
   useEffect(() => {
-    const restoreSession = async () => {
-      try {
-        await apiService.initialize();
-        const response = await apiService.getBootstrap();
-        setBootstrap(response);
-        if (response.authenticated && response.user) {
-          setUser(response.user);
-          cacheUser(response.user);
-        } else {
-          setUser(null);
-          cacheUser(null);
-        }
-      } catch {
-        setUser(null);
-        cacheUser(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     const completeAuthHandoff = async (token: string) => {
       try {
         await apiService.initialize();
@@ -169,7 +149,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return;
     }
 
-    void restoreSession();
+    // A verified local identity is enough to render cached data. Deferring
+    // session verification avoids waking Render on every page load. The next
+    // operation that genuinely needs the server still uses its signed cookie
+    // and will surface an expired session normally.
+    if (user) {
+      setLoading(false);
+      return;
+    }
+
+    // Signed-out and first-time visitors can view the login screen without a
+    // backend round trip. OAuth completion performs authoritative verification.
+    setLoading(false);
   }, []);
 
   const loginWithGmail = async (): Promise<boolean> => {
