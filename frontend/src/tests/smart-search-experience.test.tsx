@@ -60,7 +60,7 @@ test('account history is merged with legacy device history and synced back', asy
   ]);
 });
 
-test('a search answer can be hidden and restored without removing its data', async () => {
+test('a search answer starts hidden and can be restored without removing its data', async () => {
   const data = {
     for_day: 'Entire Week',
     for_date: '',
@@ -93,12 +93,11 @@ test('a search answer can be hidden and restored without removing its data', asy
     },
   } satisfies TimetableData;
   const user = userEvent.setup();
-  render(<SmartSearch {...baseProps} data={data} />);
+  const { rerender } = render(<SmartSearch {...baseProps} data={data} />);
 
-  expect(screen.getByText('Zainab Iftikhar Chaudhary')).toBeInTheDocument();
-  const resultPanel = screen.getByText('Search result').closest('.smart-search__answer');
+  const resultPanel = screen.getByText('Search result', { exact: false }).closest('.smart-search__answer');
   const resultBody = resultPanel?.querySelector('.smart-search__answer-body');
-  expect(resultPanel).toHaveClass('smart-search__answer--visible');
+  expect(resultPanel).toHaveClass('smart-search__answer--hidden');
   expect(resultPanel).toHaveClass('smart-search__answer--availability');
   expect(resultPanel?.querySelector('.smart-search__faculty > header')).toBeInTheDocument();
   expect(resultPanel?.querySelector('.smart-search__faculty > header svg')).not.toBeInTheDocument();
@@ -112,23 +111,33 @@ test('a search answer can be hidden and restored without removing its data', asy
   expect(resultPanel?.querySelector('.smart-search__day--unavailable')).toHaveTextContent(
     'Not available this day',
   );
-  expect(screen.getByRole('alert')).toHaveTextContent('Not available this day');
-  expect(resultBody).toHaveAttribute('aria-hidden', 'false');
-
-  const resultToggle = screen.getByLabelText('Hide search result');
-  await user.click(resultToggle);
-  expect(resultPanel?.querySelector('.smart-search__answer-label')).toHaveTextContent('Search result hidden');
-  expect(resultPanel).toHaveClass('smart-search__answer--hidden');
-  expect(screen.getByRole('button', { name: 'Show' })).toBe(resultToggle);
   expect(resultBody).toHaveAttribute('aria-hidden', 'true');
 
-  await user.click(screen.getByRole('button', { name: 'Show' }));
+  const resultToggle = screen.getByRole('button', { name: 'Show' });
+  await user.click(resultToggle);
   expect(screen.getByLabelText('Hide search result')).toBe(resultToggle);
   expect(resultPanel?.querySelector('.smart-search__answer-label')).toHaveTextContent('Search result');
   expect(resultPanel?.querySelector('.smart-search__answer-label')).not.toHaveTextContent('hidden');
   expect(screen.getByText('Zainab Iftikhar Chaudhary')).toBeInTheDocument();
   expect(resultPanel).toHaveClass('smart-search__answer--visible');
   expect(resultBody).toHaveAttribute('aria-hidden', 'false');
+  expect(screen.getByRole('alert')).toHaveTextContent('Not available this day');
+
+  rerender(<SmartSearch
+    {...baseProps}
+    data={{
+      ...data,
+      search: {
+        ...data.search,
+        query: 'When is Zainab free on Tuesday?',
+        answer: 'Updated availability.',
+      },
+    }}
+  />);
+
+  const nextResultPanel = screen.getByText('Search result', { exact: false }).closest('.smart-search__answer');
+  expect(nextResultPanel).toHaveClass('smart-search__answer--hidden');
+  expect(nextResultPanel?.querySelector('.smart-search__answer-body')).toHaveAttribute('aria-hidden', 'true');
 });
 
 test('the composer clear button starts a new centered search', async () => {

@@ -66,7 +66,7 @@ export default function SmartSearch({
 }: Props) {
   const [accountOpen, setAccountOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(true);
-  const [resultHidden, setResultHidden] = useState(false);
+  const [resultHidden, setResultHidden] = useState(true);
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState('');
@@ -141,7 +141,7 @@ export default function SmartSearch({
     if (loading || cleaned.length < 2) return;
     setQuery(cleaned);
     rememberSearch(cleaned);
-    setResultHidden(false);
+    setResultHidden(true);
     setComposerOpen(false);
     onSearch(cleaned);
   }, [loading, onSearch, rememberSearch, setQuery]);
@@ -155,7 +155,7 @@ export default function SmartSearch({
   const clearSearch = () => {
     if (loading) return;
     onClear();
-    setResultHidden(false);
+    setResultHidden(true);
     setComposerOpen(true);
   };
 
@@ -209,7 +209,7 @@ export default function SmartSearch({
   }, [rotateSuggestions, suggestionStorageKey]);
 
   useEffect(() => {
-    setResultHidden(false);
+    setResultHidden(true);
     if (result) setComposerOpen(false);
   }, [resultKey]);
 
