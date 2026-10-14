@@ -9,6 +9,7 @@ import {
   getDisplayFaculty,
   getDisplayRoom,
   getDisplayTime,
+  formatRefreshDate,
   getSemesterLabel,
   getSectionColor,
   groupConflictingItems,
@@ -23,6 +24,7 @@ type Props = {
   sortedSemesters: string[];
   showDay: boolean;
   conflictMembership: ConflictMembership;
+  refreshedAtByDay: Record<string, string>;
 };
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const rowKey = (item: TimetableItem, index: number) => [
@@ -79,6 +81,7 @@ function ScheduleGroup({
   conflictMembership,
   showHeader = true,
   showCount = true,
+  refreshedAt,
 }: {
   title: string;
   items: TimetableItem[];
@@ -86,11 +89,16 @@ function ScheduleGroup({
   conflictMembership: ConflictMembership;
   showHeader?: boolean;
   showCount?: boolean;
+  refreshedAt?: string;
 }) {
   const arrangedItems = groupConflictingItems(items, conflictMembership);
+  const refreshDate = formatRefreshDate(refreshedAt);
   return <section className="conversation-day">
     {showHeader && <header className="conversation-day__header">
-      <h2>{title}</h2>
+      <div className="conversation-day__identity">
+        <h2>{title}</h2>
+        {refreshDate && <span className="conversation-day__updated">- Updated {refreshDate}</span>}
+      </div>
       {showCount && <span>{items.length} {items.length === 1 ? 'class' : 'classes'}</span>}
     </header>}
     <div className="conversation-day__classes">
@@ -108,7 +116,7 @@ function ScheduleGroup({
   </section>;
 }
 
-export default function TimetableDesktopTable({ grouped, sortedSemesters, showDay, conflictMembership }: Props) {
+export default function TimetableDesktopTable({ grouped, sortedSemesters, showDay, conflictMembership, refreshedAtByDay }: Props) {
   const semesterIndexes = new Map(sortedSemesters.map((semester, index) => [semester, index]));
   if (!showDay) {
     return <div className="tw-desktop-view conversation-schedule">
@@ -140,6 +148,7 @@ export default function TimetableDesktopTable({ grouped, sortedSemesters, showDa
       conflictMembership={conflictMembership}
       showHeader={showDayBreakdown}
       showCount={showDayBreakdown}
+      refreshedAt={refreshedAtByDay[day]}
     />)}
   </div>;
 }

@@ -56,7 +56,23 @@ html[data-theme='dark'] .tw-mobile-day-head {
   letter-spacing: -0.025em;
 }
 
-.conversation-day__header span {
+.conversation-day__identity,
+.tw-mobile-day-identity {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.conversation-day__updated,
+.tw-mobile-day-updated {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.conversation-day__header > span {
   color: var(--text-muted);
   font-size: 12px;
 }
@@ -336,6 +352,15 @@ html[data-theme='dark'] .conversation-class__section {
     font-size: 19px;
     font-weight: 600;
     letter-spacing: -0.025em;
+  }
+
+  .tw-mobile-day-identity {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+
+  .tw-mobile-day-updated {
+    font-size: 10px;
   }
 
   .tw-section-kicker {

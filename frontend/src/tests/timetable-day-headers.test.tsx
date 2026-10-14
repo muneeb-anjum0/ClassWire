@@ -14,11 +14,23 @@ const classFor = (scheduleDay: string) => ({
 describe('timetable day headers', () => {
   it('renders full day-header rows in both responsive views for a multi-day timetable', () => {
     const { container } = render(
-      <TimetableTable items={[classFor('Monday'), classFor('Wednesday')]} />,
+      <TimetableTable
+        items={[classFor('Monday'), classFor('Wednesday')]}
+        refreshedAtByDay={{
+          Monday: '2026-10-12T20:30:00Z',
+          Wednesday: '2026-10-14T05:00:00Z',
+        }}
+      />,
     );
 
     expect(container.querySelectorAll('.conversation-day__header')).toHaveLength(2);
     expect(container.querySelectorAll('.tw-mobile-day-head')).toHaveLength(2);
+    expect(container.querySelectorAll('.conversation-day__updated')[0]).toHaveTextContent(
+      '- Updated 13 Oct 2026',
+    );
+    expect(container.querySelectorAll('.tw-mobile-day-updated')[1]).toHaveTextContent(
+      '- Updated 14 Oct 2026',
+    );
   });
 
   it('does not add a redundant day-header row to a single-day timetable', () => {

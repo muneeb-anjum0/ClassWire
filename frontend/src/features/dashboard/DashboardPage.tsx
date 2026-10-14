@@ -101,6 +101,7 @@ export default function DashboardPage() {
                   <TimetableTable
                     items={controller.filteredItems}
                     conflicts={visibleConflicts}
+                    refreshedAtByDay={controller.timetableData.source_cache?.refreshed_at_by_day}
                   />
                 </div>
               </section>

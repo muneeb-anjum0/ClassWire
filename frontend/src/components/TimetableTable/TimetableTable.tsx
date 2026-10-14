@@ -9,12 +9,13 @@ import { buildConflictMembership, groupAndSortData } from './timetableTableUtils
 interface TimetableTableProps {
   items: TimetableItem[];
   conflicts?: TimetableConflict[];
+  refreshedAtByDay?: Record<string, string>;
 }
 
 const EMPTY_ITEMS: TimetableItem[] = [];
 const WINDOW_SIZE = 60;
 
-const TimetableTable: React.FC<TimetableTableProps> = ({ items, conflicts = [] }) => {
+const TimetableTable: React.FC<TimetableTableProps> = ({ items, conflicts = [], refreshedAtByDay = {} }) => {
   const safeItems = items || EMPTY_ITEMS;
   const [visibleCount, setVisibleCount] = useState(WINDOW_SIZE);
   useEffect(() => setVisibleCount(WINDOW_SIZE), [safeItems]);
@@ -38,8 +39,8 @@ const TimetableTable: React.FC<TimetableTableProps> = ({ items, conflicts = [] }
         <EmptyTimetableState />
       ) : (
         <div className="tw-stage">
-          <TimetableMobileSection grouped={grouped} sortedSemesters={sortedSemesters} showDay={showDay} conflictMembership={conflictMembership} />
-          <TimetableDesktopTable grouped={grouped} sortedSemesters={sortedSemesters} showDay={showDay} conflictMembership={conflictMembership} />
+          <TimetableMobileSection grouped={grouped} sortedSemesters={sortedSemesters} showDay={showDay} conflictMembership={conflictMembership} refreshedAtByDay={refreshedAtByDay} />
+          <TimetableDesktopTable grouped={grouped} sortedSemesters={sortedSemesters} showDay={showDay} conflictMembership={conflictMembership} refreshedAtByDay={refreshedAtByDay} />
           {visibleCount < safeItems.length && <div className="tw-window-controls">
             <span>Showing {visibleItems.length} of {safeItems.length} classes</span>
             <button type="button" onClick={() => setVisibleCount((count) => Math.min(count + WINDOW_SIZE, safeItems.length))}>

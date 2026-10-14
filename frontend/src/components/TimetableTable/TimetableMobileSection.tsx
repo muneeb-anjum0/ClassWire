@@ -1,7 +1,7 @@
 import { TimetableItem } from '../../types/api';
-import { ConflictMembership, GroupedTimetable, getConflictPosition, getCourseMeta, getDisplayCampus, getDisplayCourseTitle, getDisplayFaculty, getDisplayRoom, getDisplayTime, getSectionColor, getSemesterLabel, groupConflictingItems, isOnlineClass, renderHighlightedText, shouldHighlightRow, sortTimetableItems } from './timetableTableUtils';
+import { ConflictMembership, GroupedTimetable, formatRefreshDate, getConflictPosition, getCourseMeta, getDisplayCampus, getDisplayCourseTitle, getDisplayFaculty, getDisplayRoom, getDisplayTime, getSectionColor, getSemesterLabel, groupConflictingItems, isOnlineClass, renderHighlightedText, shouldHighlightRow, sortTimetableItems } from './timetableTableUtils';
 
-type Props = { grouped: GroupedTimetable; sortedSemesters: string[]; showDay: boolean; conflictMembership: ConflictMembership };
+type Props = { grouped: GroupedTimetable; sortedSemesters: string[]; showDay: boolean; conflictMembership: ConflictMembership; refreshedAtByDay: Record<string, string> };
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function ClassCard({
@@ -42,7 +42,7 @@ function ClassCard({
   </article>;
 }
 
-export default function TimetableMobileSection({ grouped, sortedSemesters, showDay, conflictMembership }: Props) {
+export default function TimetableMobileSection({ grouped, sortedSemesters, showDay, conflictMembership, refreshedAtByDay }: Props) {
   const semesterIndexes = new Map(sortedSemesters.map((semester, index) => [semester, index]));
   const renderSemester = (semester: string, items: TimetableItem[], key: string, showCount: boolean) => {
     const arrangedItems = groupConflictingItems(items, conflictMembership);
@@ -79,9 +79,13 @@ export default function TimetableMobileSection({ grouped, sortedSemesters, showD
   return <div className="tw-mobile-view tw-mobile-view--weekly">
     {days.map(({ day, items }) => {
       const arrangedItems = groupConflictingItems(items, conflictMembership);
+      const refreshDate = formatRefreshDate(refreshedAtByDay[day]);
       return <section key={day} className={`tw-mobile-day tw-mobile-day--${day.toLowerCase()}`}>
         {showDayHeaders && <div className="tw-mobile-day-head">
-          <h2>{day}</h2>
+          <div className="tw-mobile-day-identity">
+            <h2>{day}</h2>
+            {refreshDate && <span className="tw-mobile-day-updated">- Updated {refreshDate}</span>}
+          </div>
           <span className="tw-count-pill">{items.length} {items.length === 1 ? 'class' : 'classes'}</span>
         </div>}
         <div className="tw-mobile-card-list">

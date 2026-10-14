@@ -65,6 +65,18 @@ export const compareTimetableItems = (left: TimetableItem, right: TimetableItem)
 export const sortTimetableItems = (items: TimetableItem[]): TimetableItem[] =>
   [...items].sort(compareTimetableItems);
 
+export const formatRefreshDate = (timestamp?: string): string | null => {
+  if (!timestamp) return null;
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat('en-PK', {
+    timeZone: 'Asia/Karachi',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(date);
+};
+
 export const getDisplayTime = (item: TimetableItem): string => {
   return hasDisplayValue(item.time) ? item.time.trim() : '-';
 };
