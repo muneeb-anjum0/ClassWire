@@ -45,7 +45,7 @@ flowchart LR
 1. A durable cached identity opens the dashboard without a background server request; backend sleep or temporary unavailability cannot force the login page.
 2. IndexedDB restores the last successful result and the normalized per-account timetable source.
 3. The browser derives requested weekdays and answers new wording locally while every requested weekday remains fresh.
-4. Missing or stale requested weekdays—and explicit refresh requests—call the API; ordinary fresh searches do not wake Render.
+4. Missing or stale requested weekdays, as well as explicit refresh requests, call the API; ordinary fresh searches do not wake Render.
 5. API search checks the normalized source in memory, then Firestore, then Gmail only for requested weekdays that reached their next Karachi calendar-week boundary.
 6. Gmail is queried independently for the newest available message for each stale weekday.
 7. Message IDs determine which weekday sources can be reused and which must be fetched again.

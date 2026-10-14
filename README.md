@@ -1,4 +1,4 @@
-# ClassWire — SZABIST Islamabad Timetable & ZABDESK Schedule Search
+# ClassWire: SZABIST Islamabad Timetable & ZABDESK Schedule Search
 
 > A natural-language SZABIST Islamabad timetable search and ZABDESK schedule companion for classes, courses, sections, faculty availability, and clash-aware planning.
 
@@ -9,7 +9,7 @@
 
 **Live:** [szabist-islamabad-search.vercel.app](https://szabist-islamabad-search.vercel.app/)
 
-ClassWire converts SZABIST Islamabad timetable emails into searchable schedules and provides a focused companion to ZABDESK timetable workflows. Students can search SZABIST ISB sections, courses, faculty free slots, credit hours, and cross-section schedules while automatically detecting intentional timetable clashes—without a paid language-model request for every search.
+ClassWire converts SZABIST Islamabad timetable emails into searchable schedules and provides a focused companion to ZABDESK timetable workflows. Students can search SZABIST ISB sections, courses, faculty free slots, credit hours, and cross-section schedules while automatically detecting intentional timetable clashes, without a paid language-model request for every search.
 
 ClassWire is an independent student project and is not an official SZABIST service.
 
