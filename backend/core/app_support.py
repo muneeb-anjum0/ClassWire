@@ -146,12 +146,44 @@ def configure_logging() -> logging.Logger:
     return logging.getLogger("app")
 
 
-def get_allowed_origins() -> list[str]:
-    configured = [
-        origin.strip().rstrip("/")
+def _canonical_origin(value: str, *, infer_https: bool = False) -> str | None:
+    normalized = value.strip().rstrip("/")
+    if not normalized:
+        return None
+    if infer_https and "://" not in normalized:
+        normalized = f"https://{normalized}"
+
+    parsed = urlparse(normalized)
+    if (
+        parsed.scheme.casefold() not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.path not in {"", "/"}
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+    host = parsed.hostname.casefold()
+    netloc = f"{host}:{port}" if port is not None else host
+    return f"{parsed.scheme.casefold()}://{netloc}"
+
+
+def _configured_origins() -> list[str]:
+    return [
+        canonical
         for origin in os.environ.get("FRONTEND_ORIGINS", "").split(",")
-        if origin.strip()
+        if (canonical := _canonical_origin(origin, infer_https=True)) is not None
     ]
+
+
+def get_allowed_origins() -> list[str]:
+    configured = _configured_origins()
     if os.environ.get("PUBLIC_BACKEND_URL", "").strip().startswith("https://"):
         return configured
     return configured + [
@@ -162,14 +194,10 @@ def get_allowed_origins() -> list[str]:
 
 
 def is_allowed_cors_origin(origin: str) -> bool:
-    normalized = origin.rstrip("/")
+    normalized = _canonical_origin(origin)
     if not normalized:
         return False
-    configured = {
-        value.strip().rstrip("/")
-        for value in os.environ.get("FRONTEND_ORIGINS", "").split(",")
-        if value.strip()
-    }
+    configured = set(_configured_origins())
     local_allowed = not os.environ.get("PUBLIC_BACKEND_URL", "").strip().startswith("https://")
     return normalized in configured or (
         local_allowed and any(pattern.fullmatch(normalized) for pattern in LOCAL_ORIGIN_PATTERNS)
@@ -179,9 +207,8 @@ def is_allowed_cors_origin(origin: str) -> bool:
 def validate_frontend_origin(origin: str | None) -> str | None:
     if not origin:
         return None
-    normalized = origin.strip().rstrip("/")
-    parsed = urlparse(normalized)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.path not in {"", "/"}:
+    normalized = _canonical_origin(origin)
+    if not normalized:
         return None
     return normalized if is_allowed_cors_origin(normalized) else None
 

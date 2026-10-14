@@ -3,7 +3,7 @@ from flask import Flask
 from unittest.mock import MagicMock
 
 from app import app
-from core.app_support import configure_app, is_allowed_cors_origin
+from core.app_support import configure_app, get_allowed_origins, is_allowed_cors_origin, validate_frontend_origin
 from core.authentication import authenticated_user
 from database.token_crypto import decrypt_token_data, encrypt_token_data
 
@@ -59,6 +59,26 @@ def test_production_does_not_trust_localhost_origins(monkeypatch):
 
     assert is_allowed_cors_origin("https://app.example.com") is True
     assert is_allowed_cors_origin("http://localhost:5173") is False
+
+
+def test_bare_production_frontend_hostname_is_normalized_to_https(monkeypatch):
+    monkeypatch.setenv("PUBLIC_BACKEND_URL", "https://api.example.com")
+    monkeypatch.setenv("FRONTEND_ORIGINS", "szabist-islamabad-search.vercel.app/")
+
+    assert get_allowed_origins() == ["https://szabist-islamabad-search.vercel.app"]
+    assert is_allowed_cors_origin("https://szabist-islamabad-search.vercel.app") is True
+    assert validate_frontend_origin("https://szabist-islamabad-search.vercel.app/") == (
+        "https://szabist-islamabad-search.vercel.app"
+    )
+
+
+def test_frontend_origin_rejects_credentials_paths_queries_and_fragments(monkeypatch):
+    monkeypatch.setenv("FRONTEND_ORIGINS", "https://app.example.com")
+
+    assert validate_frontend_origin("https://user@app.example.com") is None
+    assert validate_frontend_origin("https://app.example.com/oauth") is None
+    assert validate_frontend_origin("https://app.example.com?redirect=evil") is None
+    assert validate_frontend_origin("https://app.example.com#fragment") is None
 
 
 def test_production_token_encryption_requires_dedicated_key(monkeypatch):
