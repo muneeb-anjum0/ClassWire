@@ -6,11 +6,11 @@ const DashboardPage = lazy(() => import('./features/dashboard/DashboardPage'));
 const LegalPage = lazy(() => import('./components/LegalPage/LegalPage'));
 const LoginScreen = lazy(() => import('./components/LoginScreen/LoginScreen'));
 
-const SITE_URL = 'https://class-wire.vercel.app';
+const SITE_URL = 'https://szabist-islamabad-search.vercel.app';
 const PAGE_METADATA: Record<string, { title: string; description: string }> = {
   '/': {
-    title: 'SZABIST Timetable & Class Schedule Search | ClassWire',
-    description: 'Search SZABIST Islamabad timetables, class schedules, courses, sections, and faculty availability from your timetable emails.',
+    title: 'SZABIST Islamabad Timetable & ZABDESK Schedule Search | ClassWire',
+    description: 'Search SZABIST Islamabad and ZABDESK timetables, class schedules, courses, sections, and faculty availability from your timetable emails.',
   },
   '/privacy': {
     title: 'Privacy Policy | ClassWire',
@@ -34,6 +34,7 @@ const PageFallback = () => (
 
 function AuthenticatedApp() {
   const auth = useAuth();
+  if (auth.loading) return <PageFallback />;
   return auth.isAuthenticated ? <DashboardPage /> : <LoginScreen />;
 }
 

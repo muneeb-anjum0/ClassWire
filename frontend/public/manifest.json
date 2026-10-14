@@ -1,7 +1,7 @@
 {
   "short_name": "ClassWire",
-  "name": "ClassWire: SZABIST Timetable Search",
-  "description": "Search SZABIST Islamabad timetables, class schedules, courses, sections, and faculty availability.",
+  "name": "ClassWire: SZABIST Islamabad & ZABDESK Timetable Search",
+  "description": "Search SZABIST Islamabad and ZABDESK timetables, class schedules, courses, sections, and faculty availability.",
   "icons": [
     {
       "src": "logoo.svg",

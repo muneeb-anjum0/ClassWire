@@ -1,15 +1,15 @@
-# ClassWire
+# ClassWire — SZABIST Islamabad Timetable & ZABDESK Schedule Search
 
-> A multi-user, Gmail-integrated SZABIST schedule intelligence platform that extracts inconsistent timetable data, normalizes it, stores it efficiently, and answers natural-language schedule and faculty-availability questions.
+> A natural-language SZABIST Islamabad timetable search and ZABDESK schedule companion for classes, courses, sections, faculty availability, and clash-aware planning.
 
-[![Live application](https://img.shields.io/badge/live-class--wire.vercel.app-111111?style=flat-square)](https://class-wire.vercel.app/)
+[![Live application](https://img.shields.io/badge/live-szabist--islamabad--search.vercel.app-111111?style=flat-square)](https://szabist-islamabad-search.vercel.app/)
 [![Project status](https://img.shields.io/badge/status-completed-198754?style=flat-square)](#project-status)
-[![Quality, security, and build](https://img.shields.io/github/actions/workflow/status/muneeb-anjum0/ClassWire/security.yml?branch=main&style=flat-square&label=quality)](https://github.com/muneeb-anjum0/ClassWire/actions/workflows/security.yml)
+[![Quality, security, and build](https://img.shields.io/github/actions/workflow/status/muneeb-anjum0/ClassWire-SZABIST-ISB/security.yml?branch=main&style=flat-square&label=quality)](https://github.com/muneeb-anjum0/ClassWire-SZABIST-ISB/actions/workflows/security.yml)
 [![License](https://img.shields.io/badge/license-restricted-red?style=flat-square)](LICENSE)
 
-**Live:** [class-wire.vercel.app](https://class-wire.vercel.app/)
+**Live:** [szabist-islamabad-search.vercel.app](https://szabist-islamabad-search.vercel.app/)
 
-ClassWire converts SZABIST Islamabad timetable emails into searchable schedules. It supports section timetables, faculty availability, course and credit filters, cross-section schedule planning, and automatic clash detection without relying on a paid language-model request for every search.
+ClassWire converts SZABIST Islamabad timetable emails into searchable schedules and provides a focused companion to ZABDESK timetable workflows. Students can search SZABIST ISB sections, courses, faculty free slots, credit hours, and cross-section schedules while automatically detecting intentional timetable clashes—without a paid language-model request for every search.
 
 ClassWire is an independent student project and is not an official SZABIST service.
 
@@ -48,11 +48,11 @@ Take every BSSE7A class except Software Re-Engineering, plus SEC 3604 from BSSE5
 | Area | Result |
 | --- | --- |
 | Backend import | Approximately **0.19 seconds** on the measured development machine |
-| Initial JavaScript | Reduced from **300.9 kB / 96.7 kB gzip** to **203.2 kB / 64.8 kB gzip** |
+| Initial JavaScript | Reduced from **300.9 kB / 96.7 kB gzip** to approximately **205.1 kB / 65.4 kB gzip** |
 | Large-result rendering | Initial work limited to **60 schedule rows**, then expanded progressively |
 | Semantic planning | **1.17 ms mean**, **2.73 ms p95** across 2,000 warm local fixture queries |
-| Automated checks | **247 backend tests + 64 frontend tests = 311 tests** |
-| Measured coverage | **64.2% backend branch-aware coverage**, **73.8% frontend line coverage** |
+| Automated checks | **248 backend tests + 73 frontend tests = 321 tests** |
+| Measured coverage | **64.2% backend branch-aware coverage**, **76.0% frontend line coverage** |
 | Search architecture | Structural intent inference, inspectable semantic plans, and parser-versioned caching |
 | Optional NLU pipeline | TinyBERT intent and entity training, held-out evaluation, INT8 ONNX export, and CPU gates |
 | Storage | Compressed Firestore documents, stable hashes, TTL caches, and write suppression |

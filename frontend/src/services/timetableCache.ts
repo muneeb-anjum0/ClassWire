@@ -119,6 +119,25 @@ export const readTimetableSourceCache = async (
   return result;
 };
 
+export const findCachedTimetableOwner = async (): Promise<string | null> => {
+  const database = await openDatabase();
+  if (!database) return null;
+
+  for (const storeName of [SOURCE_STORE_NAME, STORE_NAME]) {
+    const keys = await transact<IDBValidKey[]>(
+      'readonly',
+      (store) => store.getAllKeys(),
+      storeName,
+    );
+    const email = keys
+      ?.map((key) => String(key).trim().toLowerCase())
+      .find((key) => key !== 'anonymous' && key.includes('@'));
+    if (email) return email;
+  }
+
+  return null;
+};
+
 export const writeTimetableSourceCache = async (
   email: string | undefined,
   data: TimetableData,

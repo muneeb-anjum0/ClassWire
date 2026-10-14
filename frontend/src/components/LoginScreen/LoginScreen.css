@@ -38,7 +38,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 11px;
+  gap: 9px;
   margin-top: 25px;
   padding: 8px 12px;
   border-block: 1px solid var(--border);
@@ -55,14 +55,6 @@
   font-weight: 600;
   letter-spacing: .035em;
   text-transform: uppercase;
-}
-
-.login-card__signal i {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--success);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 12%, transparent);
 }
 
 html[data-theme='dark'] .login-card__signal {

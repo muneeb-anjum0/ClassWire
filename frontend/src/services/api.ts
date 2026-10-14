@@ -183,7 +183,15 @@ export const apiService = {
   }>('/api/auth/handoff', { method: 'POST', body: { token } }),
   getBootstrap: () => request<BootstrapData>('/api/bootstrap'),
   deleteAccount: () => request<{ success: true; message: string }>('/api/account', { method: 'DELETE' }),
-  logout: async (): Promise<void> => { await request('/api/auth/logout', { method: 'POST' }); },
+  logout: async (): Promise<void> => {
+    // Vercel serves this static response and expires the HttpOnly session
+    // cookie via its response headers. It never traverses the Render proxy.
+    await fetch('/logout-session.json', {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+    });
+  },
   searchTimetable: (query: string, forceRefresh = false): Promise<ApiResponse<TimetableData>> =>
     request('/api/search', { method: 'POST', body: { query, force_refresh: forceRefresh } }),
   saveSearchHistory: (searches: string[]) => request<{

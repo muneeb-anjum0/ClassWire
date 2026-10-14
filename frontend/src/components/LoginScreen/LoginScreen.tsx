@@ -71,7 +71,6 @@ const LoginScreen: React.FC = () => {
 
         <div className="login-card__signal" aria-label="Read-only Gmail access for SZABIST Islamabad timetables">
           <span>Read-only Gmail</span>
-          <i aria-hidden="true" />
           <span>SZABIST Islamabad</span>
         </div>
 

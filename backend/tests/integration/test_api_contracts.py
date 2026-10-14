@@ -179,13 +179,13 @@ class TestAuthentication:
 
     def test_oauth_handoff_redirect_keeps_the_token_out_of_the_request_query(self):
         page = build_auth_handoff_redirect_page(
-            'https://class-wire.vercel.app',
+            'https://szabist-islamabad-search.vercel.app',
             {'auth': 'success', 'handoff': 'short-lived-token'},
             'Redirecting',
         )
 
-        assert 'https://class-wire.vercel.app/#auth=success&amp;handoff=short-lived-token' in page
-        assert 'https://class-wire.vercel.app/?auth=success' not in page
+        assert 'https://szabist-islamabad-search.vercel.app/#auth=success&amp;handoff=short-lived-token' in page
+        assert 'https://szabist-islamabad-search.vercel.app/?auth=success' not in page
 
     def test_get_user_from_request_valid_header(self, mock_store, mock_user):
         mock_store.get_or_create_user.return_value = mock_user

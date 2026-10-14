@@ -11,6 +11,13 @@
       ]
     },
     {
+      "source": "/logout-session.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "private, no-store, max-age=0" },
+        { "key": "Set-Cookie", "value": "classwire_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None" }
+      ]
+    },
+    {
       "source": "/(.*)",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },

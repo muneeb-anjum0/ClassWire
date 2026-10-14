@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { apiService } from '../services/api';
 import { BootstrapData } from '../types/api';
 import { deleteLocalAccountData } from '../services/accountData';
+import { findCachedTimetableOwner } from '../services/timetableCache';
 
 interface User {
   id: string;
@@ -22,6 +23,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const SESSION_USER_KEY = 'classwire:v1:session-user';
 const SESSION_SIGNED_OUT_KEY = 'classwire:v1:explicitly-signed-out';
+const SESSION_IDENTITY_COOKIE = 'classwire_identity';
 const LEGACY_USER_KEY = 'user';
 const TIMETABLE_KEY_PREFIX = 'classwire:v2:last-timetable:';
 
@@ -46,9 +48,50 @@ const clearAuthRedirectFromAddressBar = () => {
   window.history.replaceState({}, document.title, `${cleanUrl.pathname}${cleanUrl.search}`);
 };
 
+const explicitlySignedOut = () => {
+  try {
+    return window.localStorage.getItem(SESSION_SIGNED_OUT_KEY) === 'true';
+  } catch {
+    return false;
+  }
+};
+
+const readIdentityCookie = (): User | null => {
+  try {
+    const prefix = `${SESSION_IDENTITY_COOKIE}=`;
+    const encoded = document.cookie
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(prefix))
+      ?.slice(prefix.length);
+    if (!encoded) return null;
+    const candidate = JSON.parse(decodeURIComponent(encoded)) as Partial<User>;
+    if (typeof candidate.id !== 'string' || typeof candidate.email !== 'string') return null;
+    const id = candidate.id.trim();
+    const email = candidate.email.trim().toLowerCase();
+    return id && email ? { id, email } : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeIdentityCookie = (user: User | null) => {
+  try {
+    if (!user) {
+      document.cookie = `${SESSION_IDENTITY_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+      return;
+    }
+    const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+    const encoded = encodeURIComponent(JSON.stringify(user));
+    document.cookie = `${SESSION_IDENTITY_COOKIE}=${encoded}; Path=/; Max-Age=31536000; SameSite=Lax${secure}`;
+  } catch {
+    // A blocked cookie must not prevent local-storage or IndexedDB recovery.
+  }
+};
+
 const readCachedUser = (): User | null => {
   try {
-    if (window.localStorage.getItem(SESSION_SIGNED_OUT_KEY) === 'true') return null;
+    if (explicitlySignedOut()) return null;
     const raw = window.localStorage.getItem(SESSION_USER_KEY) || window.localStorage.getItem(LEGACY_USER_KEY);
     if (raw) {
       const candidate = JSON.parse(raw) as Partial<User>;
@@ -58,6 +101,9 @@ const readCachedUser = (): User | null => {
         }
       }
     }
+
+    const cookieUser = readIdentityCookie();
+    if (cookieUser) return cookieUser;
 
     // Migrate users who already have a locally cached timetable from before
     // the fast session marker existed. The server replaces this temporary id
@@ -77,6 +123,7 @@ const readCachedUser = (): User | null => {
 };
 
 const cacheUser = (user: User | null) => {
+  writeIdentityCookie(user);
   try {
     if (user) {
       window.localStorage.setItem(SESSION_USER_KEY, JSON.stringify(user));
@@ -114,6 +161,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     const completeAuthHandoff = async (token: string) => {
+      const previousUser = readCachedUser();
       try {
         await apiService.initialize();
         await apiService.exchangeAuthHandoff(token);
@@ -127,8 +175,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setAuthenticationError('');
       } catch {
         setBootstrap(null);
-        setUser(null);
-        cacheUser(null);
+        setUser(previousUser);
         setAuthenticationError('Gmail authentication could not be completed. Please try again.');
       } finally {
         setLoading(false);
@@ -139,8 +186,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (authRedirect) {
       clearAuthRedirectFromAddressBar();
       if (authRedirect.status === 'error' || !authRedirect.handoff) {
-        setUser(null);
-        cacheUser(null);
         setAuthenticationError('Gmail authentication failed. Please try again.');
         setLoading(false);
         return;
@@ -154,13 +199,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // operation that genuinely needs the server still uses its signed cookie
     // and will surface an expired session normally.
     if (user) {
+      cacheUser(user);
       setLoading(false);
       return;
     }
 
-    // Signed-out and first-time visitors can view the login screen without a
-    // backend round trip. OAuth completion performs authoritative verification.
-    setLoading(false);
+    if (explicitlySignedOut()) {
+      setLoading(false);
+      return;
+    }
+
+    // IndexedDB survives cases where mobile browsers discard localStorage.
+    // Recover the owner of an existing timetable locally before deciding that
+    // the visitor needs to authenticate. This performs no network request.
+    void findCachedTimetableOwner().then((email) => {
+      if (email) {
+        const recovered = { id: `cached:${email}`, email };
+        setUser(recovered);
+        cacheUser(recovered);
+      }
+      setLoading(false);
+    });
   }, []);
 
   const loginWithGmail = async (): Promise<boolean> => {
@@ -181,7 +240,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       window.localStorage.setItem(SESSION_SIGNED_OUT_KEY, 'true');
     } catch {
-      // Ignore unavailable browser storage; the server logout still runs.
+      // The Vercel cookie-clear response below still ends the server session.
     }
     void apiService.logout().catch(() => undefined);
   };

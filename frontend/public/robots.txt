@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://class-wire.vercel.app/sitemap.xml
+Sitemap: https://szabist-islamabad-search.vercel.app/sitemap.xml

@@ -11,7 +11,7 @@ describe('initial page shell', () => {
   });
 
   it('retains SZABIST discovery metadata outside the transient app root', () => {
-    expect(pageSource).toContain('SZABIST Islamabad timetables');
+    expect(pageSource).toContain('SZABIST Islamabad and ZABDESK timetables');
     expect(pageSource).toContain('application/ld+json');
     expect(pageSource).toContain('<noscript>');
   });
